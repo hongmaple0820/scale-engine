@@ -85,29 +85,44 @@ export class Doctor {
   }
 
   private checkSettingsJson(): DiagnosticResult {
-    const paths = [
-      join(this.projectDir, '.claude', 'settings.json'),
-      join(this.projectDir, '.claude', 'settings.local.json'),
+    const candidates: Array<{ agent: string; path: string }> = [
+      { agent: 'claude-code', path: join(this.projectDir, '.claude', 'settings.json') },
+      { agent: 'claude-code', path: join(this.projectDir, '.claude', 'settings.local.json') },
+      { agent: 'codex', path: join(this.projectDir, '.codex', 'hooks.json') },
+      { agent: 'cursor', path: join(this.projectDir, '.cursor', 'settings.json') },
+      { agent: 'gemini', path: join(this.projectDir, '.gemini', 'settings.json') },
+      { agent: 'openclaw', path: join(this.projectDir, '.openclaw', 'settings.json') },
+      { agent: 'hermes', path: join(this.projectDir, '.hermes', 'settings.json') },
     ]
-    const found = paths.find((p) => existsSync(p))
+    const found = candidates.find((c) => existsSync(c.path))
     if (!found) {
-      return { name: 'Agent settings', status: 'warn', message: 'No .claude/settings.json found', fix: 'Run: scale init --agent claude-code' }
+      return {
+        name: 'Agent settings',
+        status: 'warn',
+        message: 'No agent settings found (.claude/.codex/.cursor/.gemini/.openclaw/.hermes)',
+        fix: 'Run: scale init --agent <claude-code|codex|cursor|gemini|openclaw|hermes>',
+      }
     }
     try {
-      const content = JSON.parse(readFileSync(found, 'utf-8'))
+      const content = JSON.parse(readFileSync(found.path, 'utf-8'))
       const hasScaleHooks = JSON.stringify(content).includes('scale ')
       if (!hasScaleHooks) {
-        return { name: 'Agent settings', status: 'warn', message: 'settings.json exists but no SCALE hooks', fix: 'Run: scale init to inject hooks' }
+        return {
+          name: 'Agent settings',
+          status: 'warn',
+          message: `${found.path} exists but no SCALE hooks`,
+          fix: `Run: scale init --agent ${found.agent} to inject hooks`,
+        }
       }
       const hookCount = Object.values(content.hooks ?? {}).flat().length
-      return { name: 'Agent settings', status: 'ok', message: `${hookCount} hooks configured` }
+      return { name: 'Agent settings', status: 'ok', message: `${hookCount} hooks configured (${found.agent})` }
     } catch {
-      return { name: 'Agent settings', status: 'fail', message: 'settings.json is invalid JSON', fix: 'Fix JSON syntax' }
+      return { name: 'Agent settings', status: 'fail', message: `${found.path} is invalid JSON`, fix: 'Fix JSON syntax' }
     }
   }
 
   private checkKnowledgeDoc(): DiagnosticResult {
-    const paths = ['CLAUDE.md', 'AGENTS.md', '.cursorrules', 'GEMINI.md']
+    const paths = ['CLAUDE.md', 'AGENTS.md', '.cursorrules', 'GEMINI.md', '.hermes.md']
     for (const name of paths) {
       const p = join(this.projectDir, name)
       if (existsSync(p)) {

@@ -11,3 +11,4 @@ dist/
 .env
 .env.local
 scale-engine-compare
+.claude/
