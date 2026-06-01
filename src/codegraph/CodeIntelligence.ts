@@ -844,15 +844,20 @@ function providerStatus(projectDir: string): (provider: CodeIntelligenceProvider
       }
     }
     if (provider.type === 'artifact') {
-      const manifest = provider.manifest ? resolveProjectPath(projectDir, provider.manifest) : ''
-      const available = Boolean(manifest && existsSync(manifest))
+      const resolved = provider.manifest ? resolveManifestWithFallback(projectDir, provider.manifest) : undefined
+      const available = Boolean(resolved)
+      const reason = available
+        ? resolved === resolveProjectPath(projectDir, provider.manifest ?? '')
+          ? `manifest found at ${provider.manifest}`
+          : `manifest found via fallback at graph.json (configured: ${provider.manifest})`
+        : `manifest not found: ${provider.manifest ?? '(missing)'}`
       return {
         id: provider.id,
         type: provider.type,
         enabled,
         available,
         capabilities,
-        reason: available ? `manifest found at ${provider.manifest}` : `manifest not found: ${provider.manifest ?? '(missing)'}`,
+        reason,
         source: provider.source,
         installHint: provider.installHint,
         projectInitHint: provider.projectInitHint,
