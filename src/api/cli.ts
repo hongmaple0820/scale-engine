@@ -27,6 +27,7 @@ import { CerebrumManager } from '../knowledge/CerebrumManager.js'
 import {
   buildCodeGraphContext,
   createCodeGraphRoiReport,
+  dumpCodeGraphData,
   impactCodeGraph,
   inspectCodeIntelligence,
   queryCodeGraph,
@@ -1587,9 +1588,31 @@ function printCodeGraphReport(report: {
   for (const warning of report.warnings) console.log(`  warning: ${warning}`)
 }
 
+const codegraphDump = defineCommand({
+  meta: { name: 'dump', description: 'Dump full topology graph (nodes + edges) for visualization' },
+  args: {
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    out: { type: 'string', description: 'Output file path (default: stdout as JSON)' },
+  },
+  run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const scaleDir = resolveScaleDirForProject(projectDir)
+    const graph = dumpCodeGraphData({ projectDir, scaleDir })
+    const json = JSON.stringify(graph, null, 2)
+    const outPath = args.out ? resolve(String(args.out)) : undefined
+    if (outPath) {
+      mkdirSync(dirname(outPath), { recursive: true })
+      writeFileSync(outPath, json, 'utf-8')
+      console.log(`Topology written to ${outPath} (${graph.nodes.length} nodes, ${graph.edges.length} edges)`)
+    } else {
+      console.log(json)
+    }
+  },
+})
+
 const codegraph = defineCommand({
   meta: { name: 'codegraph', description: 'Adapter-first code intelligence and exploration ROI' },
-  subCommands: { status: codegraphStatus, init: codegraphInit, query: codegraphQuery, impact: codegraphImpact, context: codegraphContext, roi: codegraphRoi },
+  subCommands: { status: codegraphStatus, init: codegraphInit, query: codegraphQuery, impact: codegraphImpact, context: codegraphContext, roi: codegraphRoi, dump: codegraphDump },
 })
 
 // ============================================================================

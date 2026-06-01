@@ -9,6 +9,9 @@ import { logger } from '../core/logger.js'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { dumpCodeGraphData } from '../codegraph/CodeIntelligence.js'
+import { classifyLayers } from '../topology/LayerClassifier.js'
+import { generateTour } from '../topology/TourGenerator.js'
 
 export interface DashboardConfig {
   port: number
@@ -55,6 +58,7 @@ export class DashboardServer {
       '/': 'artifact-flow.html', '/artifacts': 'artifact-flow.html',
       '/sessions': 'session-timeline.html', '/knowledge': 'knowledge-graph.html',
       '/evolution': 'evolution-metrics.html', '/agents': 'agent-stats.html',
+      '/topology': 'topology.html',
     }
     const viewFile = viewMap[url] ?? 'artifact-flow.html'
     try {
@@ -72,6 +76,15 @@ export class DashboardServer {
     else if (url === '/api/evolution') res.end(JSON.stringify(data.evolution))
     else if (url === '/api/agents') res.end(JSON.stringify(data.agents))
     else if (url === '/api/all') res.end(JSON.stringify(data))
+    else if (url === '/api/topology') {
+      const graph = classifyLayers(dumpCodeGraphData({ projectDir: process.cwd() }))
+      res.end(JSON.stringify(graph))
+    }
+    else if (url === '/api/topology/tour') {
+      const graph = classifyLayers(dumpCodeGraphData({ projectDir: process.cwd() }))
+      const tour = generateTour(graph)
+      res.end(JSON.stringify(tour))
+    }
     else { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not found' })) }
   }
 

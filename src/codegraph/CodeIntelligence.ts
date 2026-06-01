@@ -118,6 +118,33 @@ export interface CodeGraphRoiReport {
   evidenceLevel: 'measured' | 'estimated'
 }
 
+export type ArchitectureLayer = 'api' | 'service' | 'data' | 'ui' | 'utility' | 'config' | 'test' | 'unknown'
+
+export interface TopologyNode {
+  id: string
+  kind: 'file' | 'function' | 'class' | 'constant' | 'module'
+  name: string
+  filePath: string
+  line?: number
+  signature?: string
+  layer?: ArchitectureLayer
+  domain?: string
+}
+
+export interface TopologyEdge {
+  source: string
+  target: string
+  kind: 'calls' | 'imports' | 'extends' | 'implements' | 'depends-on'
+}
+
+export interface TopologyGraph {
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+  generatedAt: string
+  provider: string
+  projectDir: string
+}
+
 type ArtifactSymbol = {
   name: string
   file?: string
@@ -398,6 +425,234 @@ export function createCodeGraphRoiReport(options: {
     recommendation: report.fallbackUsed ? 'needs-evidence' : 'keep-optional',
     evidenceLevel: report.fallbackUsed ? 'estimated' : 'measured',
   }
+}
+
+export function dumpCodeGraphData(options: {
+  projectDir?: string
+  scaleDir?: string
+}): TopologyGraph {
+  const projectDir = resolve(options.projectDir ?? process.cwd())
+  const status = inspectCodeIntelligence({ projectDir, scaleDir: options.scaleDir })
+  const warnings: string[] = []
+
+  // Priority 1: artifact manifest (graph.json)
+  const artifactProvider = status.providers.find(p => p.available && p.type === 'artifact')
+  if (artifactProvider) {
+    const config = loadCodeIntelligenceConfig(projectDir, options.scaleDir).config
+    const providerConfig = config.providers.find(p => p.id === artifactProvider.id)
+    if (providerConfig?.manifest) {
+      const result = dumpArtifactManifest(projectDir, providerConfig)
+      if (result.nodes.length > 0) return result
+    }
+  }
+
+  // Priority 2: codegraph CLI (full index)
+  const externalProvider = status.providers.find(p => p.available && p.type === 'external-cli' && p.id === 'codegraph')
+  if (externalProvider && status.projectIndexExists) {
+    const result = dumpExternalCodeGraph(projectDir)
+    if (result.nodes.length > 0) return result
+  }
+
+  // Priority 3: fallback file walk
+  return dumpFallbackTopology(projectDir)
+}
+
+function dumpArtifactManifest(projectDir: string, provider: CodeIntelligenceProviderConfig): TopologyGraph {
+  if (!provider.manifest) return emptyTopology(projectDir, provider.id)
+  const manifest = resolveProjectPath(projectDir, provider.manifest)
+  if (!existsSync(manifest)) return emptyTopology(projectDir, provider.id)
+  try {
+    const content = readFileSync(manifest, 'utf-8')
+    const parsed = JSON.parse(content) as { symbols?: ArtifactSymbol[]; files?: ArtifactFile[] }
+    const symbols = Array.isArray(parsed.symbols) ? parsed.symbols : []
+    const files = Array.isArray(parsed.files) ? parsed.files : []
+    const nodes: TopologyNode[] = []
+    const edges: TopologyEdge[] = []
+    const nodeIds = new Set<string>()
+
+    // Symbol nodes
+    for (const sym of symbols) {
+      const name = String(sym.name ?? '')
+      const file = normalizeManifestPath(sym.file ?? sym.path)
+      if (!name) continue
+      const id = file ? `${file}::${name}` : name
+      nodeIds.add(id)
+      nodes.push({
+        id,
+        kind: guessSymbolKind(name),
+        name,
+        filePath: file || '',
+      })
+
+      // Edges from callers/callees/dependencies
+      for (const callee of stringifyArray(sym.callees)) {
+        const target = resolveEdgeTarget(callee, symbols)
+        if (target) edges.push({ source: id, target, kind: 'calls' })
+      }
+      for (const dep of stringifyArray(sym.dependencies)) {
+        const target = resolveEdgeTarget(dep, symbols)
+        if (target) edges.push({ source: id, target, kind: 'depends-on' })
+      }
+      for (const caller of stringifyArray(sym.callers)) {
+        const target = resolveEdgeTarget(caller, symbols)
+        if (target) edges.push({ source: target, target: id, kind: 'calls' })
+      }
+      for (const dependent of stringifyArray(sym.dependents)) {
+        const target = resolveEdgeTarget(dependent, symbols)
+        if (target) edges.push({ source: target, target: id, kind: 'depends-on' })
+      }
+    }
+
+    // File nodes (for files not yet represented by symbols)
+    for (const file of files) {
+      const path = normalizeManifestPath(file.path ?? file.file)
+      if (!path) continue
+      const fileId = `file:${path}`
+      if (!nodeIds.has(fileId)) {
+        nodeIds.add(fileId)
+        nodes.push({ id: fileId, kind: 'file', name: path.split('/').pop() ?? path, filePath: path })
+      }
+      // Import edges
+      for (const imp of stringifyArray(file.imports)) {
+        const targetFile = normalizeManifestPath(imp)
+        if (targetFile) {
+          const targetId = `file:${targetFile}`
+          edges.push({ source: fileId, target: targetId, kind: 'imports' })
+        }
+      }
+      // dependsOn edges
+      for (const dep of stringifyArray(file.dependsOn)) {
+        const targetFile = normalizeManifestPath(dep)
+        if (targetFile) {
+          const targetId = `file:${targetFile}`
+          edges.push({ source: fileId, target: targetId, kind: 'depends-on' })
+        }
+      }
+    }
+
+    return {
+      nodes: dedupeTopologyNodes(nodes),
+      edges: dedupeTopologyEdges(edges),
+      generatedAt: new Date().toISOString(),
+      provider: provider.id,
+      projectDir,
+    }
+  } catch {
+    return emptyTopology(projectDir, provider.id)
+  }
+}
+
+function dumpExternalCodeGraph(projectDir: string): TopologyGraph {
+  try {
+    // Use codegraph CLI to get a broad dump via empty query
+    const output = runExternalCommandSync('codegraph', ['query', '', '-p', projectDir, '--json'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }, {
+      execFileSync: execFileSyncImpl,
+      spawnSync: childProcess.spawnSync,
+    })
+    const parsed = JSON.parse(String(output)) as Array<{
+      node?: { kind?: string; name?: string; qualifiedName?: string; filePath?: string; startLine?: number }
+    }>
+    const nodes: TopologyNode[] = []
+    const seen = new Set<string>()
+    for (const entry of parsed) {
+      const file = normalizeManifestPath(entry.node?.filePath)
+      const name = String(entry.node?.qualifiedName ?? entry.node?.name ?? '').trim()
+      if (!file || !name) continue
+      const id = `${file}::${name}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      nodes.push({
+        id,
+        kind: mapCodeGraphKind(entry.node?.kind),
+        name,
+        filePath: file,
+        line: entry.node?.startLine,
+      })
+    }
+    return {
+      nodes,
+      edges: [], // CLI doesn't return edge data in query mode
+      generatedAt: new Date().toISOString(),
+      provider: 'codegraph',
+      projectDir,
+    }
+  } catch {
+    return emptyTopology(projectDir, 'codegraph')
+  }
+}
+
+function dumpFallbackTopology(projectDir: string): TopologyGraph {
+  const files = sourceFiles(projectDir)
+  const nodes: TopologyNode[] = files.map(file => {
+    const rel = normalizePath(relative(projectDir, file))
+    return {
+      id: `file:${rel}`,
+      kind: 'file' as const,
+      name: rel.split('/').pop() ?? rel,
+      filePath: rel,
+    }
+  })
+  return {
+    nodes,
+    edges: [],
+    generatedAt: new Date().toISOString(),
+    provider: 'fallback-file-walk',
+    projectDir,
+  }
+}
+
+function resolveEdgeTarget(ref: string, symbols: ArtifactSymbol[]): string | undefined {
+  const asPath = normalizeManifestPath(ref)
+  if (asPath && hasFileExtension(asPath)) {
+    // Reference is a file path — find a symbol in that file
+    const sym = symbols.find(s => normalizeManifestPath(s.file ?? s.path) === asPath)
+    return sym ? `${asPath}::${sym.name}` : `file:${asPath}`
+  }
+  // Reference is a symbol name
+  const sym = symbols.find(s => String(s.name) === ref)
+  if (sym) {
+    const file = normalizeManifestPath(sym.file ?? sym.path)
+    return file ? `${file}::${ref}` : ref
+  }
+  return undefined
+}
+
+function guessSymbolKind(name: string): TopologyNode['kind'] {
+  if (/^[A-Z]/.test(name)) return 'class'
+  if (/^[A-Z_][A-Z_0-9]*$/.test(name)) return 'constant'
+  return 'function'
+}
+
+function mapCodeGraphKind(kind?: string): TopologyNode['kind'] {
+  switch (kind?.toLowerCase()) {
+    case 'class': case 'struct': case 'interface': case 'type': return 'class'
+    case 'function': case 'method': case 'constructor': return 'function'
+    case 'constant': case 'enum': return 'constant'
+    case 'module': case 'namespace': case 'package': return 'module'
+    default: return 'function'
+  }
+}
+
+function dedupeTopologyNodes(nodes: TopologyNode[]): TopologyNode[] {
+  const seen = new Set<string>()
+  return nodes.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true })
+}
+
+function dedupeTopologyEdges(edges: TopologyEdge[]): TopologyEdge[] {
+  const seen = new Set<string>()
+  return edges.filter(e => {
+    const key = `${e.source}->${e.target}:${e.kind}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function emptyTopology(projectDir: string, provider: string): TopologyGraph {
+  return { nodes: [], edges: [], generatedAt: new Date().toISOString(), provider, projectDir }
 }
 
 function runCodeGraphQuery(options: {

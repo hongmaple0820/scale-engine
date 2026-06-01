@@ -14,6 +14,10 @@ import type { IArtifactStore } from '../artifact/store.js'
 import type { IFSM } from '../artifact/fsm.js'
 import type { IEvolutionEvaluator, EvolutionMetrics } from '../evolution/EvolutionEvaluator.js'
 import type { DetectorStatisticsTracker } from '../guardrails/DetectorEnhanced.js'
+import { dumpCodeGraphData, type TopologyGraph } from '../codegraph/CodeIntelligence.js'
+import { classifyLayers } from '../topology/LayerClassifier.js'
+import { mapDomains } from '../topology/DomainMapper.js'
+import { generateTour } from '../topology/TourGenerator.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -87,6 +91,7 @@ export class DashboardServer {
   private evaluator: IEvolutionEvaluator | null = null
   private detectorTracker: DetectorStatisticsTracker | null = null
   private port: number
+  private projectDir: string
 
   constructor(
     bus: EventBus,
@@ -96,6 +101,7 @@ export class DashboardServer {
       fsm?: IFSM
       evaluator?: IEvolutionEvaluator
       detectorTracker?: DetectorStatisticsTracker
+      projectDir?: string
     } = {}
   ) {
     this.app = new Hono()
@@ -105,6 +111,7 @@ export class DashboardServer {
     this.evaluator = options.evaluator ?? null
     this.detectorTracker = options.detectorTracker ?? null
     this.port = options.port ?? 3000
+    this.projectDir = options.projectDir ?? process.cwd()
 
     this.setupRoutes()
   }
@@ -154,6 +161,23 @@ export class DashboardServer {
     this.app.get('/api/auto-defects', async (c) => {
       const stats = await this.getAutoDefectStats()
       return c.json(stats)
+    })
+
+    // ── Topology ──────────────────────────────────────────────────────
+
+    // Topology graph view
+    this.app.get('/topology', (c) => c.html(this.getTopologyHtml()))
+
+    // Topology data API
+    this.app.get('/api/topology', (c) => {
+      const graph = this.getTopology()
+      return c.json(graph)
+    })
+
+    // Guided tour API
+    this.app.get('/api/topology/tour', (c) => {
+      const tour = generateTour(this.getTopology())
+      return c.json(tour)
     })
 
     // ── Write Operations ──────────────────────────────────────────────
@@ -429,6 +453,16 @@ export class DashboardServer {
   stop(): void {
     // Bun server stops automatically when process exits
     console.log('Dashboard server stopped')
+  }
+
+  getTopology(): TopologyGraph {
+    const raw = dumpCodeGraphData({ projectDir: this.projectDir })
+    return classifyLayers(raw)
+  }
+
+  private getTopologyHtml(): string {
+    const htmlPath = join(__dirname, 'views', 'topology.html')
+    return readFileSync(htmlPath, 'utf-8')
   }
 
   private getIndexHtml(): string {

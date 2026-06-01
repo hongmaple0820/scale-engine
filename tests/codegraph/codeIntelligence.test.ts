@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildCodeGraphContext, inspectCodeIntelligence, queryCodeGraph, setCodeIntelligenceExecFileSyncForTesting } from '../../src/codegraph/CodeIntelligence.js'
+import { buildCodeGraphContext, dumpCodeGraphData, inspectCodeIntelligence, queryCodeGraph, setCodeIntelligenceExecFileSyncForTesting } from '../../src/codegraph/CodeIntelligence.js'
 
 let dirs: string[] = []
 
@@ -118,5 +118,61 @@ describe('CodeIntelligence external CodeGraph integration', () => {
     expect(report.contextFiles.map(file => file.path)).toEqual(expect.arrayContaining(['src/user.ts', 'src/api.ts']))
     expect(report.warnings.join('\n')).toContain('CodeGraph context summary:')
     expect(report.totalEstimatedTokens).toBeLessThanOrEqual(50)
+  })
+})
+
+describe('dumpCodeGraphData', () => {
+  it('dumps topology from artifact manifest', () => {
+    const projectDir = makeProject()
+    mkdirSync(join(projectDir, 'graphify-out'), { recursive: true })
+    writeFileSync(join(projectDir, 'graphify-out', 'graph.json'), JSON.stringify({
+      symbols: [
+        { name: 'createUser', file: 'src/user.ts', callees: [], callers: ['route'] },
+        { name: 'route', file: 'src/api.ts', callees: ['createUser'], callers: [] },
+      ],
+      files: [
+        { path: 'src/user.ts', symbols: ['createUser'], imports: [] },
+        { path: 'src/api.ts', symbols: ['route'], imports: ['src/user.ts'] },
+      ],
+    }), 'utf-8')
+
+    const graph = dumpCodeGraphData({ projectDir })
+
+    expect(graph.provider).toBe('graphify')
+    expect(graph.nodes.length).toBeGreaterThanOrEqual(2)
+    expect(graph.edges.length).toBeGreaterThanOrEqual(1)
+
+    const createNode = graph.nodes.find(n => n.name === 'createUser')
+    expect(createNode).toBeDefined()
+    expect(createNode!.kind).toBe('function')
+    expect(createNode!.filePath).toBe('src/user.ts')
+
+    const callEdge = graph.edges.find(e => e.kind === 'calls')
+    expect(callEdge).toBeDefined()
+  })
+
+  it('dumps topology from codegraph CLI', () => {
+    const projectDir = makeProject(true)
+    mockCodegraphCli()
+
+    const graph = dumpCodeGraphData({ projectDir })
+
+    expect(graph.provider).toBe('codegraph')
+    expect(graph.nodes.length).toBeGreaterThanOrEqual(1)
+    const createNode = graph.nodes.find(n => n.name === 'createUser')
+    expect(createNode).toBeDefined()
+    expect(createNode!.kind).toBe('function')
+    expect(createNode!.filePath).toBe('src/user.ts')
+  })
+
+  it('falls back to file walk when no provider is available', () => {
+    const projectDir = makeProject()
+
+    const graph = dumpCodeGraphData({ projectDir })
+
+    expect(graph.provider).toBe('fallback-file-walk')
+    expect(graph.nodes.length).toBeGreaterThanOrEqual(2)
+    expect(graph.edges.length).toBe(0)
+    expect(graph.nodes.every(n => n.kind === 'file')).toBe(true)
   })
 })

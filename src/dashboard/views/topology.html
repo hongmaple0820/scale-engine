@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCALE Engine — Code Topology</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e0e0e0; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+    nav { background: #1a1a1a; padding: 0.75rem 1rem; display: flex; gap: 1rem; align-items: center; border-bottom: 1px solid #2a2a2a; flex-shrink: 0; }
+    nav a { color: #808080; text-decoration: none; font-size: 0.85rem; }
+    nav a:hover { color: #fff; }
+    nav a.active { color: #00ff88; }
+    .toolbar { background: #1a1a1a; padding: 0.5rem 1rem; display: flex; gap: 0.75rem; align-items: center; border-bottom: 1px solid #2a2a2a; flex-shrink: 0; flex-wrap: wrap; }
+    .toolbar label { font-size: 0.75rem; color: #808080; }
+    .toolbar select, .toolbar input { background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
+    .toolbar input[type="text"] { width: 200px; }
+    .toolbar button { background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 0.3rem 0.75rem; border-radius: 4px; font-size: 0.8rem; cursor: pointer; }
+    .toolbar button:hover { background: #3a3a3a; }
+    .toolbar button.active { background: #00ff88; color: #0f0f0f; border-color: #00ff88; }
+    .container { display: flex; flex: 1; overflow: hidden; }
+    #cy { flex: 1; background: #0f0f0f; }
+    .detail-panel { width: 320px; background: #1a1a1a; border-left: 1px solid #2a2a2a; overflow-y: auto; padding: 1rem; flex-shrink: 0; }
+    .detail-panel.hidden { display: none; }
+    .detail-panel h3 { color: #00ff88; font-size: 1rem; margin-bottom: 0.5rem; }
+    .detail-panel .meta { font-size: 0.75rem; color: #808080; margin-bottom: 0.5rem; }
+    .detail-panel .section { margin-bottom: 1rem; }
+    .detail-panel .section-title { font-size: 0.8rem; font-weight: 600; color: #aaa; margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .detail-panel .node-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .detail-panel .node-item { font-size: 0.8rem; padding: 0.3rem 0.5rem; background: #2a2a2a; border-radius: 4px; cursor: pointer; }
+    .detail-panel .node-item:hover { background: #3a3a3a; }
+    .legend { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .stats { font-size: 0.75rem; color: #808080; margin-left: auto; }
+    .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #808080; }
+    .tour-overlay { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 8px; padding: 1rem; min-width: 350px; z-index: 100; }
+    .tour-overlay.hidden { display: none; }
+    .tour-overlay h4 { color: #00ff88; margin-bottom: 0.5rem; }
+    .tour-overlay .stop-info { font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .tour-overlay .stop-desc { font-size: 0.75rem; color: #808080; margin-bottom: 0.5rem; }
+    .tour-overlay .tour-nav { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .tour-overlay .tour-nav button { padding: 0.3rem 0.75rem; border-radius: 4px; border: 1px solid #3a3a3a; background: #2a2a2a; color: #e0e0e0; cursor: pointer; font-size: 0.8rem; }
+    .tour-overlay .tour-nav button:hover { background: #3a3a3a; }
+    .tour-overlay .tour-progress { font-size: 0.7rem; color: #808080; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Artifacts</a>
+    <a href="/sessions">Sessions</a>
+    <a href="/knowledge">Knowledge</a>
+    <a href="/evolution">Evolution</a>
+    <a href="/agents">Agents</a>
+    <a href="/topology" class="active">Topology</a>
+  </nav>
+  <div class="toolbar">
+    <label>Layout:</label>
+    <select id="layout-select">
+      <option value="cose">Force Directed</option>
+      <option value="dagre">Hierarchical</option>
+      <option value="circle">Circle</option>
+      <option value="grid">Grid</option>
+    </select>
+    <label>Filter:</label>
+    <select id="layer-filter">
+      <option value="">All Layers</option>
+      <option value="api">API</option>
+      <option value="service">Service</option>
+      <option value="data">Data</option>
+      <option value="ui">UI</option>
+      <option value="utility">Utility</option>
+      <option value="config">Config</option>
+      <option value="test">Test</option>
+      <option value="unknown">Unknown</option>
+    </select>
+    <select id="kind-filter">
+      <option value="">All Kinds</option>
+      <option value="file">File</option>
+      <option value="function">Function</option>
+      <option value="class">Class</option>
+      <option value="constant">Constant</option>
+      <option value="module">Module</option>
+    </select>
+    <input type="text" id="search" placeholder="Search symbols...">
+    <button id="btn-fit">Fit</button>
+    <button id="btn-tour">Guided Tour</button>
+    <button id="btn-refresh">Refresh</button>
+    <div class="legend" id="legend"></div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div class="container">
+    <div id="cy"></div>
+    <div class="detail-panel hidden" id="detail">
+      <h3 id="detail-title">Select a node</h3>
+      <div class="meta" id="detail-meta"></div>
+      <div class="section">
+        <div class="section-title">Connections</div>
+        <div class="node-list" id="detail-connections"></div>
+      </div>
+    </div>
+  </div>
+  <div class="tour-overlay hidden" id="tour-overlay">
+    <h4 id="tour-title"></h4>
+    <div class="tour-progress" id="tour-progress"></div>
+    <div class="stop-info" id="tour-stop-title"></div>
+    <div class="stop-desc" id="tour-stop-desc"></div>
+    <div class="tour-nav">
+      <button id="tour-prev">Prev</button>
+      <button id="tour-next">Next</button>
+      <button id="tour-close">Close</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/cytoscape@3.31.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+  <script>
+    const LAYER_COLORS = {
+      api: '#3b82f6', service: '#22c55e', data: '#f97316', ui: '#a855f7',
+      utility: '#6b7280', config: '#eab308', test: '#ec4899', unknown: '#374151'
+    };
+
+    let cy = null;
+    let topologyData = null;
+    let tourState = { stops: [], current: -1 };
+
+    // Initialize Cytoscape
+    function initCy() {
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'background-color': 'data(color)',
+              'label': 'data(label)',
+              'color': '#e0e0e0',
+              'font-size': '10px',
+              'text-valign': 'bottom',
+              'text-margin-y': 5,
+              'width': 'data(size)',
+              'height': 'data(size)',
+              'border-width': 1,
+              'border-color': '#2a2a2a',
+              'text-wrap': 'ellipsis',
+              'text-max-width': '80px',
+            }
+          },
+          {
+            selector: 'node:selected',
+            style: {
+              'border-width': 3,
+              'border-color': '#00ff88',
+              'background-color': '#00ff88',
+            }
+          },
+          {
+            selector: 'node.highlighted',
+            style: {
+              'border-width': 2,
+              'border-color': '#00ff88',
+            }
+          },
+          {
+            selector: 'node.dimmed',
+            style: { 'opacity': 0.15 }
+          },
+          {
+            selector: 'edge',
+            style: {
+              'width': 1,
+              'line-color': '#3a3a3a',
+              'target-arrow-color': '#3a3a3a',
+              'target-arrow-shape': 'triangle',
+              'curve-style': 'bezier',
+              'opacity': 0.4,
+            }
+          },
+          {
+            selector: 'edge.highlighted',
+            style: {
+              'width': 2,
+              'line-color': '#00ff88',
+              'target-arrow-color': '#00ff88',
+              'opacity': 1,
+            }
+          },
+          {
+            selector: 'edge.dimmed',
+            style: { 'opacity': 0.05 }
+          }
+        ],
+        layout: { name: 'cose', animate: true },
+        minZoom: 0.1,
+        maxZoom: 5,
+      });
+
+      // Click handler
+      cy.on('tap', 'node', function(evt) {
+        const node = evt.target;
+        showDetail(node.data());
+        highlightConnected(node);
+      });
+
+      cy.on('tap', function(evt) {
+        if (evt.target === cy) {
+          clearHighlight();
+          hideDetail();
+        }
+      });
+    }
+
+    // Load topology data
+    async function loadTopology() {
+      try {
+        const res = await fetch('/api/topology');
+        topologyData = await res.json();
+        renderGraph();
+      } catch (e) {
+        document.getElementById('cy').innerHTML = '<div class="loading">Failed to load topology: ' + e.message + '</div>';
+      }
+    }
+
+    // Render graph from topology data
+    function renderGraph() {
+      if (!cy || !topologyData) return;
+
+      const layerFilter = document.getElementById('layer-filter').value;
+      const kindFilter = document.getElementById('kind-filter').value;
+      const search = document.getElementById('search').value.toLowerCase();
+
+      let nodes = topologyData.nodes;
+      let edges = topologyData.edges;
+
+      // Apply filters
+      if (layerFilter) nodes = nodes.filter(n => n.layer === layerFilter);
+      if (kindFilter) nodes = nodes.filter(n => n.kind === kindFilter);
+      if (search) nodes = nodes.filter(n => n.name.toLowerCase().includes(search) || n.filePath.toLowerCase().includes(search));
+
+      const nodeIds = new Set(nodes.map(n => n.id));
+      edges = edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+      // Node size based on connection count
+      const connCount = new Map();
+      for (const e of edges) {
+        connCount.set(e.source, (connCount.get(e.source) ?? 0) + 1);
+        connCount.set(e.target, (connCount.get(e.target) ?? 0) + 1);
+      }
+
+      const elements = {
+        nodes: nodes.map(n => ({
+          data: {
+            id: n.id,
+            label: n.name,
+            color: LAYER_COLORS[n.layer ?? 'unknown'] ?? LAYER_COLORS.unknown,
+            size: Math.max(15, Math.min(40, 15 + (connCount.get(n.id) ?? 0) * 3)),
+            layer: n.layer ?? 'unknown',
+            kind: n.kind,
+            filePath: n.filePath,
+            line: n.line,
+          }
+        })),
+        edges: edges.map(e => ({
+          data: {
+            source: e.source,
+            target: e.target,
+            kind: e.kind,
+          }
+        }))
+      };
+
+      cy.elements().remove();
+      cy.add(elements);
+
+      // Apply layout
+      applyLayout();
+
+      // Update stats
+      document.getElementById('stats').textContent = `${nodes.length} nodes, ${edges.length} edges`;
+
+      // Build legend
+      buildLegend(nodes);
+    }
+
+    function applyLayout() {
+      const layoutName = document.getElementById('layout-select').value;
+      const options = { name: layoutName, animate: true, animationDuration: 500 };
+      if (layoutName === 'dagre') {
+        options.rankDir = 'TB';
+        options.rankSep = 80;
+        options.nodeSep = 40;
+      } else if (layoutName === 'cose') {
+        options.nodeRepulsion = function() { return 4000; };
+        options.idealEdgeLength = function() { return 100; };
+        options.edgeElasticity = function() { return 100; };
+      }
+      cy.layout(options).run();
+    }
+
+    function buildLegend(nodes) {
+      const layers = new Set(nodes.map(n => n.layer ?? 'unknown'));
+      const legend = document.getElementById('legend');
+      legend.innerHTML = Array.from(layers).sort().map(layer =>
+        `<div class="legend-item"><div class="legend-dot" style="background:${LAYER_COLORS[layer] ?? LAYER_COLORS.unknown}"></div>${layer}</div>`
+      ).join('');
+    }
+
+    function showDetail(data) {
+      const panel = document.getElementById('detail');
+      panel.classList.remove('hidden');
+      document.getElementById('detail-title').textContent = data.label;
+      document.getElementById('detail-meta').innerHTML = [
+        `Kind: ${data.kind}`,
+        `Layer: ${data.layer}`,
+        `File: ${data.filePath}`,
+        data.line ? `Line: ${data.line}` : '',
+      ].filter(Boolean).join(' &middot; ');
+
+      const connected = cy.getElementById(data.id).neighborhood('node');
+      const connDiv = document.getElementById('detail-connections');
+      connDiv.innerHTML = connected.map(n => {
+        const d = n.data();
+        return `<div class="node-item" onclick="focusNode('${d.id}')">${d.label} <span style="color:${d.color}">[${d.layer}]</span></div>`;
+      }).join('') || '<div style="color:#808080;font-size:0.8rem">No connections</div>';
+    }
+
+    function hideDetail() {
+      document.getElementById('detail').classList.add('hidden');
+    }
+
+    function highlightConnected(node) {
+      cy.elements().removeClass('highlighted dimmed');
+      const neighborhood = node.closedNeighborhood();
+      cy.elements().not(neighborhood).addClass('dimmed');
+      neighborhood.edges().addClass('highlighted');
+      neighborhood.nodes().not(node).addClass('highlighted');
+    }
+
+    function clearHighlight() {
+      cy.elements().removeClass('highlighted dimmed');
+    }
+
+    function focusNode(id) {
+      const node = cy.getElementById(id);
+      if (node.length) {
+        cy.animate({ center: { eles: node }, zoom: 2, duration: 300 });
+        node.select();
+        showDetail(node.data());
+        highlightConnected(node);
+      }
+    }
+
+    // Tour
+    async function startTour() {
+      try {
+        const res = await fetch('/api/topology/tour');
+        const tour = await res.json();
+        tourState = { stops: tour.stops, current: 0, name: tour.name };
+        showTourStop();
+        document.getElementById('tour-overlay').classList.remove('hidden');
+      } catch (e) {
+        alert('Failed to load tour: ' + e.message);
+      }
+    }
+
+    function showTourStop() {
+      const { stops, current, name } = tourState;
+      if (current < 0 || current >= stops.length) return;
+      const stop = stops[current];
+      document.getElementById('tour-title').textContent = name ?? 'Architecture Tour';
+      document.getElementById('tour-progress').textContent = `Stop ${current + 1} of ${stops.length}`;
+      document.getElementById('tour-stop-title').textContent = stop.title;
+      document.getElementById('tour-stop-desc').textContent = stop.description;
+
+      // Focus on the node
+      focusNode(stop.nodeId);
+    }
+
+    function tourNext() {
+      if (tourState.current < tourState.stops.length - 1) {
+        tourState.current++;
+        showTourStop();
+      }
+    }
+
+    function tourPrev() {
+      if (tourState.current > 0) {
+        tourState.current--;
+        showTourStop();
+      }
+    }
+
+    function closeTour() {
+      document.getElementById('tour-overlay').classList.add('hidden');
+      tourState = { stops: [], current: -1 };
+      clearHighlight();
+    }
+
+    // Event bindings
+    document.getElementById('layout-select').addEventListener('change', applyLayout);
+    document.getElementById('layer-filter').addEventListener('change', renderGraph);
+    document.getElementById('kind-filter').addEventListener('change', renderGraph);
+    document.getElementById('search').addEventListener('input', renderGraph);
+    document.getElementById('btn-fit').addEventListener('click', () => cy?.fit(undefined, 30));
+    document.getElementById('btn-tour').addEventListener('click', startTour);
+    document.getElementById('btn-refresh').addEventListener('click', loadTopology);
+    document.getElementById('tour-next').addEventListener('click', tourNext);
+    document.getElementById('tour-prev').addEventListener('click', tourPrev);
+    document.getElementById('tour-close').addEventListener('click', closeTour);
+
+    // Init
+    initCy();
+    loadTopology();
+  </script>
+</body>
+</html>
