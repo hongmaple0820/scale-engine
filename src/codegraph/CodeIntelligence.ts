@@ -459,86 +459,187 @@ export function dumpCodeGraphData(options: {
 
 function dumpArtifactManifest(projectDir: string, provider: CodeIntelligenceProviderConfig): TopologyGraph {
   if (!provider.manifest) return emptyTopology(projectDir, provider.id)
-  const manifest = resolveProjectPath(projectDir, provider.manifest)
-  if (!existsSync(manifest)) return emptyTopology(projectDir, provider.id)
+  const manifestPath = resolveManifestWithFallback(projectDir, provider.manifest)
+  if (!manifestPath) return emptyTopology(projectDir, provider.id)
   try {
-    const content = readFileSync(manifest, 'utf-8')
-    const parsed = JSON.parse(content) as { symbols?: ArtifactSymbol[]; files?: ArtifactFile[] }
-    const symbols = Array.isArray(parsed.symbols) ? parsed.symbols : []
-    const files = Array.isArray(parsed.files) ? parsed.files : []
-    const nodes: TopologyNode[] = []
-    const edges: TopologyEdge[] = []
-    const nodeIds = new Set<string>()
+    const content = readFileSync(manifestPath, 'utf-8')
+    const parsed = JSON.parse(content) as Record<string, unknown>
 
-    // Symbol nodes
-    for (const sym of symbols) {
-      const name = String(sym.name ?? '')
-      const file = normalizeManifestPath(sym.file ?? sym.path)
-      if (!name) continue
-      const id = file ? `${file}::${name}` : name
-      nodeIds.add(id)
-      nodes.push({
-        id,
-        kind: guessSymbolKind(name),
-        name,
-        filePath: file || '',
-      })
-
-      // Edges from callers/callees/dependencies
-      for (const callee of stringifyArray(sym.callees)) {
-        const target = resolveEdgeTarget(callee, symbols)
-        if (target) edges.push({ source: id, target, kind: 'calls' })
-      }
-      for (const dep of stringifyArray(sym.dependencies)) {
-        const target = resolveEdgeTarget(dep, symbols)
-        if (target) edges.push({ source: id, target, kind: 'depends-on' })
-      }
-      for (const caller of stringifyArray(sym.callers)) {
-        const target = resolveEdgeTarget(caller, symbols)
-        if (target) edges.push({ source: target, target: id, kind: 'calls' })
-      }
-      for (const dependent of stringifyArray(sym.dependents)) {
-        const target = resolveEdgeTarget(dependent, symbols)
-        if (target) edges.push({ source: target, target: id, kind: 'depends-on' })
-      }
+    // Graphify format: nodes[] + links[]
+    if (Array.isArray(parsed.nodes) && (Array.isArray(parsed.links) || Array.isArray(parsed.edges))) {
+      return dumpGraphifyManifest(projectDir, provider.id, parsed as unknown as GraphifyManifest)
     }
 
-    // File nodes (for files not yet represented by symbols)
-    for (const file of files) {
-      const path = normalizeManifestPath(file.path ?? file.file)
-      if (!path) continue
-      const fileId = `file:${path}`
-      if (!nodeIds.has(fileId)) {
-        nodeIds.add(fileId)
-        nodes.push({ id: fileId, kind: 'file', name: path.split('/').pop() ?? path, filePath: path })
-      }
-      // Import edges
-      for (const imp of stringifyArray(file.imports)) {
-        const targetFile = normalizeManifestPath(imp)
-        if (targetFile) {
-          const targetId = `file:${targetFile}`
-          edges.push({ source: fileId, target: targetId, kind: 'imports' })
-        }
-      }
-      // dependsOn edges
-      for (const dep of stringifyArray(file.dependsOn)) {
-        const targetFile = normalizeManifestPath(dep)
-        if (targetFile) {
-          const targetId = `file:${targetFile}`
-          edges.push({ source: fileId, target: targetId, kind: 'depends-on' })
-        }
-      }
-    }
-
-    return {
-      nodes: dedupeTopologyNodes(nodes),
-      edges: dedupeTopologyEdges(edges),
-      generatedAt: new Date().toISOString(),
-      provider: provider.id,
-      projectDir,
-    }
+    // Traditional format: symbols[] + files[]
+    const symbols = Array.isArray(parsed.symbols) ? parsed.symbols as ArtifactSymbol[] : []
+    const files = Array.isArray(parsed.files) ? parsed.files as ArtifactFile[] : []
+    return dumpTraditionalManifest(projectDir, provider.id, symbols, files)
   } catch {
     return emptyTopology(projectDir, provider.id)
+  }
+}
+
+function resolveManifestWithFallback(projectDir: string, manifest: string): string | undefined {
+  const primary = resolveProjectPath(projectDir, manifest)
+  if (existsSync(primary)) return primary
+  // Fallback: try graph.json in the same directory
+  const dir = dirname(primary)
+  const fallback = join(dir, 'graph.json')
+  if (existsSync(fallback)) return fallback
+  return undefined
+}
+
+interface GraphifyNode {
+  id: string
+  label?: string
+  source_file?: string
+  source_location?: string
+  metadata?: { kind?: string; language?: string }
+}
+
+interface GraphifyLink {
+  source: string
+  target: string
+  relation?: string
+  weight?: number
+}
+
+interface GraphifyManifest {
+  nodes: GraphifyNode[]
+  links?: GraphifyLink[]
+  edges?: GraphifyLink[]
+}
+
+function dumpGraphifyManifest(projectDir: string, provider: string, manifest: GraphifyManifest): TopologyGraph {
+  const nodes: TopologyNode[] = []
+  const edges: TopologyEdge[] = []
+
+  for (const node of manifest.nodes) {
+    const filePath = normalizeManifestPath(node.source_file ?? '')
+    nodes.push({
+      id: node.id,
+      kind: mapGraphifyKind(node.metadata?.kind),
+      name: node.label ?? node.id,
+      filePath,
+      line: parseLineNumber(node.source_location),
+    })
+  }
+
+  const linkSource = manifest.links ?? manifest.edges ?? []
+  for (const link of linkSource) {
+    edges.push({
+      source: link.source,
+      target: link.target,
+      kind: mapGraphifyRelation(link.relation),
+    })
+  }
+
+  return {
+    nodes: dedupeTopologyNodes(nodes),
+    edges: dedupeTopologyEdges(edges),
+    generatedAt: new Date().toISOString(),
+    provider,
+    projectDir,
+  }
+}
+
+function mapGraphifyKind(kind?: string): TopologyNode['kind'] {
+  switch (kind) {
+    case 'file': return 'file'
+    case 'bash_function': case 'bash_entrypoint': return 'function'
+    case 'code': return 'function'
+    default: return 'file'
+  }
+}
+
+function mapGraphifyRelation(relation?: string): TopologyEdge['kind'] {
+  switch (relation) {
+    case 'calls': return 'calls'
+    case 'imports': case 'imports_from': return 'imports'
+    case 'extends': return 'extends'
+    case 'implements': return 'implements'
+    case 'contains': case 'defines': case 'method': return 'depends-on'
+    default: return 'depends-on'
+  }
+}
+
+function parseLineNumber(loc?: string): number | undefined {
+  if (!loc) return undefined
+  const match = loc.match(/L(\d+)/)
+  return match ? parseInt(match[1], 10) : undefined
+}
+
+function dumpTraditionalManifest(projectDir: string, provider: string, symbols: ArtifactSymbol[], files: ArtifactFile[]): TopologyGraph {
+  const nodes: TopologyNode[] = []
+  const edges: TopologyEdge[] = []
+  const nodeIds = new Set<string>()
+
+  // Symbol nodes
+  for (const sym of symbols) {
+    const name = String(sym.name ?? '')
+    const file = normalizeManifestPath(sym.file ?? sym.path)
+    if (!name) continue
+    const id = file ? `${file}::${name}` : name
+    nodeIds.add(id)
+    nodes.push({
+      id,
+      kind: guessSymbolKind(name),
+      name,
+      filePath: file || '',
+    })
+
+    // Edges from callers/callees/dependencies
+    for (const callee of stringifyArray(sym.callees)) {
+      const target = resolveEdgeTarget(callee, symbols)
+      if (target) edges.push({ source: id, target, kind: 'calls' })
+    }
+    for (const dep of stringifyArray(sym.dependencies)) {
+      const target = resolveEdgeTarget(dep, symbols)
+      if (target) edges.push({ source: id, target, kind: 'depends-on' })
+    }
+    for (const caller of stringifyArray(sym.callers)) {
+      const target = resolveEdgeTarget(caller, symbols)
+      if (target) edges.push({ source: target, target: id, kind: 'calls' })
+    }
+    for (const dependent of stringifyArray(sym.dependents)) {
+      const target = resolveEdgeTarget(dependent, symbols)
+      if (target) edges.push({ source: target, target: id, kind: 'depends-on' })
+    }
+  }
+
+  // File nodes (for files not yet represented by symbols)
+  for (const file of files) {
+    const path = normalizeManifestPath(file.path ?? file.file)
+    if (!path) continue
+    const fileId = `file:${path}`
+    if (!nodeIds.has(fileId)) {
+      nodeIds.add(fileId)
+      nodes.push({ id: fileId, kind: 'file', name: path.split('/').pop() ?? path, filePath: path })
+    }
+    // Import edges
+    for (const imp of stringifyArray(file.imports)) {
+      const targetFile = normalizeManifestPath(imp)
+      if (targetFile) {
+        const targetId = `file:${targetFile}`
+        edges.push({ source: fileId, target: targetId, kind: 'imports' })
+      }
+    }
+    // dependsOn edges
+    for (const dep of stringifyArray(file.dependsOn)) {
+      const targetFile = normalizeManifestPath(dep)
+      if (targetFile) {
+        const targetId = `file:${targetFile}`
+        edges.push({ source: fileId, target: targetId, kind: 'depends-on' })
+      }
+    }
+  }
+
+  return {
+    nodes: dedupeTopologyNodes(nodes),
+    edges: dedupeTopologyEdges(edges),
+    generatedAt: new Date().toISOString(),
+    provider,
+    projectDir,
   }
 }
 
