@@ -222,9 +222,9 @@ export { DEFAULT_SYMBOL_MAP, DEFAULT_PRESERVE_TERMS } from './context/CavemanCom
 export { AntiPatternRegistry, createAntiPatternRegistry } from './context/AntiPatternRegistry.js'
 export type { AntiPattern, AntiPatternMatch, IAntiPatternRegistry } from './context/AntiPatternRegistry.js'
 
-// Dashboard (v0.7.0)
+// Dashboard 2.0
 export { DashboardServer } from './dashboard/DashboardServer.js'
-export type { DashboardState, ArtifactTreeNode, GateSummary, DetectorStatSummary, RecentEvent } from './dashboard/DashboardServer.js'
+export type { DashboardOptions, DashboardState, ArtifactTreeNode, GateSummary, DetectorStatSummary, RecentEvent, AutoDefectSummary, RecentDefect } from './dashboard/DashboardServer.js'
 
 // API
 export { Doctor } from './api/doctor.js'

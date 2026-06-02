@@ -56,11 +56,13 @@
     "serve": "node dist/api/http.js"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.4",
     "@modelcontextprotocol/sdk": "1.29.0",
     "better-sqlite3": "^11.10.0",
     "chokidar": "^3.6.0",
     "citty": "^0.1.6",
     "content-type": "1.0.5",
+    "echarts": "^6.1.0",
     "execa": "^9.3.0",
     "hono": "^4.5.0",
     "js-yaml": "^4.1.0",

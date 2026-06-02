@@ -68,3 +68,16 @@ __pycache__/
 test-results/
 playwright-report/
 coverage/
+
+# Local workspace
+.planning/
+.scale/cache/
+.scale/worktrees/
+.scale/baton/
+.scale/instincts/
+.scale/phases/
+.tmp/
+tmp-*/
+dashboard-*.png
+packages/
+test-fixtures/
