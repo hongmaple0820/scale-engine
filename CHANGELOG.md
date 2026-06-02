@@ -1,3 +1,25 @@
+## 0.44.0 - 2026-06-02
+
+### Dashboard SPA & Code Topology
+
+#### Dashboard SPA Frontend
+
+- Added SPA frontend with 6 pages: overview, costs, documents, monitoring, topology, workflow.
+- Added i18n support (English/Chinese).
+- Replaced static dashboard server with Hono-based API backend.
+- Added `@hono/node-server` and `echarts` dependencies.
+- Added E2E verification scripts (`verify-dashboard.mjs`, `verify-dashboard-browser.mjs`).
+
+#### Code Topology Visualization
+
+- Added code topology visualization system (P1-P5).
+- Added graphify `nodes[]/links[]` format support in topology dump.
+- Fixed graphify manifest fallback in provider status check.
+
+#### CI/CD
+
+- Added GitHub Release creation to publish workflow.
+
 ## 0.43.0 - 2026-05-27
 
 ### Governance Hardening & Migration Readiness

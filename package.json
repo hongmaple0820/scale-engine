@@ -1,6 +1,6 @@
 {
   "name": "@hongmaple0820/scale-engine",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "description": "Executable AI agent governance with workflow gates, evidence, skill/tool orchestration, and traceable HTML artifacts",
   "repository": {
     "type": "git",
