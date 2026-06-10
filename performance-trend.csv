@@ -1,0 +1,13 @@
+run,gate,duration_ms,status
+1,G0,0,skipped
+1,G3,303,pass
+1,G4,2276,pass
+1,G5,680111,pass
+2,G0,0,skipped
+2,G3,290,pass
+2,G4,1583,pass
+2,G5,375300,pass
+3,G0,0,skipped
+3,G3,250,pass
+3,G4,1408,pass
+3,G5,347239,pass
