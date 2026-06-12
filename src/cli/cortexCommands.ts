@@ -51,8 +51,7 @@ export const cortexExtractCommand = defineCommand({
 
     let saved = 0
     for (const instinct of filtered) {
-      store.save(instinct)
-      saved++
+      if (store.save(instinct)) saved++
     }
 
     console.log(`  Saved: ${saved} instincts to .scale/instincts/`)
@@ -186,8 +185,7 @@ export const cortexEvolveCommand = defineCommand({
     const highConf = instincts.filter(i => i.confidence >= 0.7)
     let saved = 0
     for (const instinct of highConf) {
-      store.save(instinct)
-      saved++
+      if (store.save(instinct)) saved++
     }
     console.log(`  5. Saved:        ${saved} (confidence ≥ 0.7)\n`)
 
@@ -362,6 +360,82 @@ export const cortexVerifyCommand = defineCommand({
 })
 
 // ---------------------------------------------------------------------------
+// scale cortex audit
+// ---------------------------------------------------------------------------
+
+export const cortexAuditCommand = defineCommand({
+  meta: {
+    name: 'audit',
+    description: 'List append-only Cortex instinct audit history',
+  },
+  args: {
+    dir: { type: 'string', default: process.cwd(), description: 'Project directory' },
+    id: { type: 'string', description: 'Filter by instinct id' },
+    limit: { type: 'string', default: '20', description: 'Maximum entries to show' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = String(args.dir ?? process.cwd())
+    const scaleDir = join(projectDir, '.scale')
+    const store = new InstinctStore(join(scaleDir, 'instincts'))
+    const limit = Math.max(1, parseInt(String(args.limit ?? 20), 10) || 20)
+    const entries = store.history(args.id ? String(args.id) : undefined).slice(-limit)
+
+    if (args.json) {
+      console.log(JSON.stringify({ count: entries.length, entries }, null, 2))
+      return
+    }
+
+    console.log('SCALE Cortex - Instinct Audit\n')
+    if (entries.length === 0) {
+      console.log('  No audit entries found.')
+      return
+    }
+    for (const entry of entries) {
+      const scope = [entry.scope, entry.projectId].filter(Boolean).join(':') || 'unknown-scope'
+      const reason = entry.reason ? ` reason=${entry.reason}` : ''
+      console.log(`  ${entry.ts} ${entry.op} ${entry.id} scope=${scope} audit=${entry.auditId}${reason}`)
+    }
+  },
+})
+
+// ---------------------------------------------------------------------------
+// scale cortex restore
+// ---------------------------------------------------------------------------
+
+export const cortexRestoreCommand = defineCommand({
+  meta: {
+    name: 'restore',
+    description: 'Restore a Cortex instinct from an audit entry snapshot',
+  },
+  args: {
+    auditId: { type: 'positional', required: true, description: 'Audit entry id to restore' },
+    dir: { type: 'string', default: process.cwd(), description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = String(args.dir ?? process.cwd())
+    const scaleDir = join(projectDir, '.scale')
+    const store = new InstinctStore(join(scaleDir, 'instincts'))
+    const auditId = String(args.auditId)
+    const restored = store.restore(auditId)
+
+    if (args.json) {
+      console.log(JSON.stringify({ restored, auditId }, null, 2))
+      if (!restored) process.exitCode = 1
+      return
+    }
+
+    if (restored) {
+      console.log(`Restored Cortex instinct snapshot from audit entry: ${auditId}`)
+    } else {
+      console.error(`No restorable Cortex audit entry found: ${auditId}`)
+      process.exitCode = 1
+    }
+  },
+})
+
+// ---------------------------------------------------------------------------
 // scale cortex (parent)
 // ---------------------------------------------------------------------------
 
@@ -376,5 +450,7 @@ export const cortexCommand = defineCommand({
     metrics: cortexMetricsCommand,
     evolve: cortexEvolveCommand,
     verify: cortexVerifyCommand,
+    audit: cortexAuditCommand,
+    restore: cortexRestoreCommand,
   },
 })

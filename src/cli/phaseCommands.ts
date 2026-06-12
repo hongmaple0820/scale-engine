@@ -1202,10 +1202,14 @@ export const phaseVerify = defineCommand({
     'skip-build': { type: 'boolean', default: false },
     'skip-lint': { type: 'boolean', default: false },
     'skip-test': { type: 'boolean', default: false },
+    progress: { type: 'boolean', default: false, description: 'Emit coarse verify progress events to stderr without changing JSON output' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
     const { store, fsm, workflowEngine } = getEngine()
+    const emitProgress = (event: string, detail: string): void => {
+      if (isTruthyFlag(args.progress)) console.error(`[progress] ${event}: ${detail}`)
+    }
 
     // Validate task exists
     const task = await store.get(args['task-id'])
@@ -1229,6 +1233,7 @@ export const phaseVerify = defineCommand({
       service: args.service,
       services: args.service ? undefined : taskServices,
     })
+    emitProgress('verify:start', `task=${args['task-id']} profile=${resolvedVerification.profileName} targets=${resolvedVerification.targets.length}`)
     if (!args.json) {
       for (const warning of resolvedVerification.warnings) console.log(`   [WARN] ${warning}`)
       for (const target of resolvedVerification.targets) {
@@ -1243,6 +1248,7 @@ export const phaseVerify = defineCommand({
       if (!args.json && resolvedVerification.targets.length > 1) {
         console.log(`\n   Target: ${target.service?.name ?? 'root'}`)
       }
+      emitProgress('target:start', target.service?.name ?? 'root')
       const targetResults = await workflowEngine.verify({
         cwd: target.config.cwd,
         build: args['build-cmd'] ?? target.config.build,
@@ -1260,7 +1266,9 @@ export const phaseVerify = defineCommand({
         tddStrict: isTruthyFlag(args['tdd-strict']),
       })
       gateResults.push(...targetResults)
+      emitProgress('target:done', `${target.service?.name ?? 'root'} gates=${targetResults.length}`)
     }
+    emitProgress('verify:gates-complete', `gates=${gateResults.length}`)
 
     // Step 2: Display gate results
     if (!args.json) {

@@ -10,7 +10,9 @@ import {
   renderWorkflowEvalReport,
   runWorkflowEvalSuite,
 } from '../eval/WorkflowEval.js'
-import { getEngine, PROJECT_DIR, isTruthyFlag, resolveScaleDirForProject } from './engineBootstrap.js'
+import { createBenchmarkFromWorkflowEval, publishBenchmark } from '../eval/BenchmarkPublisher.js'
+import { PROJECT_DIR, isTruthyFlag, resolveScaleDirForProject } from './engineBootstrap.js'
+import { SCALE_ENGINE_VERSION } from '../version.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +63,8 @@ const evalRun = defineCommand({
   args: {
     dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
     suite: { type: 'string', default: 'workflow-baseline', description: 'Suite id or JSON path' },
+    'publish-benchmark': { type: 'boolean', default: false, description: 'Publish eval run metrics through BenchmarkPublisher' },
+    'benchmark-output': { type: 'string', description: 'Benchmark output directory (default: .scale/benchmarks/eval)' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
@@ -71,8 +75,16 @@ const evalRun = defineCommand({
       scaleDir,
       suite: String(args.suite ?? 'workflow-baseline'),
     })
+    const benchmarkPath = args['publish-benchmark']
+      ? publishBenchmark(
+          createBenchmarkFromWorkflowEval(result.run, SCALE_ENGINE_VERSION),
+          args['benchmark-output']
+            ? resolve(projectDir, String(args['benchmark-output']))
+            : resolve(scaleDir, 'benchmarks', 'eval'),
+        )
+      : undefined
     if (args.json) {
-      console.log(JSON.stringify(result, null, 2))
+      console.log(JSON.stringify(benchmarkPath ? { ...result, benchmarkPath } : result, null, 2))
       if (!result.run.ok) process.exitCode = 1
       return
     }
@@ -85,6 +97,7 @@ const evalRun = defineCommand({
     console.log(`  Estimated tokens: ${result.run.metrics.estimatedTokens}`)
     console.log(`  Failures: ${result.run.metrics.failureReplayCount}`)
     console.log(`  Run path: ${result.runPath}`)
+    if (benchmarkPath) console.log(`  Benchmark path: ${benchmarkPath}`)
     for (const failurePath of result.failurePaths) console.log(`  Failure replay: ${failurePath}`)
     if (!result.run.ok) process.exitCode = 1
   },

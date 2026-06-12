@@ -5,6 +5,7 @@ import {
   pathMatchesGlob,
   formatBoundaryWarnings,
   formatConstraintWarnings,
+  isEnforcedProfile,
   isEnforcedBoundaryProfile,
   countBoundaryBlockers,
 } from '../../src/workflow/BoundaryEnforcement.js'
@@ -143,12 +144,14 @@ describe('formatters', () => {
 describe('isEnforcedBoundaryProfile (decision E1)', () => {
   it('treats full/ci/strict (and name-suffixed variants) as enforced', () => {
     for (const p of ['full', 'ci', 'strict', 'CI', 'team-strict', 'release:full', 'node_ci']) {
+      expect(isEnforcedProfile(p)).toBe(true)
       expect(isEnforcedBoundaryProfile(p)).toBe(true)
     }
   })
 
   it('keeps default/auto (and unset) advisory', () => {
     for (const p of ['default', 'auto', 'quick', 'official', undefined]) {
+      expect(isEnforcedProfile(p)).toBe(false)
       expect(isEnforcedBoundaryProfile(p)).toBe(false)
     }
   })

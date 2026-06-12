@@ -4,9 +4,29 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { createHash } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { logger } from '../core/logger.js'
 import type { Instinct } from './InstinctExtractor.js'
+import {
+  deriveScopedInstinctId,
+  normalizeInstinctTrigger,
+  validateInstinct,
+} from './InstinctValidation.js'
+
+export type InstinctAuditOperation = 'save' | 'replace' | 'delete' | 'apply' | 'reject' | 'restore'
+
+export interface InstinctAuditEntry {
+  auditId: string
+  ts: string
+  op: InstinctAuditOperation
+  id: string
+  scope?: Instinct['scope']
+  projectId?: string
+  before?: Instinct
+  after?: Instinct
+  reason?: string
+  reasons?: string[]
+}
 
 // ---------------------------------------------------------------------------
 // InstinctStore
@@ -22,26 +42,78 @@ export class InstinctStore {
 
   /**
    * Save an instinct to disk.
-   * Deduplication: if an instinct with the same trigger exists, only keep the higher-confidence one.
+   * Deduplication: within the same scope/project/trigger, only keep the higher-confidence one.
    */
   save(instinct: Instinct): string {
-    const existing = this.findByTrigger(instinct.trigger)
-    if (existing && existing.confidence >= instinct.confidence) {
+    const candidate = this.normalizeForSave(instinct)
+    const validation = validateInstinct(candidate)
+    if (!validation.ok) {
+      logger.warn({ id: candidate.id, reasons: validation.reasons }, 'Rejected invalid instinct')
+      this.appendAudit({
+        op: 'reject',
+        id: candidate.id || 'unknown',
+        scope: candidate.scope,
+        projectId: candidate.projectId,
+        after: cloneInstinct(candidate),
+        reason: 'validation-failed',
+        reasons: validation.reasons,
+      })
+      return ''
+    }
+
+    candidate.id = deriveScopedInstinctId(candidate.trigger, candidate.scope, candidate.projectId)
+
+    const existing = this.findByKey(candidate.trigger, candidate.scope, candidate.projectId)
+    if (existing && existing.confidence >= candidate.confidence) {
       // Keep existing. Increment observation count.
-      existing.observations += instinct.observations
-      existing.updatedAt = new Date().toISOString()
-      this.writeInstinctFile(existing)
-      return existing.id
+      const before = cloneInstinct(existing)
+      const after = {
+        ...existing,
+        observations: existing.observations + candidate.observations,
+        updatedAt: new Date().toISOString(),
+      }
+      this.writeInstinctFile(after)
+      this.appendAudit({
+        op: 'save',
+        id: after.id,
+        scope: after.scope,
+        projectId: after.projectId,
+        before,
+        after: cloneInstinct(after),
+        reason: 'dedup-merge-lower-confidence',
+      })
+      return after.id
     }
 
     // New or higher-confidence instinct replaces existing
     if (existing) {
-      this.delete(existing.id)
+      const before = cloneInstinct(existing)
+      this.removeInstinctFile(existing.id)
+      candidate.updatedAt = new Date().toISOString()
+      this.writeInstinctFile(candidate)
+      this.appendAudit({
+        op: 'replace',
+        id: candidate.id,
+        scope: candidate.scope,
+        projectId: candidate.projectId,
+        before,
+        after: cloneInstinct(candidate),
+        reason: 'higher-confidence-replacement',
+      })
+      return candidate.id
     }
 
-    instinct.updatedAt = new Date().toISOString()
-    this.writeInstinctFile(instinct)
-    return instinct.id
+    candidate.updatedAt = new Date().toISOString()
+    this.writeInstinctFile(candidate)
+    this.appendAudit({
+      op: 'save',
+      id: candidate.id,
+      scope: candidate.scope,
+      projectId: candidate.projectId,
+      after: cloneInstinct(candidate),
+      reason: 'new-instinct',
+    })
+    return candidate.id
   }
 
   /**
@@ -107,43 +179,49 @@ export class InstinctStore {
    * Get high-confidence instincts for SessionStart injection (0.7+).
    */
   getInjectionInstincts(projectId?: string): Instinct[] {
-    return this.query({ minConfidence: 0.7, projectId })
+    const scopedProject = projectId?.trim()
+    return this.query({ minConfidence: 0.7 }).filter(instinct =>
+      instinct.scope === 'global' ||
+      !instinct.projectId ||
+      Boolean(scopedProject && instinct.projectId === scopedProject),
+    )
   }
 
   /**
    * Find an instinct by trigger pattern.
    */
   findByTrigger(trigger: string): Instinct | null {
-    const hash = createHash('sha256').update(trigger).digest('hex').slice(0, 10)
-    const id = `instinct-${hash}`
-    return this.findById(id)
+    return this.findByKey(trigger)
+  }
+
+  /**
+   * Find an instinct by trigger pattern within an optional scope/project key.
+   */
+  findByKey(trigger: string, scope?: Instinct['scope'], projectId?: string): Instinct | null {
+    const normalizedTrigger = normalizeInstinctTrigger(trigger)
+    const normalizedProjectId = projectId?.trim() || undefined
+    if (!normalizedTrigger) return null
+
+    if (scope) {
+      const scoped = this.findById(deriveScopedInstinctId(normalizedTrigger, scope, normalizedProjectId))
+      if (scoped) return scoped
+    }
+
+    return this.loadAll().find(instinct => {
+      if (normalizeInstinctTrigger(instinct.trigger) !== normalizedTrigger) return false
+      if (scope && instinct.scope !== scope) return false
+      if (normalizedProjectId !== undefined) return (instinct.projectId ?? '') === normalizedProjectId
+      if (scope === 'project') return !instinct.projectId
+      return true
+    }) ?? null
   }
 
   /**
    * Find an instinct by ID.
    */
   findById(id: string): Instinct | null {
-    // Search all domain directories
-    if (!existsSync(this.baseDir)) return null
-
-    try {
-      for (const entry of readdirSync(this.baseDir)) {
-        const full = join(this.baseDir, entry)
-        if (existsSync(full) && !entry.startsWith('.')) {
-          if (!entry.endsWith('.yaml')) {
-            // Domain directory
-            const filePath = join(full, `${id}.yaml`)
-            if (existsSync(filePath)) return this.parseInstinctFile(filePath)
-          }
-        }
-      }
-    } catch { /* skip */ }
-
-    // Flat file search
-    const flatPath = join(this.baseDir, `${id}.yaml`)
-    if (existsSync(flatPath)) return this.parseInstinctFile(flatPath)
-
-    return null
+    const filePath = this.locateInstinctFile(id)
+    return filePath ? this.parseInstinctFile(filePath) : null
   }
 
   /**
@@ -153,11 +231,18 @@ export class InstinctStore {
     const instinct = this.findById(id)
     if (!instinct) return false
 
-    const domainDir = join(this.baseDir, instinct.domain)
-    const filePath = join(domainDir, `${id}.yaml`)
-
+    const before = cloneInstinct(instinct)
     try {
-      if (existsSync(filePath)) unlinkSync(filePath)
+      const removed = this.removeInstinctFile(id)
+      if (!removed) return false
+      this.appendAudit({
+        op: 'delete',
+        id,
+        scope: before.scope,
+        projectId: before.projectId,
+        before,
+        reason: 'delete',
+      })
       return true
     } catch (err) {
       logger.warn({ err, id }, 'Failed to delete instinct')
@@ -172,6 +257,7 @@ export class InstinctStore {
     const instinct = this.findById(id)
     if (!instinct) return
 
+    const before = cloneInstinct(instinct)
     instinct.appliedCount++
     instinct.hitRate = instinct.observations > 0
       ? instinct.appliedCount / instinct.observations
@@ -179,6 +265,77 @@ export class InstinctStore {
     instinct.updatedAt = new Date().toISOString()
 
     this.writeInstinctFile(instinct)
+    this.appendAudit({
+      op: 'apply',
+      id,
+      scope: instinct.scope,
+      projectId: instinct.projectId,
+      before,
+      after: cloneInstinct(instinct),
+      reason: success ? 'application-succeeded' : 'application-failed',
+    })
+  }
+
+  /**
+   * Read append-only instinct audit history, optionally filtered by instinct id.
+   */
+  history(id?: string): InstinctAuditEntry[] {
+    const auditPath = this.auditPath()
+    if (!existsSync(auditPath)) return []
+    try {
+      return readFileSync(auditPath, 'utf-8')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => {
+          try { return JSON.parse(line) as InstinctAuditEntry } catch { return null }
+        })
+        .filter((entry): entry is InstinctAuditEntry => Boolean(entry))
+        .filter(entry => !id || entry.id === id)
+    } catch (err) {
+      logger.warn({ err }, 'Failed to read instinct audit history')
+      return []
+    }
+  }
+
+  /**
+   * Restore the store to the `before` snapshot of an audit entry. If an initial
+   * save had no `before`, restore undoes that save by deleting the created item.
+   */
+  restore(auditId: string): boolean {
+    const entry = this.history().find(item => item.auditId === auditId)
+    if (!entry) return false
+
+    const current = entry.id ? this.findById(entry.id) : null
+    if (entry.before) {
+      this.writeInstinctFile(entry.before)
+      this.appendAudit({
+        op: 'restore',
+        id: entry.before.id,
+        scope: entry.before.scope,
+        projectId: entry.before.projectId,
+        before: current ? cloneInstinct(current) : undefined,
+        after: cloneInstinct(entry.before),
+        reason: `restore:${entry.auditId}`,
+      })
+      return true
+    }
+
+    if (entry.after) {
+      const before = this.findById(entry.after.id)
+      const removed = this.removeInstinctFile(entry.after.id)
+      this.appendAudit({
+        op: 'restore',
+        id: entry.after.id,
+        scope: entry.after.scope,
+        projectId: entry.after.projectId,
+        before: before ? cloneInstinct(before) : undefined,
+        reason: `restore:${entry.auditId}`,
+      })
+      return removed
+    }
+
+    return false
   }
 
   /**
@@ -209,6 +366,16 @@ export class InstinctStore {
   // Internal
   // -----------------------------------------------------------------------
 
+  private normalizeForSave(instinct: Instinct): Instinct {
+    return {
+      ...instinct,
+      trigger: normalizeInstinctTrigger(instinct.trigger ?? ''),
+      action: (instinct.action ?? '').trim(),
+      projectId: instinct.projectId?.trim() || undefined,
+      scope: instinct.scope ?? 'project',
+    }
+  }
+
   private writeInstinctFile(instinct: Instinct): void {
     const domainDir = join(this.baseDir, instinct.domain)
     if (!existsSync(domainDir)) mkdirSync(domainDir, { recursive: true })
@@ -216,6 +383,45 @@ export class InstinctStore {
     const filePath = join(domainDir, `${instinct.id}.yaml`)
     const yaml = this.serializeInstinct(instinct)
     writeFileSync(filePath, yaml, 'utf-8')
+  }
+
+  private locateInstinctFile(id: string): string | null {
+    if (!existsSync(this.baseDir)) return null
+
+    try {
+      for (const entry of readdirSync(this.baseDir)) {
+        const full = join(this.baseDir, entry)
+        if (existsSync(full) && !entry.startsWith('.') && !entry.endsWith('.yaml')) {
+          const filePath = join(full, `${id}.yaml`)
+          if (existsSync(filePath)) return filePath
+        }
+      }
+    } catch { /* skip */ }
+
+    const flatPath = join(this.baseDir, `${id}.yaml`)
+    return existsSync(flatPath) ? flatPath : null
+  }
+
+  private removeInstinctFile(id: string): boolean {
+    const filePath = this.locateInstinctFile(id)
+    if (!filePath) return false
+    unlinkSync(filePath)
+    return true
+  }
+
+  private auditPath(): string {
+    return join(this.baseDir, '.audit.jsonl')
+  }
+
+  private appendAudit(input: Omit<InstinctAuditEntry, 'auditId' | 'ts'>): InstinctAuditEntry {
+    if (!existsSync(this.baseDir)) mkdirSync(this.baseDir, { recursive: true })
+    const entry: InstinctAuditEntry = {
+      auditId: `audit-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      ts: new Date().toISOString(),
+      ...input,
+    }
+    writeFileSync(this.auditPath(), `${JSON.stringify(entry)}\n`, { encoding: 'utf-8', flag: 'a' })
+    return entry
   }
 
   private serializeInstinct(instinct: Instinct): string {
@@ -283,5 +489,12 @@ export class InstinctStore {
       logger.warn({ err, path: filePath }, 'Failed to parse instinct file')
       return null
     }
+  }
+}
+
+function cloneInstinct(instinct: Instinct): Instinct {
+  return {
+    ...instinct,
+    evidence: [...instinct.evidence],
   }
 }
