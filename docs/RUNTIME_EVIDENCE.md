@@ -68,9 +68,16 @@ scale doctor
 M、L、CRITICAL 任务在最终交付前必须满足：
 
 - 当前 task/session 范围内至少有一条 `passed` runtime evidence。
-- 当前 task/session 范围内不能存在 `failed` runtime evidence。
+- 当前 task/session 范围内不能存在未解决的 `failed` runtime evidence。
 
-S 级任务可以保持轻量，但一旦存在失败证据，仍然不能声称完成。
+失败证据只在两类情况下不阻断最终交付：
+
+- 预期红灯复现：`metadata.expectedRed=true` 或 `metadata.expectedFailure=true`。
+- 已闭环失败：失败记录被显式标记为 `metadata.resolved=true`、`metadata.superseded=true`、`metadata.resolvedBy="<id>"`，或同一 task/session/kind 下同一证据项之后出现 `passed` 记录。
+
+同一证据项优先使用 `metadata.resolutionKey`、`metadata.stepId`、`metadata.gate`、`metadata.checkId`、`metadata.scenario`、`metadata.phase` 识别；没有这些字段时回退到 command/title。这样可以让长任务中的早期失败被后续修复闭环，同时保留真正未解决失败的阻断能力。
+
+S 级任务可以保持轻量，但一旦存在未解决失败证据，仍然不能声称完成。
 
 ## 脱敏规则
 

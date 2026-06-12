@@ -118,6 +118,55 @@ describe('runtime doctor', () => {
     })
   })
 
+  it('does not block final readiness after a failed step is resolved by later passed evidence', () => {
+    const projectDir = makeProject()
+    const ledger = new RuntimeEvidenceLedger({ projectDir })
+    new SessionLedger({ projectDir }).start({ sessionId: 'SESSION-RESOLVED', taskId: 'TASK-RESOLVED', level: 'M' })
+    ledger.record({
+      taskId: 'TASK-RESOLVED',
+      sessionId: 'SESSION-RESOLVED',
+      kind: 'command',
+      title: 'AI OS verification command 1',
+      status: 'failed',
+      exitCode: 1,
+      summary: 'unterminated quote in command',
+      metadata: {
+        stepId: 'verify-command:1',
+      },
+    })
+    ledger.record({
+      taskId: 'TASK-RESOLVED',
+      sessionId: 'SESSION-RESOLVED',
+      kind: 'command',
+      title: 'AI OS verification command 1',
+      status: 'passed',
+      exitCode: 0,
+      summary: 'fixed command passed',
+      metadata: {
+        stepId: 'verify-command:1',
+      },
+    })
+
+    const report = doctorRuntimeEvidence({ projectDir, taskId: 'TASK-RESOLVED', sessionId: 'SESSION-RESOLVED', level: 'M' })
+    expect(report.blocked).toBe(false)
+    expect(report.evidence).toMatchObject({
+      failed: 0,
+      resolvedFailed: 1,
+      ok: true,
+    })
+    expect(report.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'Runtime failed evidence',
+        status: 'ok',
+        message: expect.stringContaining('resolved failed record'),
+      }),
+    ]))
+    expect(evaluateFinalReportReadiness({ projectDir, taskId: 'TASK-RESOLVED', sessionId: 'SESSION-RESOLVED', level: 'M' })).toMatchObject({
+      ready: true,
+      blocked: false,
+    })
+  })
+
   it('blocks final readiness when product smoke policy is block and only generic evidence exists', () => {
     const projectDir = makeProject()
     mkdirSync(join(projectDir, '.scale'), { recursive: true })

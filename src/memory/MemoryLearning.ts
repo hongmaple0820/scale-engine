@@ -17,6 +17,7 @@ export type MemoryLearningRecommendedAction =
 export interface MemoryLearningEvidenceSummary {
   id: string
   status: string
+  resolved?: boolean
   title: string
   summary: string
   command?: string
@@ -88,7 +89,7 @@ export function settleMemoryLearning(options: SettleMemoryLearningOptions): Memo
     .filter(item => item.type === 'graph')
     .map(item => item.path)
 
-  const failed = runtimeEvidence.filter(item => item.status === 'failed')
+  const failed = runtimeEvidence.filter(item => item.status === 'failed' && item.resolved !== true)
   const passed = runtimeEvidence.filter(item => item.status === 'passed')
   const warnings = buildWarnings(options.pack, runtimeEvidence, failed)
   const recommendedAction = chooseRecommendedAction(runtimeEvidence, failed, passed)
@@ -120,6 +121,7 @@ export function settleMemoryLearning(options: SettleMemoryLearningOptions): Memo
     evidenceSummaries: runtimeEvidence.map(item => ({
       id: item.id,
       status: item.status,
+      resolved: item.resolved,
       title: item.title,
       summary: item.summary,
       command: item.command,
@@ -167,7 +169,7 @@ export function renderMemoryLearningCandidateMarkdown(candidate: MemoryLearningC
     '',
   ]
   for (const evidence of candidate.evidenceSummaries) {
-    lines.push(`- [${evidence.status}] ${evidence.title} (${evidence.id})`)
+    lines.push(`- [${evidence.status}${evidence.resolved ? '/resolved' : ''}] ${evidence.title} (${evidence.id})`)
     lines.push(`  - Summary: ${evidence.summary}`)
     if (evidence.command) lines.push(`  - Command: \`${evidence.command}\``)
     if (evidence.exitCode !== undefined) lines.push(`  - Exit code: ${evidence.exitCode}`)
@@ -239,7 +241,8 @@ function buildTags(pack: ContextPack, runtimeEvidence: RuntimeEvidenceContextIte
     `level-${pack.task.level.toLowerCase()}`,
   ])
   if (runtimeEvidence.some(item => item.status === 'passed')) tags.add('verified-evidence')
-  if (runtimeEvidence.some(item => item.status === 'failed')) tags.add('failed-evidence')
+  if (runtimeEvidence.some(item => item.status === 'failed' && item.resolved !== true)) tags.add('failed-evidence')
+  if (runtimeEvidence.some(item => item.status === 'failed' && item.resolved === true)) tags.add('resolved-failure-evidence')
   return [...tags]
 }
 

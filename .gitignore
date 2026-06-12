@@ -36,6 +36,8 @@ scale-engine-compare
 !.claude/workflow.json
 !.claude/hooks/
 !.claude/hooks/*.sh
+.claude/hooks/*.js
+!.claude/hooks/shield-pre-tool.js
 .claude/worktrees/
 .claude/tmp/
 .claude/local/
@@ -74,6 +76,8 @@ coverage/
 .scale/cache/
 .scale/worktrees/
 .scale/baton/
+.scale/evals/runs/
+.scale/evals/failures/
 .scale/instincts/
 .scale/phases/
 .tmp/

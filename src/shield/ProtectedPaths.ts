@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve, normalize } from 'node:path'
 import type { ShieldInput, ShieldDecision } from './ShieldProtocol.js'
+import { logger } from '../core/logger.js'
 
 // ---------------------------------------------------------------------------
 // Protected path patterns — any Write/Edit/Bash targeting these is blocked
@@ -82,7 +83,7 @@ const COMMAND_BLOCKLIST: CommandBlockRule[] = [
   { pattern: /\.claude\b.*\brm\b/, reason: 'Modifying .claude directory — potential hook bypass', severity: 'block', category: 'governance-bypass' },
   { pattern: /\.codex\b.*\brm\b/, reason: 'Modifying .codex directory — potential hook bypass', severity: 'block', category: 'governance-bypass' },
   { pattern: /SKIP_HOOKS/i, reason: 'Environment variable to skip hooks — governance bypass', severity: 'block', category: 'governance-bypass' },
-  { pattern: /DISABLE_OMC/i, reason: 'OMC disable flag — governance bypass', severity: 'warn', category: 'governance-bypass' },
+  { pattern: /DISABLE_OMC/i, reason: 'OMC disable flag — governance bypass', severity: 'block', category: 'governance-bypass' },
   { pattern: /dang[eo]rously/i, reason: 'Dangerous mode flag — safety bypass', severity: 'block', category: 'governance-bypass' },
   { pattern: /bypass/i, reason: 'Bypass flag detected', severity: 'warn', category: 'governance-bypass' },
   { pattern: /allowDangerously/i, reason: 'allowDangerously flag — sandbox escape', severity: 'block', category: 'governance-bypass' },
@@ -226,7 +227,8 @@ function matchGlob(target: string, glob: string): boolean {
   try {
     const re = new RegExp(`^${regexStr}$|/${regexStr}$|^${regexStr}/`)
     return re.test(t)
-  } catch {
+  } catch (err) {
+    logger.debug({ err, glob }, 'Unable to compile protected path glob')
     return false
   }
 }

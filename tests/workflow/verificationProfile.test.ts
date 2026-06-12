@@ -150,6 +150,39 @@ describe('resolveVerificationProfile', () => {
     })
   })
 
+  it('resolves explicit ci verification profile commands', () => {
+    const dir = makeProject()
+    writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: {
+        default: { commands: { test: 'npm test' } },
+        ci: {
+          commands: {
+            build: 'npm run build',
+            lint: 'npm run lint',
+            test: 'npm run test:ci',
+          },
+          services: ['root'],
+        },
+      },
+      services: [
+        { name: 'root', path: '.', required: true },
+      ],
+    }, null, 2), 'utf-8')
+
+    const resolved = resolveVerificationTargets({ projectDir: dir, profile: 'ci' })
+
+    expect(resolved.profileName).toBe('ci')
+    expect(resolved.warnings).toEqual([])
+    expect(resolved.targets).toHaveLength(1)
+    expect(resolved.targets[0].config).toMatchObject({
+      build: 'npm run build',
+      lint: 'npm run lint',
+      test: 'npm run test:ci',
+    })
+  })
+
   it('uses profile service selection when no service is requested', () => {
     const dir = makeProject()
     mkdirSync(join(dir, 'services', 'api'), { recursive: true })

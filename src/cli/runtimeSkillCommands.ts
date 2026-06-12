@@ -47,6 +47,7 @@ import {
 import { createSkillPlan, evaluateSkillGate, loadSkillRoutingPolicy, skillPlanMarkdown } from '../skills/routing/index.js'
 import { createThirdPartyUpdateReport } from '../workflow/UpgradeManager.js'
 import { CerebrumManager } from '../knowledge/CerebrumManager.js'
+import { collectSessionPreamble } from '../workflow/SessionPreamble.js'
 import type { TaskPayload } from '../artifact/types.js'
 import type { TaskArtifactLevel } from '../workflow/TaskArtifactScaffolder.js'
 
@@ -247,7 +248,7 @@ const tokenReport = defineCommand({
       console.log(JSON.stringify(report, null, 2))
       return
     }
-    console.log('SCALE Token Report')
+    console.log('SCALE Usage Report')
     if (report.filters.day) console.log(`  Day: ${report.filters.day}`)
     else if (report.filters.since || report.filters.until) console.log(`  Window: ${report.filters.since ?? '-inf'} -> ${report.filters.until ?? 'now'}`)
     console.log(`  Records: ${report.summary.totalRecords}`)
@@ -286,12 +287,16 @@ const runtimeStart = defineCommand({
   },
   run({ args }) {
     const ledger = new SessionLedger({ projectDir: PROJECT_DIR, scaleDir: SCALE_DIR })
+    const preamble = collectSessionPreamble({ projectDir: PROJECT_DIR, scaleDir: SCALE_DIR })
     const session = ledger.start({
       sessionId: args['session-id'],
       taskId: args['task-id'],
       agent: args.agent,
       level: normalizeTaskArtifactLevel(args.level),
       summary: args.summary,
+      metadata: {
+        cortex: preamble.cortex,
+      },
     })
     if (args.json) {
       console.log(JSON.stringify(session, null, 2))

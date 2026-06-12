@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { createAiOsAdoption, createAiOsBenchmark, createAiOsDashboard, createAiOsDoctor, createAiOsMigration, createAiOsPlan, createAiOsRun, createAiOsStatus } from '../../src/runtime/AiOsRuntime.js'
 import { MemoryBrain } from '../../src/memory/MemoryBrain.js'
 import { SCALE_ENGINE_VERSION } from '../../src/version.js'
+import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 
 let dirs: string[] = []
 
@@ -39,6 +40,21 @@ describe('AI OS runtime planner', () => {
     } finally {
       brain.close()
     }
+    const savedInstinctId = new InstinctStore(join(scaleDir, 'instincts')).save({
+      id: 'instinct-ai-os-runtime',
+      trigger: 'oauth callback smoke',
+      confidence: 0.9,
+      domain: 'security',
+      source: 'test',
+      scope: 'global',
+      action: '## Action\nAlways run the auth callback product smoke before final delivery',
+      evidence: ['[2026-06-12] G8: oauth callback smoke'],
+      observations: 5,
+      createdAt: '2026-06-12T00:00:00.000Z',
+      updatedAt: '2026-06-12T00:00:00.000Z',
+      appliedCount: 0,
+      hitRate: 0,
+    })
 
     const plan = await createAiOsPlan({
       projectDir,
@@ -51,6 +67,9 @@ describe('AI OS runtime planner', () => {
     })
 
     expect(plan.version).toBe(SCALE_ENGINE_VERSION)
+    expect(plan.preamble.cortex.instinctCount).toBe(1)
+    expect(plan.preamble.cortex.instinctsApplied).toEqual([savedInstinctId])
+    expect(plan.preamble.cortex.content).toContain('Always run the auth callback product smoke')
     expect(plan.governance.effectiveMode).toBe('critical')
     expect(plan.context.compiler?.strategy).toBe('relevance-budget-v1')
     expect(plan.memory.providerOrder).toEqual(['gbrain', 'memos', 'agentmemory', 'scale-local'])
