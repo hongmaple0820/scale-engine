@@ -1,3 +1,25 @@
+## 0.49.0 - 2026-06-12
+
+### Features
+- Add the P0 spec six-element contract with draft/confirm lifecycle and verification-surface coverage.
+- Enforce P0+ boundary and constraint checks under `ci`, `full`, and `strict` verification profiles while keeping default/auto advisory behavior.
+- Add advisory LLM-as-Judge spec review and fresh-context verifier support.
+- Add AST confirmation for code-smell guardrail pre-filters and align unsafe-exec confirmation behavior.
+- Add the G23 Test Integrity gate and update gate performance evidence.
+- Harden Cortex instincts with validation, scope/project-aware deduplication, audit history, restore commands, and evidence-discipline injection.
+- Add workflow eval benchmark publishing and coarse verify progress events.
+
+### CI and Documentation
+- Add source CI for typecheck, build, tests, and advisory quality-gate evidence.
+- Fix the SCALE gate workflow to install source dependencies before preflight and avoid running preflight twice.
+- Add workflow template guide, E2E example, and expanded development workflow documentation.
+
+### Fixes
+- Keep evidence-discipline Cortex injection active in minimal SessionStart output.
+- Update the Hono dependency lockfile to clear production npm audit advisories.
+
+---
+
 ## 0.48.0 - 2026-06-05
 
 ### CLI Monolith Split & Community Skills

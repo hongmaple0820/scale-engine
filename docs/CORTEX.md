@@ -101,6 +101,20 @@ scale cortex inject --minimal
 # 输出: 每个 instinct 单行摘要
 ```
 
+### Audit and restore
+
+Instinct writes are append-only audited in `.scale/instincts/.audit.jsonl`.
+
+```bash
+scale cortex audit
+scale cortex audit --id <instinct-id> --json
+scale cortex restore <audit-id>
+```
+
+Invalid instincts are rejected before persistence. New writes deduplicate within
+the same `scope + project_id + trigger`, so project-scoped instincts cannot
+overwrite global instincts or another project's instinct with the same trigger.
+
 ## 反射引擎 (ReflexionEngine)
 
 ### 工作原理

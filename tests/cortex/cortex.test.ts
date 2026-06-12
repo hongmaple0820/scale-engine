@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { InstinctExtractor, type Observation, type Instinct } from '../../src/cortex/InstinctExtractor.js'
 import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 import { SessionInjector } from '../../src/cortex/SessionInjector.js'
+import { validateInstinct } from '../../src/cortex/InstinctValidation.js'
 import { EVIDENCE_DISCIPLINE_PROMPT } from '../../src/agents/evidenceDiscipline.js'
 
 const dirs: string[] = []
@@ -167,11 +168,11 @@ describe('InstinctStore', () => {
     const store = new InstinctStore(dir)
     const instinct = makeInstinct()
 
-    store.save(instinct)
+    const savedId = store.save(instinct)
     const loaded = store.loadAll()
 
     expect(loaded).toHaveLength(1)
-    expect(loaded[0].id).toBe(instinct.id)
+    expect(loaded[0].id).toBe(savedId)
     expect(loaded[0].trigger).toBe(instinct.trigger)
     expect(loaded[0].confidence).toBe(instinct.confidence)
   })
@@ -180,12 +181,8 @@ describe('InstinctStore', () => {
     const dir = makeDir('cortex-dedup-')
     const store = new InstinctStore(dir)
 
-    // findByTrigger uses sha256(trigger) as id, so save with matching id
-    const { createHash } = require('node:crypto')
-    const triggerHash = 'instinct-' + createHash('sha256').update('same-trigger').digest('hex').slice(0, 10)
-
-    store.save(makeInstinct({ id: triggerHash, trigger: 'same-trigger', confidence: 0.5 }))
-    store.save(makeInstinct({ id: triggerHash, trigger: 'same-trigger', confidence: 0.9 }))
+    store.save(makeInstinct({ trigger: 'same-trigger', confidence: 0.5 }))
+    store.save(makeInstinct({ trigger: 'same-trigger', confidence: 0.9 }))
 
     const loaded = store.loadAll()
     expect(loaded).toHaveLength(1)
@@ -196,15 +193,55 @@ describe('InstinctStore', () => {
     const dir = makeDir('cortex-incr-')
     const store = new InstinctStore(dir)
 
-    const { createHash } = require('node:crypto')
-    const triggerHash = 'instinct-' + createHash('sha256').update('my-trigger').digest('hex').slice(0, 10)
-
-    store.save(makeInstinct({ id: triggerHash, trigger: 'my-trigger', confidence: 0.7, observations: 3 }))
-    store.save(makeInstinct({ id: triggerHash, trigger: 'my-trigger', confidence: 0.5, observations: 2 }))
+    store.save(makeInstinct({ trigger: 'my-trigger', confidence: 0.7, observations: 3 }))
+    store.save(makeInstinct({ trigger: 'my-trigger', confidence: 0.5, observations: 2 }))
 
     const loaded = store.loadAll()
     expect(loaded).toHaveLength(1)
     expect(loaded[0].observations).toBe(5) // 3 + 2
+  })
+
+  it('rejects invalid instincts before they can be injected', () => {
+    const dir = makeDir('cortex-hygiene-')
+    const store = new InstinctStore(dir)
+    const invalid = makeInstinct({
+      trigger: '   ',
+      confidence: 0.6,
+      action: 'FYI',
+    })
+
+    const validation = validateInstinct(invalid)
+    expect(validation.ok).toBe(false)
+
+    expect(store.save(invalid)).toBe('')
+    expect(store.loadAll()).toEqual([])
+    expect(store.getInjectionInstincts()).toEqual([])
+    expect(store.history().map(entry => entry.op)).toEqual(['reject'])
+  })
+
+  it('deduplicates only within the same scope and project', () => {
+    const dir = makeDir('cortex-scope-')
+    const store = new InstinctStore(dir)
+
+    const globalId = store.save(makeInstinct({ trigger: 'same-trigger', scope: 'global', confidence: 0.9 }))
+    const projectAId = store.save(makeInstinct({ trigger: 'same-trigger', scope: 'project', projectId: 'project-a', confidence: 0.9 }))
+    const projectBId = store.save(makeInstinct({ trigger: 'same-trigger', scope: 'project', projectId: 'project-b', confidence: 0.9 }))
+
+    expect(new Set([globalId, projectAId, projectBId]).size).toBe(3)
+    expect(store.loadAll()).toHaveLength(3)
+    expect(store.findByKey('same-trigger', 'global')?.id).toBe(globalId)
+    expect(store.findByKey('same-trigger', 'project', 'project-a')?.id).toBe(projectAId)
+    expect(store.findByKey('same-trigger', 'project', 'project-b')?.id).toBe(projectBId)
+
+    const projectAInjectionIds = store.getInjectionInstincts('project-a').map(i => i.id)
+    expect(projectAInjectionIds).toContain(globalId)
+    expect(projectAInjectionIds).toContain(projectAId)
+    expect(projectAInjectionIds).not.toContain(projectBId)
+
+    const unscopedInjectionIds = store.getInjectionInstincts().map(i => i.id)
+    expect(unscopedInjectionIds).toContain(globalId)
+    expect(unscopedInjectionIds).not.toContain(projectAId)
+    expect(unscopedInjectionIds).not.toContain(projectBId)
   })
 
   it('queries by minConfidence and domain', () => {
@@ -243,12 +280,13 @@ describe('InstinctStore', () => {
     const dir = makeDir('cortex-hitrate-')
     const store = new InstinctStore(dir)
 
-    store.save(makeInstinct({ id: 'i1', trigger: 't1', observations: 10, appliedCount: 3 }))
-    store.recordApplication('i1', true)
+    const id = store.save(makeInstinct({ id: 'i1', trigger: 't1', observations: 10, appliedCount: 3 }))
+    store.recordApplication(id, true)
 
     const loaded = store.loadAll()
     expect(loaded[0].appliedCount).toBe(4)
     expect(loaded[0].hitRate).toBeCloseTo(0.4)
+    expect(store.history(id).map(entry => entry.op)).toContain('apply')
   })
 
   it('computes stats by domain and confidence bucket', () => {
@@ -272,11 +310,35 @@ describe('InstinctStore', () => {
     const dir = makeDir('cortex-delete-')
     const store = new InstinctStore(dir)
 
-    store.save(makeInstinct({ id: 'i1', trigger: 't1' }))
+    const id = store.save(makeInstinct({ id: 'i1', trigger: 't1' }))
     expect(store.loadAll()).toHaveLength(1)
 
-    store.delete('i1')
+    store.delete(id)
     expect(store.loadAll()).toHaveLength(0)
+  })
+
+  it('keeps append-only audit history and restores deleted snapshots', () => {
+    const dir = makeDir('cortex-audit-')
+    const store = new InstinctStore(dir)
+
+    const id = store.save(makeInstinct({ trigger: 'audit-trigger', confidence: 0.7, observations: 1 }))
+    store.save(makeInstinct({
+      trigger: 'audit-trigger',
+      confidence: 0.9,
+      observations: 2,
+      action: '## Action\nFix the audit regression with a targeted check',
+    }))
+    expect(store.findById(id)?.confidence).toBe(0.9)
+    expect(store.delete(id)).toBe(true)
+    expect(store.findById(id)).toBeNull()
+
+    const history = store.history(id)
+    expect(history.map(entry => entry.op)).toEqual(['save', 'replace', 'delete'])
+
+    const deleteEntry = history.find(entry => entry.op === 'delete')!
+    expect(store.restore(deleteEntry.auditId)).toBe(true)
+    expect(store.findById(id)?.confidence).toBe(0.9)
+    expect(store.history(id).map(entry => entry.op)).toEqual(['save', 'replace', 'delete', 'restore'])
   })
 
   it('handles empty store gracefully', () => {
@@ -297,7 +359,7 @@ describe('SessionInjector', () => {
     const dir = makeDir('cortex-injector-')
     const store = new InstinctStore(dir)
 
-    store.save(makeInstinct({ id: 'i1', trigger: 't1', confidence: 0.9, action: '## Action\nAlways lint first' }))
+    const savedId = store.save(makeInstinct({ id: 'i1', trigger: 't1', confidence: 0.9, action: '## Action\nAlways lint first' }))
     store.save(makeInstinct({ id: 'i2', trigger: 't2', confidence: 0.5 })) // should not appear
 
     const injector = new SessionInjector(store)
@@ -306,7 +368,7 @@ describe('SessionInjector', () => {
     expect(injection.instinctCount).toBe(1)
     expect(injection.content).toContain('NEAR-CERTAIN') // 0.9 maps to NEAR-CERTAIN
     expect(injection.content).toContain('Always lint first')
-    expect(injection.metadata.instinctsApplied).toEqual(['i1'])
+    expect(injection.metadata.instinctsApplied).toEqual([savedId])
   })
 
   it('builds minimal injection for constrained context', () => {

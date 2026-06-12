@@ -21,6 +21,7 @@
 // finding, only downgrade how it is reported.
 
 import type { SpecBoundaries } from '../artifact/types.js'
+import { isEnforcedProfile } from './ProfileEnforcement.js'
 
 export type BoundaryViolationKind = 'forbidden-touched' | 'outside-allowed'
 
@@ -55,9 +56,10 @@ export interface ConstraintCoverageReport {
  * whose name is or ends with `full`/`ci`/`strict` enforces.
  */
 export function isEnforcedBoundaryProfile(profileName: string | undefined): boolean {
-  if (!profileName) return false
-  return /(?:^|[:_-])(?:full|ci|strict)$/i.test(profileName)
+  return isEnforcedProfile(profileName)
 }
+
+export { isEnforcedProfile }
 
 function norm(value: string): string {
   return value.replace(/\\/g, '/').trim().toLowerCase()

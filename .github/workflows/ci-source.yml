@@ -1,0 +1,53 @@
+name: Source CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [dev, master]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: SCALE quality gate evidence
+        id: gate-quality
+        continue-on-error: true
+        run: |
+          make gate-quality 2>&1 | tee gate-quality.log
+          echo "## SCALE quality gate" >> "$GITHUB_STEP_SUMMARY"
+          cat gate-quality.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload quality gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-ci-gate-quality
+          path: gate-quality.log
+          retention-days: 30
