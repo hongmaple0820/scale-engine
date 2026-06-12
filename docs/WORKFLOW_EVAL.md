@@ -19,7 +19,11 @@ scale eval init --suite workflow-baseline --json
 ```bash
 scale eval run --suite workflow-baseline
 scale eval run --suite workflow-baseline --json
+scale eval run --suite workflow-baseline --publish-benchmark
 ```
+
+`--publish-benchmark` keeps the normal eval run artifact and also writes a
+BenchmarkPublisher-compatible JSON file under `.scale/benchmarks/eval/`.
 
 对比两次运行：
 

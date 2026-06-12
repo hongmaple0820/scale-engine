@@ -19,6 +19,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+
+      - name: Install source dependencies
+        run: npm ci
 
       - name: Install SCALE Engine
         run: npm install -g @hongmaple0820/scale-engine
@@ -28,7 +32,7 @@ jobs:
         run: |
           scale preflight --json --profile ci 2>&1 | tee scale-gates.json
           echo "## SCALE Gate Results" >> $GITHUB_STEP_SUMMARY
-          scale preflight --json --profile ci 2>&1 >> $GITHUB_STEP_SUMMARY
+          cat scale-gates.json >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Gate Evidence
         if: always()
