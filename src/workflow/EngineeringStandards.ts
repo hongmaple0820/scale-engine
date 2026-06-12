@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { createAstConfirmer, type AstConfirmer } from '../guardrails/ast/confirmers.js'
 
 export type EngineeringStandardCategory =
   | 'logging'
@@ -630,6 +631,11 @@ function scanFile(
   const content = readFileSync(absolutePath, 'utf-8')
   const lines = content.split(/\r?\n/)
   const findings: EngineeringStandardFinding[] = []
+  // AST confirmation layer (P1.1): parse once per file so the regex pre-filter
+  // hits below can be confirmed against the real AST. null = parse failed, in
+  // which case every confirmer falls back to the raw regex result.
+  const ext = extname(absolutePath)
+  const astConfirmer = createAstConfirmer(content, { jsx: ext === '.tsx' || ext === '.jsx' })
 
   if (lines.length > policy.maxFileLines) {
     findings.push({
@@ -649,9 +655,9 @@ function scanFile(
     insideTemplateLiteral = updateTemplateLiteralState(line, insideTemplateLiteral)
     if (startedInsideTemplateLiteral || isNonExecutablePatternLine(line)) continue
     const lineNumber = index + 1
-    findings.push(...scanLine(path, line, lineNumber, policy, frameworks))
+    findings.push(...scanLine(path, line, lineNumber, policy, frameworks, astConfirmer))
   }
-  findings.push(...findEmptyCatchBlocks(path, lines))
+  findings.push(...findEmptyCatchBlocks(path, lines, astConfirmer))
   return dedupeFindings(findings)
 }
 
@@ -661,6 +667,7 @@ function scanLine(
   lineNumber: number,
   policy: ResolvedEngineeringStandardsPolicy,
   frameworks: ResolvedFrameworksCatalog,
+  ast: AstConfirmer | null,
 ): EngineeringStandardFinding[] {
   const findings: EngineeringStandardFinding[] = []
   const sensitiveMatcher = sensitiveFieldPattern(policy)
@@ -731,7 +738,7 @@ function scanLine(
     })
   }
 
-  if (/\beval\s*\(|new\s+Function\s*\(/.test(line)) {
+  if (/\beval\s*\(|new\s+Function\s*\(/.test(line) && (!ast || ast.hasUnsafeCodeExecution(lineNumber))) {
     findings.push({
       severity: 'fail',
       category: 'security',
@@ -744,7 +751,7 @@ function scanLine(
     })
   }
 
-  if (/^\s*(?:\/\/|\/\*)\s*@ts-ignore\b/.test(line)) {
+  if (/^\s*(?:\/\/|\/\*)\s*@ts-ignore\b/.test(line) && (!ast || ast.hasTsIgnore(lineNumber))) {
     findings.push({
       severity: 'fail',
       category: 'code-quality',
@@ -757,7 +764,7 @@ function scanLine(
     })
   }
 
-  if (/\bas\s+any\b|:\s*any\b|<any\b|Array<any>|Promise<any>|Record<[^>]+,\s*any>/.test(line)) {
+  if (/\bas\s+any\b|:\s*any\b|<any\b|Array<any>|Promise<any>|Record<[^>]+,\s*any>/.test(line) && (!ast || ast.hasAnyType(lineNumber))) {
     findings.push({
       severity: 'warn',
       category: 'code-quality',
@@ -799,19 +806,22 @@ function scanLine(
   return findings
 }
 
-function findEmptyCatchBlocks(path: string, lines: string[]): EngineeringStandardFinding[] {
+function findEmptyCatchBlocks(path: string, lines: string[], ast: AstConfirmer | null): EngineeringStandardFinding[] {
   const findings: EngineeringStandardFinding[] = []
+  // AST confirmation: only emit when the catch block genuinely has zero
+  // statements. Falls back to the regex result when the file did not parse.
+  const confirm = (line: number): boolean => !ast || ast.hasEmptyCatch(line)
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
     if (/catch\s*(?:\([^)]*\))?\s*\{\s*(?:\/\*.*?\*\/|\/\/.*)?\s*\}/.test(line)) {
-      findings.push(emptyCatchFinding(path, index + 1, line))
+      if (confirm(index + 1)) findings.push(emptyCatchFinding(path, index + 1, line))
       continue
     }
     if (!/catch\s*(?:\([^)]*\))?\s*\{\s*$/.test(line)) continue
     for (const next of lines.slice(index + 1, index + 8)) {
       const trimmed = next.trim()
       if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue
-      if (/^}\s*[),;]?$/.test(trimmed)) findings.push(emptyCatchFinding(path, index + 1, line))
+      if (/^}\s*[),;]?$/.test(trimmed) && confirm(index + 1)) findings.push(emptyCatchFinding(path, index + 1, line))
       break
     }
   }

@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { PROFESSIONAL_AGENTS, getProfile, getProfilesByDomain, getProfilesByRole, listProfiles } from '../../src/agents/profiles.js'
+import { EVIDENCE_DISCIPLINE_PROMPT } from '../../src/agents/evidenceDiscipline.js'
 
 describe('Agent Profiles', () => {
   it('should have 12 predefined agents', () => {
@@ -71,6 +72,15 @@ describe('Agent Profiles', () => {
   it('should get profiles by role', () => {
     const implementers = getProfilesByRole('Implementer')
     expect(implementers.length).toBe(3) // frontend-agent, backend-agent, database-agent
+  })
+
+  // ===== P1.3: 证据纪律 addendum =====
+  it('should carry the shared evidence-discipline addendum on all 12 profiles', () => {
+    expect(EVIDENCE_DISCIPLINE_PROMPT).toContain('证据纪律')
+    for (const profile of PROFESSIONAL_AGENTS) {
+      expect(profile.systemPromptAddendum).toBe(EVIDENCE_DISCIPLINE_PROMPT)
+    }
+    expect(getProfile('frontend-agent')?.systemPromptAddendum).toBe(EVIDENCE_DISCIPLINE_PROMPT)
   })
 
   it('should list all profile IDs', () => {

@@ -283,6 +283,51 @@ export interface ChangePayload {
   reverted?: boolean
 }
 
+/** P1.2 (G23): a single test-integrity heuristic finding. */
+export interface TestIntegrityFinding {
+  /** Test file (repo-relative path) the finding came from. */
+  file: string
+  /** Heuristic that produced the finding. */
+  kind:
+    | 'assertion-removed'
+    | 'skip-added'
+    | 'only-added'
+    | 'weakened-assertion'
+    | 'timeout-inflated'
+  /** Intended enforcement once G23 leaves advisory mode (see P1 decision E1). */
+  severity: 'warn' | 'block'
+  /** Human-readable explanation of the flagged change. */
+  detail: string
+}
+
+/**
+ * P1.2 (G23 Test Integrity): evidence produced by analysing the test-file diff.
+ * Fields marked PR-D2 are populated by the later verify→ship enforcement PR and
+ * are optional so PR-D1 (advisory detection) can omit them.
+ */
+export interface TestIntegrityEvidence {
+  /** Test files included in the analysis (repo-relative paths). */
+  analyzedFiles: string[]
+  /** Approx assertion count on the pre-change side of the analysed diff hunks. */
+  preChangeAssertionCount: number
+  /** Approx assertion count on the post-change side of the analysed diff hunks. */
+  postChangeAssertionCount: number
+  /** postChangeAssertionCount - preChangeAssertionCount (negative = net assertions removed). */
+  assertionCountDelta: number
+  /** Human-readable summary of every flagged heuristic. */
+  flaggedPatterns: string[]
+  /** Structured findings backing flaggedPatterns. */
+  findings: TestIntegrityFinding[]
+  /** Whether this run was advisory (warn-only) or enforced. */
+  advisory: boolean
+  /** PR-D2: coverage regression vs the last passing baseline. */
+  coverageDelta?: number
+  /** PR-D2: test-file hash recorded at verify time. */
+  testFileHashAtVerify?: string
+  /** PR-D2: test-file hash recomputed at ship time. */
+  testFileHashAtShip?: string
+}
+
 /** Evidence —— 验证证据 */
 export interface EvidencePayload {
   testPlanId: ArtifactId
@@ -293,6 +338,8 @@ export interface EvidencePayload {
   artifacts: string[]
   /** P0: 指向 Spec.verificationSurface 中声明的某一项；无映射的证据视为未对齐（P0 仅告警）。 */
   verificationSurfaceRef?: string
+  /** P1.2 (G23): test-integrity analysis attached to verify-stage evidence. */
+  testIntegrity?: TestIntegrityEvidence
 }
 
 /** Defect —— 缺陷 */

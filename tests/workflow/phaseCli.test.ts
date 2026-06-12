@@ -789,6 +789,230 @@ export function leaky(token: string) {
     expect(verifyResult.metric.finalGateStatus).toBe('blocked')
   }, 120_000)
 
+  it('reports advisory boundary/constraint coverage at verify without affecting passed', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+
+    const define = await runScale([
+      'define',
+      'Boundary Enforcement Feature',
+      '--description',
+      'Implement a deterministic CLI regression workflow with input arguments and output evidence persisted by the CLI. Use TypeScript CLI commands with rollback constraints, quality lint typecheck, and acceptance verification evidence so executional boundaries are reported.',
+      '--success-criteria',
+      'verification evidence is persisted,boundary report is advisory',
+      '--boundary-files',
+      'src/allowed/**',
+      '--boundary-forbidden',
+      '**/secrets.ts',
+      '--constraints',
+      'login latency must not regress,no new npm dependencies',
+      '--verification-surface',
+      'benchmarks/latency.bench.ts',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(define.exitCode).toBe(0)
+    const specId = parseJson<{ spec: { id: string } }>(define.stdout).spec.id
+
+    const plan = await runScale(['plan', specId, '--rollback', 'Delete generated artifacts in temporary SCALE_DIR', '--json'], scaleDir, projectDir)
+    expect(plan.exitCode).toBe(0)
+    const planId = parseJson<{ plan: { id: string } }>(plan.stdout).plan.id
+
+    const build = await runScale(['build', planId, '--description', 'Boundary advisory task', '--level', 'L', '--service', 'api,gateway', '--json'], scaleDir, projectDir)
+    expect(build.exitCode).toBe(0)
+    const buildResult = parseJson<{ task: { id: string }; artifactDir?: string }>(build.stdout)
+    const taskId = buildResult.task.id
+    if (buildResult.artifactDir) repoDirs.push(join(projectDir, buildResult.artifactDir))
+
+    // Clear required workflow open tasks (context grill -> diagnose -> tdd) so
+    // verify reaches the gates rather than being blocked upstream.
+    const context = await runScale([
+      'context', 'grill', '--task-id', taskId, '--task', 'Boundary advisory task',
+      '--artifact-dir', buildResult.artifactDir!, '--write', '--json',
+    ], scaleDir, projectDir)
+    expect(context.exitCode).toBe(0)
+    const diagnose = await runScale([
+      'diagnose', 'plan', '--task-id', taskId, '--symptom', 'Boundary advisory task',
+      '--repro', 'node -v', '--expected-failure', 'regression is reproducible', '--verify', 'node -v',
+      '--artifact-dir', buildResult.artifactDir!, '--write', '--json',
+    ], scaleDir, projectDir)
+    expect(diagnose.exitCode).toBe(0)
+    const tdd = await runScale([
+      'tdd', 'slice', '--task-id', taskId, '--behavior', 'Boundary advisory task',
+      '--public-interface', 'scale build', '--failing-test', 'node -v',
+      '--test-file', 'tests/workflow/phaseCli.test.ts', '--impl-files', 'src/cli/phaseCommands.ts',
+      '--red-exit-code', '1', '--red-summary', 'expected command guidance to advance',
+      '--green-exit-code', '0', '--green-summary', 'command guidance advances',
+      '--refactor-exit-code', '0', '--refactor-summary', 'command guidance stays green',
+      '--artifact-dir', buildResult.artifactDir!, '--write', '--json',
+    ], scaleDir, projectDir)
+    expect(tdd.exitCode).toBe(0)
+
+    const coverageCommand = coverageFixtureCommand()
+    mkdirSync(join(projectDir, 'test-fixtures', 'phase-cli', 'api'), { recursive: true })
+    mkdirSync(join(projectDir, 'test-fixtures', 'phase-cli', 'gateway'), { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { commands: {} } },
+      services: [
+        { name: 'api', path: 'test-fixtures/phase-cli/api', required: true },
+        { name: 'gateway', path: 'test-fixtures/phase-cli/gateway', required: true },
+      ],
+    }, null, 2), 'utf-8')
+
+    const verify = await runScale([
+      'verify',
+      taskId,
+      '--build-cmd', 'node -v',
+      '--lint-cmd', 'node -v',
+      '--test-cmd', 'node -v',
+      '--coverage-cmd', coverageCommand,
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(verify.exitCode).toBe(0)
+    const verifyResult = parseJson<{
+      passed: boolean
+      boundaryEnforcement?: {
+        declaredAllowed: number
+        declaredForbidden: number
+        violations: unknown[]
+        advisory: boolean
+      }
+      constraintCoverage?: {
+        declared: number
+        covered: number
+        uncovered: string[]
+        advisory: boolean
+      }
+    }>(verify.stdout)
+
+    // An uncovered constraint is present, yet verify still passes: advisory
+    // checks never flip `passed`.
+    expect(verifyResult.passed).toBe(true)
+
+    // Boundaries from the Spec are resolved and enforced at verify (advisory).
+    expect(verifyResult.boundaryEnforcement).toMatchObject({
+      declaredAllowed: 1,
+      declaredForbidden: 1,
+      advisory: true,
+    })
+
+    // Constraint coverage: "latency" is guarded by the surface item; the
+    // dependency constraint has no guarding surface and is flagged.
+    expect(verifyResult.constraintCoverage).toMatchObject({
+      declared: 2,
+      covered: 1,
+      uncovered: ['no new npm dependencies'],
+      advisory: true,
+    })
+  }, 120_000)
+
+  it('hard-blocks verify on boundary/constraint violations under an enforced profile (E1)', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+
+    const define = await runScale([
+      'define',
+      'Boundary Enforcement Feature',
+      '--description',
+      'Implement a deterministic CLI regression workflow with input arguments and output evidence persisted by the CLI. Use TypeScript CLI commands with rollback constraints, quality lint typecheck, and acceptance verification evidence so executional boundaries are enforced.',
+      '--success-criteria',
+      'verification evidence is persisted,boundary report is enforced',
+      '--boundary-files',
+      'src/allowed/**',
+      '--boundary-forbidden',
+      '**/secrets.ts',
+      '--constraints',
+      'login latency must not regress,no new npm dependencies',
+      '--verification-surface',
+      'benchmarks/latency.bench.ts',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(define.exitCode).toBe(0)
+    const specId = parseJson<{ spec: { id: string } }>(define.stdout).spec.id
+
+    const plan = await runScale(['plan', specId, '--rollback', 'Delete generated artifacts in temporary SCALE_DIR', '--json'], scaleDir, projectDir)
+    expect(plan.exitCode).toBe(0)
+    const planId = parseJson<{ plan: { id: string } }>(plan.stdout).plan.id
+
+    const build = await runScale(['build', planId, '--description', 'Boundary enforced task', '--level', 'L', '--service', 'api,gateway', '--json'], scaleDir, projectDir)
+    expect(build.exitCode).toBe(0)
+    const buildResult = parseJson<{ task: { id: string }; artifactDir?: string }>(build.stdout)
+    const taskId = buildResult.task.id
+    if (buildResult.artifactDir) repoDirs.push(join(projectDir, buildResult.artifactDir))
+
+    const context = await runScale([
+      'context', 'grill', '--task-id', taskId, '--task', 'Boundary enforced task',
+      '--artifact-dir', buildResult.artifactDir!, '--write', '--json',
+    ], scaleDir, projectDir)
+    expect(context.exitCode).toBe(0)
+    const diagnose = await runScale([
+      'diagnose', 'plan', '--task-id', taskId, '--symptom', 'Boundary enforced task',
+      '--repro', 'node -v', '--expected-failure', 'regression is reproducible', '--verify', 'node -v',
+      '--artifact-dir', buildResult.artifactDir!, '--write', '--json',
+    ], scaleDir, projectDir)
+    expect(diagnose.exitCode).toBe(0)
+    const tdd = await runScale([
+      'tdd', 'slice', '--task-id', taskId, '--behavior', 'Boundary enforced task',
+      '--public-interface', 'scale build', '--failing-test', 'node -v',
+      '--test-file', 'tests/workflow/phaseCli.test.ts', '--impl-files', 'src/cli/phaseCommands.ts',
+      '--red-exit-code', '1', '--red-summary', 'expected command guidance to advance',
+      '--green-exit-code', '0', '--green-summary', 'command guidance advances',
+      '--refactor-exit-code', '0', '--refactor-summary', 'command guidance stays green',
+      '--artifact-dir', buildResult.artifactDir!, '--write', '--json',
+    ], scaleDir, projectDir)
+    expect(tdd.exitCode).toBe(0)
+
+    const coverageCommand = coverageFixtureCommand()
+    mkdirSync(join(projectDir, 'test-fixtures', 'phase-cli', 'api'), { recursive: true })
+    mkdirSync(join(projectDir, 'test-fixtures', 'phase-cli', 'gateway'), { recursive: true })
+    // `ci` is an enforced profile (decision E1); the empty command set falls back
+    // to the explicit CLI overrides below, so only the gating behaviour differs.
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { commands: {} }, ci: { commands: {} } },
+      services: [
+        { name: 'api', path: 'test-fixtures/phase-cli/api', required: true },
+        { name: 'gateway', path: 'test-fixtures/phase-cli/gateway', required: true },
+      ],
+    }, null, 2), 'utf-8')
+
+    const verify = await runScale([
+      'verify',
+      taskId,
+      '--profile', 'ci',
+      '--build-cmd', 'node -v',
+      '--lint-cmd', 'node -v',
+      '--test-cmd', 'node -v',
+      '--coverage-cmd', coverageCommand,
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(verify.exitCode).toBe(0)
+    const verifyResult = parseJson<{
+      passed: boolean
+      profile: string
+      metric: { finalGateStatus: string }
+      boundaryEnforcement?: { violations: Array<{ kind: string }>; advisory: boolean }
+      constraintCoverage?: { uncovered: string[]; advisory: boolean }
+    }>(verify.stdout)
+
+    // This is the exact Spec/ceremony as the advisory case above (which passes
+    // with passed=true under `default`); the only change is the enforced `ci`
+    // profile. So a flip to passed=false isolates boundary enforcement as the
+    // cause: the unguarded "no new npm dependencies" constraint now hard-blocks.
+    expect(verifyResult.profile).toBe('ci')
+    expect(verifyResult.passed).toBe(false)
+    expect(verifyResult.metric.finalGateStatus).toBe('blocked')
+
+    // Both reports are flipped from advisory to blocking under the enforced profile.
+    expect(verifyResult.boundaryEnforcement?.advisory).toBe(false)
+    expect(verifyResult.constraintCoverage?.advisory).toBe(false)
+    expect(verifyResult.constraintCoverage?.uncovered).toContain('no new npm dependencies')
+  }, 120_000)
+
   it('blocks ship before review, then allows review -> ship --no-commit without changing HEAD', async () => {
     const scaleDir = makeScaleDir()
     const projectDir = makeProjectDir()
@@ -1003,6 +1227,9 @@ export function leaky(token: string) {
     const reviewResult = parseJson<{
       passed: boolean
       reviewId: string
+      judge: { decision: string; modelUsed: string; promptVersion: string; advisory: boolean }
+      reviewMode: string
+      freshVerify?: { decision: string }
       karpathy: {
         passed: boolean
         context: { hypothesesListed: boolean; hasExtraFeatures: boolean; changesTraceable: boolean; hasVerifiableGoal: boolean }
@@ -1011,6 +1238,27 @@ export function leaky(token: string) {
     }>(review.stdout)
     expect(reviewResult.passed).toBe(true)
     expect(reviewResult.reviewId).toMatch(/^REVIEW-/)
+    // P1.4: advisory LLM-as-Judge runs by default (heuristic offline) and is
+    // recorded without affecting `passed`.
+    expect(reviewResult.judge.modelUsed).toBe('heuristic')
+    expect(reviewResult.judge.advisory).toBe(true)
+    expect(reviewResult.judge.promptVersion).toBe('spec-conformance.v1')
+    expect(['pass', 'fail', 'uncertain']).toContain(reviewResult.judge.decision)
+    // P2.2: default mode is ai-self and does NOT run the fresh-context verifier.
+    expect(reviewResult.reviewMode).toBe('ai-self')
+    expect(reviewResult.freshVerify).toBeUndefined()
+
+    // P2.2: --mode=fresh-subagent runs the advisory fresh-context verifier
+    // (heuristic offline) without changing `passed`.
+    const freshReview = await runScale(['review', taskId, '--mode', 'fresh-subagent', '--json'], scaleDir, projectDir)
+    expect(freshReview.exitCode).toBe(0)
+    const freshResult = parseJson<{ passed: boolean; reviewMode: string; freshVerify: { decision: string; modelUsed: string; advisory: boolean } }>(freshReview.stdout)
+    expect(freshResult.passed).toBe(true)
+    expect(freshResult.reviewMode).toBe('fresh-subagent')
+    expect(freshResult.freshVerify.modelUsed).toBe('heuristic')
+    expect(freshResult.freshVerify.advisory).toBe(true)
+    expect(['verified', 'unverified', 'uncertain']).toContain(freshResult.freshVerify.decision)
+
     expect(reviewResult.karpathy.passed).toBe(true)
     expect(reviewResult.karpathy.context).toMatchObject({
       hypothesesListed: true,

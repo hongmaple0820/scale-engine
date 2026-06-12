@@ -4,6 +4,7 @@
 // Injects: instincts + prior session summary + learned skills + project detection
 
 import { logger } from '../core/logger.js'
+import { EVIDENCE_DISCIPLINE_PROMPT, EVIDENCE_DISCIPLINE_PROMPT_MINIMAL } from '../agents/evidenceDiscipline.js'
 import type { Instinct } from './InstinctExtractor.js'
 import type { InstinctStore } from './InstinctStore.js'
 
@@ -55,7 +56,12 @@ export class SessionInjector {
 
     const sections: string[] = []
 
-    // 0. Scoped specs (Trellis-inspired — inject relevant project specs)
+    // 0. Evidence discipline (P1.3 — standing instruction, Fable-5 progress audit).
+    // Always present so every SessionStart carries the evidence-alignment contract.
+    sections.push(EVIDENCE_DISCIPLINE_PROMPT)
+    sections.push('')
+
+    // 1. Scoped specs (Trellis-inspired — inject relevant project specs)
     const specs = this.loadScopedSpecs()
     if (specs.length > 0) {
       sections.push('## Active Project Specs\n')
@@ -65,7 +71,7 @@ export class SessionInjector {
       }
     }
 
-    // 1. High-confidence instincts (main payload)
+    // 2. High-confidence instincts (main payload)
     if (instincts.length > 0) {
       sections.push('## SCALE Cortex — Learned Instincts\n')
       sections.push('The following patterns have been learned from prior sessions. Use them to avoid repeating mistakes.\n')
@@ -74,7 +80,7 @@ export class SessionInjector {
       }
     }
 
-    // 2. Prior session summaries (with stale replay protection)
+    // 3. Prior session summaries (with stale replay protection)
     if (priorSessions.length > 0) {
       sections.push('## Recent Session History\n')
       sections.push(HISTORICAL_SENTINEL_START)
@@ -85,7 +91,7 @@ export class SessionInjector {
       sections.push(HISTORICAL_SENTINEL_END)
     }
 
-    // 3. Cortex usage hint
+    // 4. Cortex usage hint
     sections.push('---')
     sections.push('_SCALE Cortex is active. Run `scale cortex metrics` for ROI dashboard._')
 
@@ -108,9 +114,11 @@ export class SessionInjector {
   buildMinimal(projectId?: string): SessionInjection {
     const instincts = this.instinctStore.getInjectionInstincts(projectId)
 
+    // The evidence-discipline contract is always present at SessionStart, even under
+    // a constrained budget — here as the condensed single-line form (P1.3).
     if (instincts.length === 0) {
       return {
-        content: '',
+        content: EVIDENCE_DISCIPLINE_PROMPT_MINIMAL,
         instinctCount: 0,
         metadata: { projectId, instinctsApplied: [] },
       }
@@ -122,7 +130,7 @@ export class SessionInjector {
     )
 
     return {
-      content: `SCALE Cortex Instincts (${instincts.length}):\n${lines.join('\n')}`,
+      content: `${EVIDENCE_DISCIPLINE_PROMPT_MINIMAL}\n\nSCALE Cortex Instincts (${instincts.length}):\n${lines.join('\n')}`,
       instinctCount: instincts.length,
       metadata: { projectId, instinctsApplied: instincts.map(i => i.id) },
     }

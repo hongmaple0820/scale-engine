@@ -125,6 +125,9 @@ export interface AgentProfile {
 
   // ========== 协作偏好 ==========
   collaboration?: CollaborationSpec  // 协作关系
+
+  // ========== 证据纪律（P1.3）==========
+  systemPromptAddendum?: string  // 附加到 system prompt 的证据对齐段（默认继承 EVIDENCE_DISCIPLINE_PROMPT）
 }
 
 // ============================================================================

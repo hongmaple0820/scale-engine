@@ -468,4 +468,100 @@ export function loadUser(id: string) {
     expect(existsSync(report.standardsImpactPath!)).toBe(true)
     expect(readFileSync(report.standardsImpactPath!, 'utf-8')).toContain('SCALE Engineering Standards Settlement')
   })
+
+  describe('AST confirmation (P1.1) suppresses regex false positives', () => {
+    it('does not flag eval / new Function that only appear in strings or comments', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/safe.ts', [
+        'export function describe(): string {',
+        "  const note = 'never call eval(userInput) here'",
+        '  // new Function(body) would be unsafe, so we avoid it',
+        '  return note',
+        '}',
+        '',
+      ].join('\n'))
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'unsafe-code-execution')).toBe(false)
+    })
+
+    it('still flags a real eval call', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/danger.ts', 'export const run = (code: string) => eval(code)\n')
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'unsafe-code-execution')).toBe(true)
+    })
+
+    it('does not flag @ts-ignore text living inside a string literal', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/message.ts', [
+        'export const help = [',
+        "  '// @ts-ignore is discouraged in this codebase',",
+        '].join("\\n")',
+        '',
+      ].join('\n'))
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'ts-ignore')).toBe(false)
+    })
+
+    it('does not flag the literal token ": any" inside a string', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/label.ts', "export const label = 'kind: any of the above'\n")
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'type-escape')).toBe(false)
+    })
+
+    it('still flags a real any-typed annotation', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/loose.ts', 'export function take(value: any): void { void value }\n')
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'type-escape')).toBe(true)
+    })
+
+    it('does not flag an empty catch block that only appears inside a string literal', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/snippet.ts', "export const example = 'try { work() } catch (error) {}'\n")
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'empty-catch')).toBe(false)
+    })
+
+    it('still flags a genuinely empty catch block', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      write(projectDir, 'src/domain/swallow.ts', 'export function run(work: () => void): void { try { work() } catch (error) {} }\n')
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'empty-catch')).toBe(true)
+    })
+
+    it('falls back to the regex result when the file cannot be parsed', () => {
+      const projectDir = makeProject()
+      write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+      // Deliberately unparseable TS — AST layer returns null, so the regex
+      // pre-filter result must still surface (fail open, no lost coverage).
+      write(projectDir, 'src/domain/broken.ts', 'export function bad( { try { work() } catch (error) {}\n')
+
+      const report = scanEngineeringStandards({ projectDir })
+
+      expect(report.findings.some(f => f.ruleId === 'empty-catch')).toBe(true)
+    })
+  })
 })

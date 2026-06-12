@@ -2,12 +2,13 @@
 // 12 个专业 Agent Profile 定义
 
 import type { AgentProfile, AgentDomain } from './types.js'
+import { EVIDENCE_DISCIPLINE_PROMPT } from './evidenceDiscipline.js'
 
 // ============================================================================
 // 12 个预定义 Professional Agent Profiles
 // ============================================================================
 
-export const PROFESSIONAL_AGENTS: AgentProfile[] = [
+const BASE_PROFESSIONAL_AGENTS: AgentProfile[] = [
   {
     id: 'frontend-agent',
     name: 'Frontend Developer',
@@ -142,6 +143,13 @@ export const PROFESSIONAL_AGENTS: AgentProfile[] = [
     description: 'System architecture design, scalability planning, pattern selection'
   }
 ]
+
+// 12 个 profile 默认继承共享的证据纪律段（单一事实源在 EVIDENCE_DISCIPLINE_PROMPT）；
+// 个别 profile 若显式设置 systemPromptAddendum 则覆盖默认值。
+export const PROFESSIONAL_AGENTS: AgentProfile[] = BASE_PROFESSIONAL_AGENTS.map(p => ({
+  systemPromptAddendum: EVIDENCE_DISCIPLINE_PROMPT,
+  ...p,
+}))
 
 // ============================================================================
 // Profile Registry

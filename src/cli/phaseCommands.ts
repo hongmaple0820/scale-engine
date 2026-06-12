@@ -19,7 +19,10 @@ import { WorkflowEngine } from '../workflow/WorkflowEngine.js'
 import { WorkflowArtifactWriter } from '../workflow/WorkflowArtifactWriter.js'
 import { resolveVerificationTargets, type VerificationArtifactGateMode, type VerificationEngineeringStandardsGateMode, type VerificationPolicy } from '../workflow/VerificationProfile.js'
 import { EvidenceStore } from '../workflow/EvidenceStore.js'
-import { ReviewStore, type ReviewFinding, type ReviewRecord } from '../workflow/ReviewStore.js'
+import { ReviewStore, type ReviewFinding, type ReviewRecord, type ReviewMode } from '../workflow/ReviewStore.js'
+import { JudgePromptStore, LlmJudge } from '../review/LlmJudge.js'
+import { JsonLlmClient } from '../review/JsonLlmClient.js'
+import { FreshContextVerifier } from '../review/FreshContextVerifier.js'
 import { TaskMetricsStore, type MetricTaskLevel } from '../workflow/TaskMetricsStore.js'
 import { appendVerificationArtifact, checkTaskArtifactCompleteness, scaffoldTaskArtifacts, type TaskArtifactCheckResult, type TaskArtifactScaffoldResult } from '../workflow/TaskArtifactScaffolder.js'
 import { createWorkflowGuidance, renderWorkflowGuidance } from '../workflow/WorkflowGuidance.js'
@@ -38,6 +41,16 @@ import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import type { SpecPayload, PlanPayload, TaskPayload, EvidencePayload } from '../artifact/types.js'
 import { computeSurfaceCoverage, formatSurfaceCoverageWarnings, type SurfaceCoverageReport } from '../workflow/SurfaceCoverage.js'
+import {
+  evaluateBoundaries,
+  evaluateConstraints,
+  formatBoundaryWarnings,
+  formatConstraintWarnings,
+  isEnforcedBoundaryProfile,
+  countBoundaryBlockers,
+  type BoundaryEnforcementReport,
+  type ConstraintCoverageReport,
+} from '../workflow/BoundaryEnforcement.js'
 import { HTMLDocumentRenderer } from '../output/HTMLDocumentRenderer.js'
 import type { OutputFormat } from '../output/HTMLDocumentRenderer.js'
 import { SCALE_ENGINE_VERSION } from '../version.js'
@@ -1384,6 +1397,19 @@ export const phaseVerify = defineCommand({
     const workflowOpenTaskBlockers = blockingWorkflowOpenTasks(workflowState.openTasks, args['task-id'])
     const workflowOpenTasksBlocked = workflowOpenTaskBlockers.length > 0
 
+    // P0+ (decision E1): resolve the originating Spec up-front so the executional
+    // boundary / constraint checks can gate Task completion. Both reports are
+    // advisory under default/auto and blocking under full/ci/strict; the
+    // detection logic is identical, only the report mode and gating differ.
+    const spec = await resolveSpecForTask(store, task)
+    const boundaryEnforced = isEnforcedBoundaryProfile(resolvedVerification.profileName)
+    const boundaryEnforcement: BoundaryEnforcementReport | undefined =
+      evaluateBoundaries(taskFiles, spec?.payload.boundaries, boundaryEnforced)
+    const constraintCoverage: ConstraintCoverageReport | undefined =
+      evaluateConstraints(spec?.payload.constraints, spec?.payload.verificationSurface, boundaryEnforced)
+    const boundaryBlocked = boundaryEnforced &&
+      countBoundaryBlockers(boundaryEnforcement, constraintCoverage) > 0
+
     // Attempt FSM transition to COMPLETED
     // Guards: build_passed, lint_passed, tests_passed, open workflow tasks, and optional artifact policy.
     const codePassed = results.buildStatus === 'success' &&
@@ -1398,6 +1424,7 @@ export const phaseVerify = defineCommand({
       !skillInstallationBlocked &&
       !engineeringStandards.blocked &&
       !(toolEvidenceGate?.blocked ?? false) &&
+      !boundaryBlocked &&
       !workflowOpenTasksBlocked
 
     let transitionResult = null
@@ -1428,6 +1455,8 @@ export const phaseVerify = defineCommand({
       console.log('\n   Engineering standards gate blocked completion - fix blocking standards findings')
     } else if (!args.json && toolEvidenceGate?.blocked) {
       console.log('\n   Tool evidence gate blocked completion - required tools need passed execution evidence')
+    } else if (!args.json && boundaryBlocked) {
+      console.log('\n   Boundary enforcement blocked completion - keep edits inside Spec boundaries and guard every constraint (enforced profile)')
     } else if (!args.json && workflowOpenTasksBlocked) {
       console.log('\n   Workflow open tasks blocked completion - finish required workflow commands first')
     }
@@ -1486,7 +1515,7 @@ export const phaseVerify = defineCommand({
     }
     await store.update(args['task-id'], { payload: finalPayload })
     const metricGateStatus =
-      (finalArtifactGate.blocked || finalSkillGate?.blocked || skillInstallationBlocked || engineeringStandards.blocked || finalToolEvidenceGate?.blocked || workflowOpenTasksBlocked)
+      (finalArtifactGate.blocked || finalSkillGate?.blocked || skillInstallationBlocked || engineeringStandards.blocked || finalToolEvidenceGate?.blocked || boundaryBlocked || workflowOpenTasksBlocked)
       ? 'blocked'
       : undefined
     const metricRecord = await recordVerificationMetric({
@@ -1501,7 +1530,8 @@ export const phaseVerify = defineCommand({
 
     // P0 (Decision C1): soft-map the Spec's verificationSurface against evidence.
     // Unmapped items are reported as warnings only — never blocking in P0.
-    const spec = await resolveSpecForTask(store, task)
+    // (`spec`, `boundaryEnforcement` and `constraintCoverage` were resolved
+    // above so the boundary checks could gate completion under enforced profiles.)
     const verificationCommands = resolvedVerification.targets.flatMap(target => [
       target.config.build, target.config.lint, target.config.test, target.config.coverage,
     ])
@@ -1543,6 +1573,8 @@ export const phaseVerify = defineCommand({
       },
       metric: metricRecord,
       verificationSurfaceCoverage: surfaceCoverage,
+      boundaryEnforcement,
+      constraintCoverage,
       passed
     }
     if (args.json) console.log(JSON.stringify(result, null, 2))
@@ -1551,6 +1583,8 @@ export const phaseVerify = defineCommand({
       if (surfaceCoverage) {
         for (const line of formatSurfaceCoverageWarnings(surfaceCoverage)) console.log(`   ${line}`)
       }
+      for (const line of formatBoundaryWarnings(boundaryEnforcement)) console.log(`   ${line}`)
+      for (const line of formatConstraintWarnings(constraintCoverage)) console.log(`   ${line}`)
       if (metricRecord) console.log(`   Metrics: ${metricRecord.taskId} ${metricRecord.finalGateStatus} (fix iterations: ${metricRecord.fixIterations})`)
       if (artifactCheck && !artifactCheck.complete) {
         console.log(`   Artifact gaps: ${artifactCheck.missing.length} missing, ${artifactCheck.incomplete.length} incomplete`)
@@ -1613,7 +1647,7 @@ function readUntrackedFileAsDiff(path: string): string {
   }
 }
 
-async function reviewGitChanges(taskPayload?: TaskPayload): Promise<{ changedFiles: ChangedFile[]; findings: ReviewFinding[] }> {
+async function reviewGitChanges(taskPayload?: TaskPayload): Promise<{ changedFiles: ChangedFile[]; findings: ReviewFinding[]; diffs: Array<{ file: string; text: string }> }> {
   const status = await runGit(['status', '--short'])
   const untracked = await runGit(['ls-files', '--others', '--exclude-standard'])
   let statusOutput = mergeUntrackedFilesIntoStatus(status.stdout, untracked.stdout)
@@ -1646,7 +1680,25 @@ async function reviewGitChanges(taskPayload?: TaskPayload): Promise<{ changedFil
     }
   }
 
-  return analyzeReview({ statusOutput, diffs, taskPayload, verificationEvidence })
+  return { ...analyzeReview({ statusOutput, diffs, taskPayload, verificationEvidence }), diffs }
+}
+
+function normalizeReviewMode(value: string | undefined): ReviewMode {
+  return value === 'fresh-subagent' || value === 'hybrid' ? value : 'ai-self'
+}
+
+// Build a compact diff summary (file headers + added lines) for the advisory
+// LLM-as-Judge (P1.4). Capped so it never blows the model/context budget.
+function buildJudgeDiffSummary(diffs: Array<{ file: string; text: string }>): string {
+  const parts: string[] = []
+  for (const diff of diffs) {
+    const added = diff.text
+      .split('\n')
+      .filter(line => line.startsWith('+') && !line.startsWith('+++'))
+      .map(line => line.slice(1))
+    parts.push(`# ${diff.file}\n${added.join('\n')}`)
+  }
+  return parts.join('\n\n').slice(0, 6000)
 }
 
 function collectReviewedFiles(records: ReviewRecord[]): Set<string> {
@@ -1899,6 +1951,8 @@ export const phaseReview = defineCommand({
     'check-style': { type: 'boolean', default: true },
     format: { type: 'string', alias: 'f', description: 'Output format: html or md (default: html)' },
     brand: { type: 'string', description: 'Brand theme for HTML output (vercel/stripe/notion/linear/github)' },
+    judge: { type: 'boolean', default: true, description: 'Run the advisory LLM-as-Judge spec-conformance check (P1.4)' },
+    mode: { type: 'string', default: 'ai-self', description: 'Review mode: ai-self (default) | fresh-subagent | hybrid (P2.2)' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
@@ -1936,12 +1990,48 @@ export const phaseReview = defineCommand({
     const findings = review.findings
     const summary = summarizeFindings(findings)
     const passed = summary.critical === 0 && summary.high === 0
+
+    const reviewMode = normalizeReviewMode(args.mode)
+    // Resolve the originating Spec once; both the advisory judge (P1.4) and the
+    // fresh-context verifier (P2.2) read its outcome / verificationSurface.
+    const needsSpec = args.judge || reviewMode !== 'ai-self'
+    const spec = needsSpec ? await resolveSpecForTask(store, task) : undefined
+    const diffSummary = needsSpec ? buildJudgeDiffSummary(review.diffs) : ''
+
+    // P1.4 (decision K1): advisory LLM-as-Judge. Never part of `passed`.
+    let judgeVerdict: ReviewRecord['judge']
+    if (args.judge) {
+      const judge = new LlmJudge(new JsonLlmClient(), new JudgePromptStore(SCALE_DIR))
+      judgeVerdict = await judge.judge({
+        outcome: spec?.payload.what,
+        verificationSurface: spec?.payload.verificationSurface ?? [],
+        diffSummary,
+        reviewFindings: summary,
+      })
+    }
+
+    // P2.2 (decisions M1/N1/O1): fresh-context verifier runs only for
+    // fresh-subagent / hybrid modes, on isolated input (surface + diff + gate
+    // summary, no build-agent history). Advisory only — never blocks ship.
+    let freshVerifyVerdict: ReviewRecord['freshVerify']
+    if (reviewMode !== 'ai-self') {
+      freshVerifyVerdict = await new FreshContextVerifier(new JsonLlmClient()).verify({
+        outcome: spec?.payload.what,
+        verificationSurface: spec?.payload.verificationSurface ?? [],
+        diffSummary,
+        gateSummary: `critical=${summary.critical} high=${summary.high} medium=${summary.medium} low=${summary.low}`,
+      })
+    }
+
     const record: ReviewRecord = reviewStore.saveReview({
       taskId: args['task-id'],
       passed,
       findings,
       changedFiles: review.changedFiles.map(file => normalizeGitPath(file.path)),
       summary,
+      judge: judgeVerdict,
+      reviewMode,
+      freshVerify: freshVerifyVerdict,
     })
 
     if (task && taskPayload) {
@@ -1991,6 +2081,9 @@ export const phaseReview = defineCommand({
       findings,
       changedFiles: review.changedFiles.map(file => normalizeGitPath(file.path)),
       summary,
+      judge: judgeVerdict,
+      reviewMode,
+      freshVerify: freshVerifyVerdict,
       karpathy: karpathyReport,
       passed,
       format: reviewOutputFormat,
@@ -2012,6 +2105,18 @@ export const phaseReview = defineCommand({
       console.log(`LOW:      ${summary.low} issues`)
       console.log('----------------------------------------')
       findings.slice(0, 10).forEach(f => console.log(`  [${f.severity}] ${f.file ? `${f.file}: ` : ''}${f.description}`))
+
+      if (judgeVerdict) {
+        console.log(`\nJudge (advisory, ${judgeVerdict.modelUsed}): ${judgeVerdict.decision.toUpperCase()} (confidence ${judgeVerdict.confidence.toFixed(2)})`)
+        console.log(`  ${judgeVerdict.rationale}`)
+        if (judgeVerdict.unmetSurfaces.length) console.log(`  Unmet surfaces: ${judgeVerdict.unmetSurfaces.join('; ')}`)
+      }
+
+      if (freshVerifyVerdict) {
+        console.log(`\nFresh-context verifier (advisory, ${freshVerifyVerdict.modelUsed}): ${freshVerifyVerdict.decision.toUpperCase()} (confidence ${freshVerifyVerdict.confidence.toFixed(2)})`)
+        console.log(`  ${freshVerifyVerdict.rationale}`)
+        if (freshVerifyVerdict.unmetSurfaces.length) console.log(`  Unmet surfaces: ${freshVerifyVerdict.unmetSurfaces.join('; ')}`)
+      }
 
       if (passed) {
         console.log('\nReview passed (no CRITICAL issues)')

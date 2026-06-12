@@ -63,7 +63,7 @@ export const PREFLIGHT_FULL_GATES: GateStage[] = ['G3', 'G0', 'G4', 'G5', 'G6', 
 export const WORKFLOW_VERIFY_GATES: GateStage[] = ['G3', 'G0', 'G4', 'G5', 'G6', 'G7']
 export const PRODUCT_SMOKE_GATES: GateStage[] = ['G8']
 export const META_GOVERNANCE_GATE_STAGES: GateStage[] = ['G9', 'G10', 'G11', 'G12', 'G13', 'G14', 'G15']
-export const ENHANCED_GATE_STAGES: GateStage[] = ['G16', 'G17', 'G18', 'G19', 'G20', 'G21', 'G22']
+export const ENHANCED_GATE_STAGES: GateStage[] = ['G16', 'G17', 'G18', 'G19', 'G20', 'G21', 'G22', 'G23']
 
 export const CORE_GATE_CATALOG: GateCatalogEntry[] = [
   {
@@ -206,6 +206,16 @@ export const CORE_GATE_CATALOG: GateCatalogEntry[] = [
     requiredLevel: 'ALWAYS',
     blocking: true,
   },
+  {
+    id: 'test-integrity',
+    stage: 'G23',
+    family: 'core',
+    activation: 'profile',
+    name: 'Test Integrity',
+    description: 'Test diffs must not weaken assertions, add skip/only, or inflate timeouts (PR-D1: advisory).',
+    requiredLevel: 'M',
+    blocking: false,
+  },
 ]
 
 export const META_GATE_CATALOG: GateCatalogEntry[] = [
@@ -260,7 +270,7 @@ export function createGateStatusReport(options: {
     profileStatus('preflight:ci', 'Preflight CI', 'CI-equivalent preflight gate set.', PREFLIGHT_FULL_GATES),
     profileStatus('product-smoke', 'Product smoke', 'Product smoke profile gate set.', PRODUCT_SMOKE_GATES),
     profileStatus('meta-governance', 'Meta governance', 'Optional G9-G15 governance effectiveness gates.', META_GOVERNANCE_GATE_STAGES),
-    profileStatus('enhanced', 'Enhanced gates', 'G16-G22 commit discipline, doc hygiene, runtime evidence, code review, supply chain, context budget, session health.', ENHANCED_GATE_STAGES),
+    profileStatus('enhanced', 'Enhanced gates', 'G16-G23 commit discipline, doc hygiene, runtime evidence, code review, supply chain, context budget, session health, test integrity.', ENHANCED_GATE_STAGES),
   ]
   const warnings = [...resolved.warnings]
   warnings.push('VisualGate also defaults to G9 when explicitly registered; keep visual and meta gate profiles separate until stage ids are made capability-based.')

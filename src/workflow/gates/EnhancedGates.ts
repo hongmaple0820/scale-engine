@@ -3,6 +3,7 @@
 
 import type { GateResult, GateStage, GateEvidence } from '../types.js'
 import type { IGate } from './GateSystem.js'
+import { TestIntegrityGate } from './TestIntegrityGate.js'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { execSync } from 'node:child_process'
@@ -747,4 +748,5 @@ export function registerEnhancedGates(
   gateSystem.registerGate(new SupplyChainGate())
   gateSystem.registerGate(new ContextBudgetGate(scaleDir))
   gateSystem.registerGate(new SessionHealthGate())
+  gateSystem.registerGate(new TestIntegrityGate())
 }

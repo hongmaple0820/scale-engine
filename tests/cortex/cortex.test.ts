@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { InstinctExtractor, type Observation, type Instinct } from '../../src/cortex/InstinctExtractor.js'
 import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 import { SessionInjector } from '../../src/cortex/SessionInjector.js'
+import { EVIDENCE_DISCIPLINE_PROMPT } from '../../src/agents/evidenceDiscipline.js'
 
 const dirs: string[] = []
 
@@ -319,6 +320,18 @@ describe('SessionInjector', () => {
 
     expect(injection.instinctCount).toBe(1)
     expect(injection.content.length).toBeLessThan(500) // minimal is shorter
+    expect(injection.content).toContain('证据纪律') // contract present even when minimal
+  })
+
+  it('keeps the evidence-discipline contract in minimal injection with no instincts', () => {
+    const dir = makeDir('cortex-minimal-empty-')
+    const store = new InstinctStore(dir)
+    store.save(makeInstinct({ confidence: 0.3 })) // below injection threshold
+
+    const injection = new SessionInjector(store).buildMinimal()
+
+    expect(injection.instinctCount).toBe(0)
+    expect(injection.content).toContain('证据纪律')
   })
 
   it('returns empty injection when no high-confidence instincts', () => {
@@ -331,6 +344,19 @@ describe('SessionInjector', () => {
 
     expect(injection.instinctCount).toBe(0)
     expect(injection.content).not.toContain('Learned Instincts')
+  })
+
+  it('always injects the evidence-discipline segment, even with no instincts', () => {
+    const dir = makeDir('cortex-evidence-')
+    const store = new InstinctStore(dir)
+    store.save(makeInstinct({ confidence: 0.3 })) // below injection threshold
+
+    const injector = new SessionInjector(store)
+    const injection = injector.build()
+
+    expect(injection.instinctCount).toBe(0)
+    expect(injection.content).toContain('证据纪律')
+    expect(injection.content).toContain(EVIDENCE_DISCIPLINE_PROMPT)
   })
 
   it('includes prior session history with anti-replay sentinels', () => {

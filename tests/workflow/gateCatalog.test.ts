@@ -34,7 +34,7 @@ describe('GateCatalog', () => {
 
     const report = createGateStatusReport({ projectDir, scaleDir })
 
-    expect(report.summary.coreStages).toBe(14)
+    expect(report.summary.coreStages).toBe(15)
     expect(report.summary.metaStages).toBe(9)
     expect(report.summary.extensionGates).toBe(3)
     expect(report.extensions.find(gate => gate.id === 'engineering-standards')).toMatchObject({
