@@ -2,7 +2,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { KnowledgeEntry } from '../artifact/types.js'
 import type { IKnowledgeBase } from '../knowledge/KnowledgeBase.js'
-import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
+import {
+  resolveRuntimeEvidenceFailures,
+  RuntimeEvidenceLedger,
+  type RuntimeEvidenceRecord,
+} from '../runtime/RuntimeEvidenceLedger.js'
 import { SessionLedger, type RuntimeSessionEvent, type RuntimeSessionLevel } from '../runtime/SessionLedger.js'
 import { redactEvidenceText } from '../tools/ToolEvidenceStore.js'
 import { recallMemoryProviders, type MemoryProviderRecallItem } from './MemoryProviders.js'
@@ -79,6 +83,7 @@ export interface RuntimeEvidenceContextItem {
   kind: string
   title: string
   status: string
+  resolved?: boolean
   command?: string
   exitCode?: number
   summary: string
@@ -224,7 +229,8 @@ export class MemoryFabric {
       sessionId: task.sessionId,
       limit: 8,
     })
-    const items = prioritizeEvidence(records).map(toRuntimeEvidenceItem)
+    const resolvedIds = resolveRuntimeEvidenceFailures(records).resolvedIds
+    const items = prioritizeEvidence(records, resolvedIds).map(record => toRuntimeEvidenceItem(record, resolvedIds.has(record.id)))
     return {
       id: 'runtime-evidence',
       title: 'Runtime Evidence',
@@ -391,23 +397,25 @@ export function renderContextPackMarkdown(pack: ContextPack): string {
   return lines.join('\n')
 }
 
-function prioritizeEvidence(records: RuntimeEvidenceRecord[]): RuntimeEvidenceRecord[] {
-  return [...records].sort((a, b) => evidenceStatusRank(b.status) - evidenceStatusRank(a.status))
+function prioritizeEvidence(records: RuntimeEvidenceRecord[], resolvedIds: Set<string>): RuntimeEvidenceRecord[] {
+  return [...records].sort((a, b) => evidenceStatusRank(b, resolvedIds) - evidenceStatusRank(a, resolvedIds))
 }
 
-function evidenceStatusRank(status: string): number {
-  if (status === 'failed') return 3
-  if (status === 'passed') return 2
+function evidenceStatusRank(record: RuntimeEvidenceRecord, resolvedIds: Set<string>): number {
+  if (record.status === 'failed' && !resolvedIds.has(record.id)) return 3
+  if (record.status === 'passed') return 2
+  if (record.status === 'failed') return 1.5
   return 1
 }
 
-function toRuntimeEvidenceItem(record: RuntimeEvidenceRecord): RuntimeEvidenceContextItem {
+function toRuntimeEvidenceItem(record: RuntimeEvidenceRecord, resolved: boolean): RuntimeEvidenceContextItem {
   return {
     type: 'runtime-evidence',
     id: record.id,
     kind: record.kind,
     title: record.title,
     status: record.status,
+    resolved: resolved || undefined,
     command: record.command,
     exitCode: record.exitCode,
     summary: truncate(record.summary, 220),
