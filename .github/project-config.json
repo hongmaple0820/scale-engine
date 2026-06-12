@@ -1,0 +1,74 @@
+{
+  "name": "SCALE Engine Improvements Roadmap",
+  "description": "12-month improvement roadmap: Fast-lane, Cortex Validation, DSL Unification, Upgrade Automation & more",
+  "template": "table",
+  "views": [
+    {
+      "name": "Roadmap",
+      "layout": "table"
+    },
+    {
+      "name": "By Priority",
+      "layout": "table",
+      "filter": "sort:priority"
+    },
+    {
+      "name": "By Timeline",
+      "layout": "roadmap"
+    },
+    {
+      "name": "In Progress",
+      "layout": "table",
+      "filter": "status:In Progress"
+    }
+  ],
+  "fields": [
+    {
+      "name": "Title",
+      "type": "title",
+      "required": true
+    },
+    {
+      "name": "Status",
+      "type": "single_select",
+      "options": [
+        "📋 Backlog",
+        "🚀 Ready",
+        "🔨 In Progress",
+        "✅ Done",
+        "❌ Blocked"
+      ]
+    },
+    {
+      "name": "Priority",
+      "type": "single_select",
+      "options": ["P0 Critical", "P1 High", "P2 Medium", "P3 Low"]
+    },
+    {
+      "name": "Phase",
+      "type": "single_select",
+      "options": ["Short-term (Q3)", "Mid-term (Q4-Q1)", "Long-term (Q2-Q3)"]
+    },
+    {
+      "name": "Effort",
+      "type": "single_select",
+      "options": ["S (Small)", "M (Medium)", "L (Large)", "XL (Extra Large)"]
+    },
+    {
+      "name": "Owner",
+      "type": "assignees"
+    },
+    {
+      "name": "Milestone",
+      "type": "milestone"
+    },
+    {
+      "name": "Start Date",
+      "type": "date"
+    },
+    {
+      "name": "Target Date",
+      "type": "date"
+    }
+  ]
+}
