@@ -38,7 +38,7 @@ scale orch status             # 查看状态 + workspace 列表
 # Scale Cortex — 持续进化
 scale cortex evolve           # 完整进化周期
 scale cortex extract          # 提取 Instincts
-scale cortex inject --minimal # 预览 SessionStart 注入
+scale cortex inject --minimal # 预览 runtime/AI OS 会消费的 SessionStart 注入
 scale cortex metrics --days 30 # 治理 ROI 报告
 ```
 

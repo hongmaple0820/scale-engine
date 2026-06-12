@@ -28,6 +28,10 @@ export interface InstinctAuditEntry {
   reasons?: string[]
 }
 
+export interface InstinctStoreOptions {
+  createDirs?: boolean
+}
+
 // ---------------------------------------------------------------------------
 // InstinctStore
 // ---------------------------------------------------------------------------
@@ -35,9 +39,9 @@ export interface InstinctAuditEntry {
 export class InstinctStore {
   private baseDir: string
 
-  constructor(baseDir: string = join(process.cwd(), '.scale', 'instincts')) {
+  constructor(baseDir: string = join(process.cwd(), '.scale', 'instincts'), options: InstinctStoreOptions = {}) {
     this.baseDir = baseDir
-    if (!existsSync(baseDir)) mkdirSync(baseDir, { recursive: true })
+    if (options.createDirs !== false && !existsSync(baseDir)) mkdirSync(baseDir, { recursive: true })
   }
 
   /**
@@ -134,7 +138,9 @@ export class InstinctStore {
               const instinct = this.parseInstinctFile(join(domainDir, file))
               if (instinct) instincts.push(instinct)
             }
-          } catch { /* skip unreadable domains */ }
+          } catch (err) {
+            logger.warn({ err, domain }, 'Skipped unreadable instinct domain')
+          }
         } else if (domain.endsWith('.yaml')) {
           // Flat file in root
           const instinct = this.parseInstinctFile(join(this.baseDir, domain))
@@ -396,7 +402,9 @@ export class InstinctStore {
           if (existsSync(filePath)) return filePath
         }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.warn({ err, id }, 'Failed to locate instinct file')
+    }
 
     const flatPath = join(this.baseDir, `${id}.yaml`)
     return existsSync(flatPath) ? flatPath : null

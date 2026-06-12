@@ -85,6 +85,7 @@
     "@types/node": "^20.14.0",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.59.3",
+    "@vitest/coverage-v8": "2.1.9",
     "eslint": "^9.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

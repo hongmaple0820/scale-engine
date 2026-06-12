@@ -20,6 +20,7 @@ export interface RuntimeSessionStartInput {
   agent?: string
   level?: RuntimeSessionLevel
   summary?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface RuntimeSessionRecord {
@@ -32,6 +33,7 @@ export interface RuntimeSessionRecord {
   updatedAt: string
   endedAt?: string
   summary?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface RuntimeSessionEventInput {
@@ -73,6 +75,8 @@ export class SessionLedger {
 
   start(input: RuntimeSessionStartInput = {}): RuntimeSessionRecord {
     const now = this.now().toISOString()
+    const metadata = redactEvidenceValue(input.metadata ?? {})
+    const normalizedMetadata = metadata.value as Record<string, unknown>
     const record: RuntimeSessionRecord = {
       sessionId: input.sessionId ?? `SESSION-${Date.now()}-${randomUUID().slice(0, 8)}`,
       taskId: input.taskId,
@@ -82,6 +86,7 @@ export class SessionLedger {
       startedAt: now,
       updatedAt: now,
       summary: input.summary,
+      metadata: Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : undefined,
     }
     this.writeCurrent(record)
     this.append(record.sessionId, {
@@ -91,6 +96,7 @@ export class SessionLedger {
         taskId: record.taskId,
         agent: record.agent,
         level: record.level,
+        metadata: record.metadata,
       },
     })
     return record

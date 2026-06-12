@@ -46,10 +46,16 @@ export interface RuntimeEvidenceSummary {
   total: number
   passed: number
   failed: number
+  resolvedFailed: number
   skipped: number
   expectedRed: number
   ok: boolean
   latestFailure?: RuntimeEvidenceRecord
+}
+
+export interface RuntimeEvidenceFailureResolution {
+  unresolved: RuntimeEvidenceRecord[]
+  resolvedIds: Set<string>
 }
 
 export interface RuntimeEvidenceLedgerOptions {
@@ -120,13 +126,16 @@ export class RuntimeEvidenceLedger {
     const records = this.list({ ...query, limit: query.limit ?? Number.MAX_SAFE_INTEGER })
     const passed = records.filter(record => record.status === 'passed').length
     const expectedRed = records.filter(isExpectedRedEvidence).length
-    const failedRecords = records.filter(record => record.status === 'failed' && !isExpectedRedEvidence(record))
+    const failureResolution = resolveRuntimeEvidenceFailures(records)
+    const failedRecords = failureResolution.unresolved
     const failed = failedRecords.length
+    const failedCandidates = records.filter(record => record.status === 'failed' && !isExpectedRedEvidence(record)).length
     const skipped = records.filter(record => record.status === 'skipped').length
     return {
       total: records.length,
       passed,
       failed,
+      resolvedFailed: failedCandidates - failed,
       skipped,
       expectedRed,
       ok: failed === 0,
@@ -139,6 +148,66 @@ function isExpectedRedEvidence(record: RuntimeEvidenceRecord): boolean {
   if (record.status !== 'failed') return false
   const metadata = record.metadata ?? {}
   return metadata.expectedRed === true || metadata.expectedFailure === true
+}
+
+export function resolveRuntimeEvidenceFailures(records: RuntimeEvidenceRecord[]): RuntimeEvidenceFailureResolution {
+  const passedKeys = new Set<string>()
+  const unresolved: RuntimeEvidenceRecord[] = []
+  const resolvedIds = new Set<string>()
+
+  for (const record of records) {
+    const key = resolutionKey(record)
+    if (record.status === 'passed' && key) {
+      passedKeys.add(key)
+      continue
+    }
+
+    if (record.status !== 'failed' || isExpectedRedEvidence(record)) continue
+    if (isResolvedEvidence(record) || key && passedKeys.has(key)) {
+      resolvedIds.add(record.id)
+      continue
+    }
+    unresolved.push(record)
+  }
+
+  return { unresolved, resolvedIds }
+}
+
+function isResolvedEvidence(record: RuntimeEvidenceRecord): boolean {
+  const metadata = record.metadata ?? {}
+  return metadata.resolved === true || metadata.superseded === true || typeof metadata.resolvedBy === 'string'
+}
+
+function resolutionKey(record: RuntimeEvidenceRecord): string | null {
+  const metadata = record.metadata ?? {}
+  const metadataKey = firstString(
+    metadata.resolutionKey,
+    metadata.stepId,
+    metadata.gate,
+    metadata.checkId,
+    metadata.scenario,
+    metadata.phase,
+  )
+  const itemKey = metadataKey ?? normalizeEvidenceKey(record.command) ?? normalizeEvidenceKey(record.title)
+  if (!itemKey) return null
+  return [
+    record.taskId ?? '',
+    record.sessionId ?? '',
+    record.kind,
+    itemKey,
+  ].join('\u001f')
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+  }
+  return undefined
+}
+
+function normalizeEvidenceKey(value?: string): string | undefined {
+  const normalized = value?.trim().replace(/\s+/g, ' ').toLowerCase()
+  return normalized && normalized.length > 0 ? normalized : undefined
 }
 
 function readRuntimeEvidence(file: string): RuntimeEvidenceRecord | null {

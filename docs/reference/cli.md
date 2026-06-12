@@ -53,7 +53,7 @@ Evidence-driven continuous evolution with instinct extraction.
 | Command | Description |
 |---------|-------------|
 | `scale cortex extract` | Extract instincts from observation logs |
-| `scale cortex inject` | Preview SessionStart injection content |
+| `scale cortex inject` | Preview SessionStart injection content used by runtime sessions and AI OS preamble |
 | `scale cortex metrics` | Show governance metrics |
 | `scale cortex evolve` | Run evolution cycle |
 | `scale cortex verify` | Verify cortex pipeline health |

@@ -18,6 +18,8 @@ Instincts (with confidence 0.3-0.9)
 InstinctStore (.scale/instincts/)
     ↓ build()
 SessionStart Injection
+    ↓ collectSessionPreamble()
+AI OS plan / runtime session metadata
 ```
 
 ### 置信度评分
@@ -100,6 +102,13 @@ scale cortex inject
 scale cortex inject --minimal
 # 输出: 每个 instinct 单行摘要
 ```
+
+`scale cortex inject` 是预览和调试入口。实际运行时接入点有两个：
+
+- `scale runtime start` 会把 Cortex 注入结果写入 `session.started` 事件的 `metadata.cortex`，同时写入 current session metadata。
+- `scale ai-os plan/run` 会通过 `collectSessionPreamble()` 把 `preamble.cortex` 放进 AI OS 计划和运行报告。
+
+因此高置信 instinct 不只停留在手动预览；它会进入运行时会话和 AI OS 规划上下文。`instinctCount=0` 时仍保留 evidence-discipline 基线注入，但不会声称存在已学习 instinct。
 
 ### Audit and restore
 

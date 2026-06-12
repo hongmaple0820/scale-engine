@@ -78,6 +78,11 @@
         "command": "bash .claude/hooks/gate-execute-phase.sh",
         "timeout": 3000,
         "description": "Route code edits through the repository workflow phase gates."
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/shield-pre-tool.js",
+        "timeout": 5000
       }
     ],
     "Stop": [

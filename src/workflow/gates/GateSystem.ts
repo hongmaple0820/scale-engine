@@ -185,11 +185,15 @@ export class GateSystem {
   private evidenceStore: EvidenceStore
   private commands: ReturnType<typeof detectVerificationCommands>
   private artifactWriter: WorkflowArtifactWriter
+  private rootDir: string
+  private scaleDir: string
 
   constructor(eventBus: IEventBus, commandConfig: VerificationCommandConfig = {}, artifactWriter?: WorkflowArtifactWriter) {
     this.eventBus = eventBus
     this.evidenceStore = new EvidenceStore()
-    this.commands = detectVerificationCommands(commandConfig.cwd ?? process.cwd(), commandConfig)
+    this.rootDir = commandConfig.cwd ?? process.cwd()
+    this.scaleDir = commandConfig.runtimeEvidence?.scaleDir ?? '.scale'
+    this.commands = detectVerificationCommands(this.rootDir, commandConfig)
     this.artifactWriter = artifactWriter ?? new WorkflowArtifactWriter()
     this.registerDefaultGates()
   }
@@ -224,9 +228,10 @@ export class GateSystem {
     if (cacheableGates.includes(stage)) {
       try {
         const { ScanCache } = await import('../../cache/ScanCache.js')
-        const scanCache = new ScanCache()
+        const scanCache = new ScanCache(this.rootDir)
         const changedFiles = await this.getChangedFiles()
         const fileHashes = scanCache.hashFiles(changedFiles)
+        fileHashes['__gate_context__'] = this.cacheContextForGate(stage)
         const cacheKey = scanCache.computeKey(fileHashes)
         const cached = scanCache.get(stage, cacheKey)
         if (cached) {
@@ -407,12 +412,35 @@ export class GateSystem {
 
   private async getChangedFiles(): Promise<string[]> {
     const { execSync } = await import('node:child_process')
+    const { resolve } = await import('node:path')
     try {
-      const output = execSync('git diff --name-only HEAD', { encoding: 'utf-8', stdio: 'pipe' })
-      return output.trim().split('\n').filter(Boolean)
+      const output = execSync('git diff --name-only HEAD', { cwd: this.rootDir, encoding: 'utf-8', stdio: 'pipe' })
+      return output.trim().split('\n').filter(Boolean).map(file => resolve(this.rootDir, file))
     } catch {
       return []
     }
+  }
+
+  private cacheContextForGate(stage: GateStage): string {
+    const commandByStage: Partial<Record<GateStage, ResolvedVerificationCommand>> = {
+      G0: this.commands.build,
+      G4: this.commands.lint,
+      G5: this.commands.test,
+      G6: this.commands.coverage,
+    }
+    const command = commandByStage[stage]
+    return JSON.stringify({
+      gateCacheSchema: 2,
+      rootDir: this.rootDir,
+      scaleDir: this.scaleDir,
+      stage,
+      command: command?.command,
+      source: command?.source,
+      reason: command?.reason,
+      cwd: command?.cwd,
+      tddStrict: this.commands.tddStrict,
+      tddEvidence: this.commands.tddEvidence,
+    })
   }
 
   private registerDefaultGates(): void {
@@ -423,7 +451,10 @@ export class GateSystem {
     this.registerGate(new LintGate(this.commands.lint, this.commands.runtimeEvidence))
     this.registerGate(new TestGate(this.commands.test, this.commands.runtimeEvidence))
     this.registerGate(new CoverageGate(this.commands.coverage, this.commands.runtimeEvidence))
-    this.registerGate(new SecurityGate())
+    this.registerGate(new SecurityGate({
+      rootDir: this.rootDir,
+      scaleDir: this.scaleDir,
+    }))
     this.registerGate(new ProductSmokeGate(this.commands.smoke, this.commands.runtimeEvidence))
   }
 }
@@ -1028,9 +1059,8 @@ export class CoverageGate implements IGate {
       if (commandResult.code !== 0) {
         blockers.push(`Coverage command failed: ${commandResult.stderr}`)
       }
-      const coverageMatch = commandResult.stdout.match(/All files[^|]*\|[^|]*\|[^|]*\|[^|]*\|[^|]*\|\s*(\d+\.?\d*)/)
-      if (coverageMatch) {
-        const coverage = parseFloat(coverageMatch[1])
+      const coverage = parseCoveragePercentage(commandResult.stdout)
+      if (coverage !== null) {
         detail = `Coverage: ${coverage}%`
         if (coverage < 80) {
           blockers.push(`Coverage ${coverage}% below 80% threshold`)
@@ -1059,6 +1089,25 @@ export class CoverageGate implements IGate {
     } as GateResult
   }
 
+}
+
+function parseCoveragePercentage(output: string): number | null {
+  const allFilesLine = output
+    .split(/\r?\n/)
+    .find(line => /^\s*All files\s*\|/.test(line))
+  if (!allFilesLine) return null
+
+  const values = allFilesLine
+    .split('|')
+    .slice(1)
+    .map(part => part.trim().match(/^(\d+(?:\.\d+)?)/)?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map(Number)
+
+  if (values.length >= 5) return values[values.length - 1]
+  if (values.length >= 4) return values[3]
+  if (values.length > 0) return values[values.length - 1]
+  return null
 }
 
 export class SecurityGate implements IGate {

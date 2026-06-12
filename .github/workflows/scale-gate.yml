@@ -30,7 +30,7 @@ jobs:
       - name: Run Preflight Gates
         id: gates
         run: |
-          scale preflight --json --profile ci 2>&1 | tee scale-gates.json
+          scale preflight --json --profile ci --preflight-profile ci 2>&1 | tee scale-gates.json
           echo "## SCALE Gate Results" >> $GITHUB_STEP_SUMMARY
           cat scale-gates.json >> $GITHUB_STEP_SUMMARY
 

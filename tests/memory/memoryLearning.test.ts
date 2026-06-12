@@ -95,4 +95,58 @@ describe('MemoryLearning', () => {
     expect(result.candidate.recommendedAction).toBe('resolve-failures-first')
     expect(result.candidate.warnings.join('\n')).toContain('failed runtime evidence')
   })
+
+  it('allows promotion review when failed runtime evidence was resolved by later passed evidence', async () => {
+    const projectDir = makeProject()
+    const scaleDir = '.scale'
+    const times = [
+      '2026-05-18T00:00:00.000Z',
+      '2026-05-18T00:01:00.000Z',
+    ]
+    const ledger = new RuntimeEvidenceLedger({
+      projectDir,
+      scaleDir,
+      now: () => new Date(times.shift() ?? '2026-05-18T00:02:00.000Z'),
+    })
+    ledger.record({
+      taskId: 'TASK-RESOLVED',
+      sessionId: 'SESSION-RESOLVED',
+      kind: 'command',
+      title: 'AI OS verification command 1',
+      status: 'failed',
+      exitCode: 1,
+      summary: 'unterminated quote in command',
+      metadata: { stepId: 'verify-command:1' },
+    })
+    ledger.record({
+      taskId: 'TASK-RESOLVED',
+      sessionId: 'SESSION-RESOLVED',
+      kind: 'command',
+      title: 'AI OS verification command 1',
+      status: 'passed',
+      exitCode: 0,
+      summary: 'fixed command passed',
+      metadata: { stepId: 'verify-command:1' },
+    })
+
+    const pack = await new MemoryFabric({ projectDir, scaleDir }).createContextPack({
+      taskId: 'TASK-RESOLVED',
+      sessionId: 'SESSION-RESOLVED',
+      task: 'Settle resolved runtime evidence',
+      level: 'M',
+    })
+
+    const result = settleMemoryLearning({ projectDir, scaleDir, pack })
+
+    expect(result.candidate.recommendedAction).toBe('review-for-knowledge-base')
+    expect(result.candidate.promotable).toBe(true)
+    expect(result.candidate.warnings.join('\n')).not.toContain('failed runtime evidence')
+    expect(result.candidate.tags).toContain('resolved-failure-evidence')
+    expect(result.candidate.evidenceSummaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: 'failed',
+        resolved: true,
+      }),
+    ]))
+  })
 })

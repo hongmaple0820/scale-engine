@@ -175,6 +175,12 @@ describe('checkCommand', () => {
     expect(matches.length).toBeGreaterThan(0)
   })
 
+  it('blocks DISABLE_OMC', () => {
+    const matches = checkCommand('DISABLE_OMC=1 npm test')
+    expect(matches.length).toBeGreaterThan(0)
+    expect(matches[0].severity).toBe('block')
+  })
+
   it('blocks chmod 777', () => {
     const matches = checkCommand('chmod 777 /tmp/file')
     expect(matches.length).toBeGreaterThan(0)

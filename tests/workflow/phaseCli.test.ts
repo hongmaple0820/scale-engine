@@ -420,6 +420,40 @@ export function login(token: string) {
     expect(result.targets.every(target => target.passed)).toBe(true)
   }, 120_000)
 
+  it('preserves fast-lane as a distinct preflight profile', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { commands: {} } },
+      services: [
+        { name: 'root', path: '.', required: true },
+      ],
+    }, null, 2), 'utf-8')
+
+    const preflight = await runScale([
+      'preflight',
+      '--service',
+      'all',
+      '--preflight-profile',
+      'fast-lane',
+      '--build-cmd',
+      'node -v',
+      '--lint-cmd',
+      'node -v',
+      '--test-cmd',
+      'node -v',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(preflight.exitCode).toBe(0)
+    const result = parseJson<{ passed: boolean; preflightProfile: string; gates: string[] }>(preflight.stdout)
+    expect(result.passed).toBe(true)
+    expect(result.preflightProfile).toBe('fast-lane')
+    expect(result.gates).toEqual(['G3', 'G0', 'G4', 'G5'])
+  }, 120_000)
+
   it('honors --dir for init and preflight without SCALE_PROJECT_DIR', async () => {
     const projectDir = makeProjectDir()
     writeFileSync(join(projectDir, 'package.json'), JSON.stringify({

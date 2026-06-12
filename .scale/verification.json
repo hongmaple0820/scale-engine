@@ -29,6 +29,17 @@
       "services": [
         "scale-engine"
       ]
+    },
+    "ci": {
+      "commands": {
+        "build": "npm run build",
+        "lint": "npm run lint",
+        "test": "npx vitest run tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts tests/workflow/gateSystem.test.ts tests/api/runtimeCli.test.ts --reporter=dot --testTimeout=30000",
+        "coverage": "npx vitest run tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.include=src/workflow/GateCatalog.ts --coverage.include=src/workflow/VerificationProfile.ts --reporter=dot --testTimeout=30000"
+      },
+      "services": [
+        "scale-engine"
+      ]
     }
   },
   "services": [

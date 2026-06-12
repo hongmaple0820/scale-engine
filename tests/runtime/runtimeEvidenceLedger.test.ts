@@ -84,4 +84,57 @@ describe('RuntimeEvidenceLedger', () => {
       latestFailure: expect.objectContaining({ id: failed.id }),
     })
   })
+
+  it('treats older failed evidence as resolved after a later passed record for the same step', () => {
+    const projectDir = makeProject()
+    const times = [
+      '2026-05-18T00:00:00.000Z',
+      '2026-05-18T00:01:00.000Z',
+      '2026-05-18T00:02:00.000Z',
+    ]
+    const ledger = new RuntimeEvidenceLedger({
+      projectDir,
+      now: () => new Date(times.shift() ?? '2026-05-18T00:03:00.000Z'),
+    })
+
+    ledger.record({
+      taskId: 'TASK-A',
+      sessionId: 'SESSION-A',
+      kind: 'command',
+      title: 'AI OS verification command 1',
+      status: 'failed',
+      exitCode: 1,
+      summary: 'unterminated quote',
+      metadata: { stepId: 'verify-command:1' },
+    })
+    ledger.record({
+      taskId: 'TASK-A',
+      sessionId: 'SESSION-A',
+      kind: 'command',
+      title: 'AI OS verification command 1',
+      status: 'passed',
+      exitCode: 0,
+      summary: 'fixed command passed',
+      metadata: { stepId: 'verify-command:1' },
+    })
+    const unresolved = ledger.record({
+      taskId: 'TASK-A',
+      sessionId: 'SESSION-A',
+      kind: 'command',
+      title: 'AI OS verification command 2',
+      status: 'failed',
+      exitCode: 1,
+      summary: 'still failing',
+      metadata: { stepId: 'verify-command:2' },
+    })
+
+    expect(ledger.summary({ taskId: 'TASK-A', sessionId: 'SESSION-A' })).toMatchObject({
+      total: 3,
+      passed: 1,
+      failed: 1,
+      resolvedFailed: 1,
+      ok: false,
+      latestFailure: expect.objectContaining({ id: unresolved.id }),
+    })
+  })
 })
