@@ -3,10 +3,13 @@
 // Inspired by gstack's preamble pattern: collect branch, sessions, learnings, etc.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { execSync } from 'node:child_process'
 import { SCALE_ENGINE_VERSION } from '../version.js'
+import { InstinctStore } from '../cortex/InstinctStore.js'
+import { SessionInjector } from '../cortex/SessionInjector.js'
+import { logger } from '../core/logger.js'
 
 const SILENT_GIT_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore']
 
@@ -25,7 +28,15 @@ export interface SessionPreamble {
   learningCount: number
   verificationProfile: string
   governanceMode: string
+  cortex: SessionPreambleCortex
   warnings: string[]
+}
+
+export interface SessionPreambleCortex {
+  instinctCount: number
+  instinctsApplied: string[]
+  content: string
+  warning?: string
 }
 
 export interface PreambleOptions {
@@ -40,6 +51,7 @@ export interface PreambleOptions {
 export function collectSessionPreamble(opts?: PreambleOptions): SessionPreamble {
   const projectDir = opts?.projectDir ?? process.cwd()
   const scaleDir = opts?.scaleDir ?? '.scale'
+  const scaleRoot = resolveScaleRoot(projectDir, scaleDir)
 
   const warnings: string[] = []
 
@@ -59,7 +71,8 @@ export function collectSessionPreamble(opts?: PreambleOptions): SessionPreamble 
     gitRoot = execSync('git rev-parse --show-toplevel', {
       cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
     }).trim()
-  } catch {
+  } catch (error) {
+    logger.debug({ error, projectDir }, 'Unable to resolve git root for session preamble')
     // Use projectDir as fallback
   }
 
@@ -67,16 +80,20 @@ export function collectSessionPreamble(opts?: PreambleOptions): SessionPreamble 
   const projectSlug = deriveProjectSlug(projectDir)
 
   // Active run count
-  const activeRunCount = countActiveRuns(scaleDir)
+  const activeRunCount = countActiveRuns(scaleRoot)
 
   // Learning count
-  const learningCount = countLearnings(scaleDir, projectSlug)
+  const learningCount = countLearnings(scaleRoot, projectSlug)
 
   // Verification profile
-  const verificationProfile = resolveCurrentProfile(scaleDir, projectDir)
+  const verificationProfile = resolveCurrentProfile(scaleRoot)
 
   // Governance mode (default)
   const governanceMode = 'standard'
+
+  // Cortex SessionStart injection
+  const cortex = collectCortexInjection(scaleRoot, projectSlug)
+  if (cortex.warning) warnings.push(cortex.warning)
 
   return {
     sessionId: randomUUID().slice(0, 8),
@@ -89,6 +106,7 @@ export function collectSessionPreamble(opts?: PreambleOptions): SessionPreamble 
     learningCount,
     verificationProfile,
     governanceMode,
+    cortex,
     warnings,
   }
 }
@@ -107,10 +125,19 @@ export function formatPreambleForAgent(preamble: SessionPreamble): string {
     `LEARNINGS: ${preamble.learningCount}`,
     `VERIFICATION_PROFILE: ${preamble.verificationProfile}`,
     `GOVERNANCE_MODE: ${preamble.governanceMode}`,
+    `CORTEX_INSTINCTS: ${preamble.cortex.instinctCount}`,
   ]
+
+  if (preamble.cortex.instinctsApplied.length > 0) {
+    lines.push(`CORTEX_APPLIED: ${preamble.cortex.instinctsApplied.join(',')}`)
+  }
 
   if (preamble.warnings.length > 0) {
     lines.push(`WARNINGS: ${preamble.warnings.join('; ')}`)
+  }
+
+  if (preamble.cortex.content.trim()) {
+    lines.push('', 'CORTEX_SESSION_INJECTION:', preamble.cortex.content)
   }
 
   return lines.join('\n')
@@ -125,6 +152,29 @@ function deriveProjectSlug(projectDir: string): string {
     return basename(projectDir).replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase()
   } catch {
     return 'unknown'
+  }
+}
+
+function resolveScaleRoot(projectDir: string, scaleDir: string): string {
+  return isAbsolute(scaleDir) ? scaleDir : join(projectDir, scaleDir)
+}
+
+function collectCortexInjection(scaleRoot: string, projectSlug: string): SessionPreambleCortex {
+  try {
+    const store = new InstinctStore(join(scaleRoot, 'instincts'), { createDirs: false })
+    const injection = new SessionInjector(store).build(projectSlug)
+    return {
+      instinctCount: injection.instinctCount,
+      instinctsApplied: injection.metadata.instinctsApplied,
+      content: injection.content,
+    }
+  } catch (error) {
+    return {
+      instinctCount: 0,
+      instinctsApplied: [],
+      content: '',
+      warning: `Cortex injection unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    }
   }
 }
 
@@ -151,15 +201,15 @@ function countLearnings(scaleDir: string, projectSlug: string): number {
   }
 }
 
-function resolveCurrentProfile(scaleDir: string, projectDir: string): string {
+function resolveCurrentProfile(scaleRoot: string): string {
   try {
-    const matrixPath = join(projectDir, scaleDir, 'verification-matrix.json')
+    const matrixPath = join(scaleRoot, 'verification-matrix.json')
     if (existsSync(matrixPath)) {
       const matrix = JSON.parse(readFileSync(matrixPath, 'utf-8')) as { defaultProfile?: string }
       return matrix.defaultProfile ?? 'default'
     }
-  } catch {
-    // Ignore
+  } catch (error) {
+    logger.debug({ error, scaleRoot }, 'Unable to resolve current verification profile')
   }
   return 'default'
 }

@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BuildGate, CoverageGate, ExplorationGate, PlanningGate, ProductSmokeGate, SecurityGate, TDDGate, runShellCommand } from '../../src/workflow/gates/GateSystem.js'
+import { EventBus } from '../../src/core/eventBus.js'
+import { BuildGate, CoverageGate, ExplorationGate, GateSystem, PlanningGate, ProductSmokeGate, SecurityGate, TDDGate, runShellCommand } from '../../src/workflow/gates/GateSystem.js'
 import { WorkflowArtifactWriter } from '../../src/workflow/WorkflowArtifactWriter.js'
 
 let dirs: string[] = []
@@ -220,6 +221,24 @@ describe('CoverageGate', () => {
     expect(result.passed).toBe(true)
     expect(result.status).toBe('PASSED')
     expect(result.evidence).toContain('Coverage: 85.5%')
+  })
+
+  it('parses Vitest v2 text coverage tables', async () => {
+    const gate = new CoverageGate({
+      command: nodePrintCommand([
+        'File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s',
+        '-------------------|---------|----------|---------|---------|-------------------',
+        'All files          |   87.57 |    83.48 |      90 |   87.57 |',
+        ' GateCatalog.ts    |   99.28 |    76.19 |     100 |   99.28 | 278-279',
+      ].join('\n')),
+      source: 'override',
+      reason: 'test vitest coverage command',
+    })
+
+    const result = await gate.execute()
+
+    expect(result.passed).toBe(true)
+    expect(result.evidence).toContain('Coverage: 87.57%')
   })
 
   it('fails when parsed coverage is below 80', async () => {
@@ -463,5 +482,21 @@ describe('SecurityGate', () => {
       expect.stringContaining('dependency.eval'),
     ]))
     expect(result.evidenceItems?.some(item => item.label === 'G7 dependency audit')).toBe(true)
+  })
+
+  it('runs G7 against the configured verification target cwd', async () => {
+    const targetDir = createSecurityFixture({
+      'src/index.ts': 'const apiKey = "abc123456789"\n',
+    })
+    const eventsDir = mkdtempSync(join(tmpdir(), 'scale-g7-events-'))
+    dirs.push(eventsDir)
+    const gateSystem = new GateSystem(new EventBus({ eventsDir }), { cwd: targetDir })
+
+    const result = await gateSystem.executeGate('G7')
+
+    expect(result.passed).toBe(false)
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      expect.stringContaining('secret.assignment in src/index.ts'),
+    ]))
   })
 })

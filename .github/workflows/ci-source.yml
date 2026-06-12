@@ -36,18 +36,25 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: SCALE quality gate evidence
-        id: gate-quality
+      - name: SCALE fast-lane preflight evidence
+        id: gate-fast-lane
         continue-on-error: true
         run: |
-          make gate-quality 2>&1 | tee gate-quality.log
-          echo "## SCALE quality gate" >> "$GITHUB_STEP_SUMMARY"
-          cat gate-quality.log >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          timeout 180s node dist/api/cli.js preflight --json --profile ci --preflight-profile fast-lane 2>&1 | tee gate-fast-lane.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "## SCALE fast-lane preflight"
+            cat gate-fast-lane.log
+            echo
+            echo "Exit code: ${status}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "${status}"
 
-      - name: Upload quality gate evidence
+      - name: Upload fast-lane gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: source-ci-gate-quality
-          path: gate-quality.log
+          name: source-ci-gate-fast-lane
+          path: gate-fast-lane.log
           retention-days: 30

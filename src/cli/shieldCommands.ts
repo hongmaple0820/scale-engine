@@ -1,11 +1,21 @@
 import { defineCommand } from 'citty'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PolicyCompiler } from '../shield/PolicyCompiler.js'
 import { verifyScaleIntegrity, checkCommand } from '../shield/ProtectedPaths.js'
 import { logger } from '../core/logger.js'
 
 const compiler = new PolicyCompiler()
+
+interface ClaudeHookEntry {
+  command?: string
+}
+
+interface ClaudeSettings {
+  hooks?: {
+    PreToolUse?: ClaudeHookEntry[]
+  }
+}
 
 // ---------------------------------------------------------------------------
 // scale shield compile
@@ -69,7 +79,7 @@ export const shieldCompileCommand = defineCommand({
       if (existsSync(join(projectDir, '.cursor'))) console.log('    ✅ .cursor/hooks.json')
     }
 
-    console.log('\n  Shield is active. Protected: .scale/ dir, dangerous commands, secret exposure.\n')
+    console.log('\n  Shield is active. Protected: .scale/ dir, dangerous commands, sensitive output.\n')
   },
 })
 
@@ -100,10 +110,12 @@ export const shieldStatusCommand = defineCommand({
     let hookRegistered = false
     if (existsSync(settingsPath)) {
       try {
-        const settings = JSON.parse(require('fs').readFileSync(settingsPath, 'utf-8'))
-        const hooks = settings.hooks?.PreToolUse ?? []
-        hookRegistered = hooks.some((h: any) => h?.command?.includes('shield-pre-tool'))
-      } catch { /* ignore */ }
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as ClaudeSettings
+        const hooks = Array.isArray(settings.hooks?.PreToolUse) ? settings.hooks.PreToolUse : []
+        hookRegistered = hooks.some(h => h.command?.includes('shield-pre-tool') ?? false)
+      } catch (err) {
+        logger.debug({ err, settingsPath }, 'Unable to inspect Shield hook registration')
+      }
     }
 
     if (args.json) {

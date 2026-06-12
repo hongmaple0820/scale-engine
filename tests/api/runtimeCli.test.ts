@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 
 let dirs: string[] = []
 
@@ -34,6 +35,53 @@ function parseJson<T>(stdout: string): T {
 }
 
 describe('runtime CLI', () => {
+  it('attaches Cortex injection metadata when starting a runtime session', async () => {
+    const scaleDir = makeDir('scale-runtime-cli-scale-')
+    const projectDir = makeDir('scale-runtime-cli-project-')
+    const savedInstinctId = new InstinctStore(join(scaleDir, 'instincts')).save({
+      id: 'instinct-runtime-cli',
+      trigger: 'runtime cli cortex',
+      confidence: 0.9,
+      domain: 'governance',
+      source: 'test',
+      scope: 'global',
+      action: '## Action\nVerify Cortex runtime metadata before final delivery',
+      evidence: ['[2026-06-12] G8: runtime cli cortex'],
+      observations: 5,
+      createdAt: '2026-06-12T00:00:00.000Z',
+      updatedAt: '2026-06-12T00:00:00.000Z',
+      appliedCount: 0,
+      hitRate: 0,
+    })
+    expect(savedInstinctId).not.toBe('')
+
+    const start = await runScale([
+      'runtime',
+      'start',
+      '--session-id',
+      'SESSION-CORTEX',
+      '--task-id',
+      'TASK-CORTEX',
+      '--level',
+      'M',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(start.exitCode).toBe(0)
+    const session = parseJson<{ metadata?: { cortex?: { instinctCount: number; instinctsApplied: string[]; content: string } } }>(start.stdout)
+    expect(session.metadata?.cortex).toMatchObject({
+      instinctCount: 1,
+      instinctsApplied: [savedInstinctId],
+    })
+    expect(session.metadata?.cortex?.content).toContain('Verify Cortex runtime metadata')
+
+    const eventLines = readFileSync(join(scaleDir, 'events', 'sessions', 'SESSION-CORTEX.jsonl'), 'utf-8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+    const startedEvent = JSON.parse(eventLines[0]) as { data?: { metadata?: { cortex?: { instinctsApplied: string[] } } } }
+    expect(startedEvent.data?.metadata?.cortex?.instinctsApplied).toEqual([savedInstinctId])
+  }, 120_000)
+
   it('records runtime evidence and passes final check for scoped M work', async () => {
     const scaleDir = makeDir('scale-runtime-cli-scale-')
     const projectDir = makeDir('scale-runtime-cli-project-')
@@ -233,6 +281,67 @@ describe('runtime CLI', () => {
         evidence: {
           expectedRed: 1,
           failed: 0,
+        },
+      },
+    })
+  }, 120_000)
+
+  it('passes unscoped final check when historical failed evidence is resolved by later passed step evidence', async () => {
+    const scaleDir = makeDir('scale-runtime-cli-scale-')
+    const projectDir = makeDir('scale-runtime-cli-project-')
+
+    const failed = await runScale([
+      'runtime',
+      'record',
+      '--title',
+      'AI OS verification command 1',
+      '--status',
+      'failed',
+      '--command',
+      'node --import tsx src/api/cli.ts memory provider recall "broken',
+      '--exit-code',
+      '1',
+      '--summary',
+      'Unterminated quote in command',
+      '--metadata-json',
+      '{"stepId":"verify-command:1","aiOsRun":true}',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(failed.exitCode).toBe(0)
+
+    const passed = await runScale([
+      'runtime',
+      'record',
+      '--title',
+      'AI OS verification command 1',
+      '--status',
+      'passed',
+      '--command',
+      'node --import tsx src/api/cli.ts memory provider recall fixed --json',
+      '--exit-code',
+      '0',
+      '--summary',
+      'Fixed command passed',
+      '--metadata-json',
+      '{"stepId":"verify-command:1","aiOsRun":true}',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(passed.exitCode).toBe(0)
+
+    const finalCheck = await runScale([
+      'runtime',
+      'final-check',
+      '--level',
+      'M',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(finalCheck.exitCode).toBe(0)
+    expect(parseJson<{ ready: boolean; report: { evidence: { failed: number; resolvedFailed: number } } }>(finalCheck.stdout)).toMatchObject({
+      ready: true,
+      report: {
+        evidence: {
+          failed: 0,
+          resolvedFailed: 1,
         },
       },
     })

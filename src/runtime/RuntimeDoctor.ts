@@ -73,6 +73,8 @@ export function doctorRuntimeEvidence(options: RuntimeDoctorOptions = {}): Runti
       status: 'ok',
       message: evidence.expectedRed > 0
         ? `No unresolved failed runtime evidence records; ${evidence.expectedRed} expected red reproduction record(s)`
+        : evidence.resolvedFailed > 0
+          ? `No unresolved failed runtime evidence records; ${evidence.resolvedFailed} resolved failed record(s)`
         : 'No failed runtime evidence records',
     })
   }

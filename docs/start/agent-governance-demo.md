@@ -74,7 +74,7 @@ scale runtime final-check --task-id 2026-05-18-oauth-state --session-id 2026-05-
 - `npm test` 必须真实通过。
 - `standards scan` 不能发现阻断级别问题。
 - `assets scan` 应能识别长期维护文档、任务证据和生成产物分类。
-- `runtime final-check` 必须确认当前任务范围内有通过证据，且没有失败证据。
+- `runtime final-check` 必须确认当前任务范围内有通过证据，且没有未解决失败证据。
 
 ## 5. 生成记忆候选和 HTML artifact
 
