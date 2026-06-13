@@ -7,7 +7,14 @@
       "L",
       "CRITICAL"
     ],
-    "requireSkillPlan": true
+    "requireSkillPlan": true,
+    "waivedRecommendedSkills": [
+      {
+        "id": "mcp-chrome-devtools",
+        "reason": "Recommended browser-inspection capability is provided by host agent profiles when available; current local MCP probe reports a Chrome profile conflict, so this remains an explicit non-blocking repo waiver rather than installed evidence.",
+        "expiresAt": "2026-07-31"
+      }
+    ]
   },
   "domains": {
     "ui": {

@@ -6,8 +6,9 @@ import { InstinctStore } from '../cortex/InstinctStore.js'
 import { ReflexionEngine } from '../cortex/ReflexionEngine.js'
 import { SessionInjector } from '../cortex/SessionInjector.js'
 import { GovernanceMetricsCalculator } from '../cortex/GovernanceMetrics.js'
-import { logger } from '../core/logger.js'
-
+import { candidateReviewSummary, formatRejectedCandidate, reviewInstinctCandidates, selectReviewedInstinctCandidates } from '../cortex/InstinctCandidateReview.js'
+import { cortexApplyCommand } from './cortexApplyCommand.js'
+import { cortexApproveCommand, cortexRejectCommand } from './cortexCandidateCommands.js'
 // ---------------------------------------------------------------------------
 // scale cortex extract
 // ---------------------------------------------------------------------------
@@ -20,12 +21,16 @@ export const cortexExtractCommand = defineCommand({
   args: {
     dir: { type: 'string', default: process.cwd(), description: 'Project directory' },
     'min-confidence': { type: 'string', default: '0.5', description: 'Minimum confidence threshold (0.3-0.9)' },
+    'dry-run': { type: 'boolean', default: false, description: 'Preview extracted instincts without saving them' },
+    'include-stale': { type: 'boolean', default: false, description: 'Save stale or review-only candidates for backwards-compatible extraction' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
     const projectDir = String(args.dir ?? process.cwd())
     const scaleDir = join(projectDir, '.scale')
     const minConfidence = parseFloat(String(args['min-confidence'] ?? 0.5))
+    const dryRun = args['dry-run'] === true
+    const includeStale = args['include-stale'] === true
 
     const extractor = new InstinctExtractor(scaleDir)
     const store = new InstinctStore(join(scaleDir, 'instincts'))
@@ -45,19 +50,37 @@ export const cortexExtractCommand = defineCommand({
     console.log(`  Patterns detected:  ${patterns.length}`)
 
     const instincts = extractor.extract(patterns)
-    const filtered = instincts.filter(i => i.confidence >= minConfidence)
+    const reviewed = reviewInstinctCandidates(instincts, patterns, observations)
+    const selection = selectReviewedInstinctCandidates(reviewed, minConfidence, includeStale)
+    const filtered = selection.instincts
+    const { eligibleReviews, saveableReviews, rejectedReviews, summary: reviewSummary } = selection
+    const reviewLine = `  Candidate review: accepted=${reviewSummary.accepted}, stale=${reviewSummary.stale}, needs-review=${reviewSummary['needs-review']}`
 
     console.log(`  Instincts extracted: ${instincts.length} (${filtered.length} ≥ ${minConfidence} confidence)\n`)
 
-    let saved = 0
-    for (const instinct of filtered) {
-      if (store.save(instinct)) saved++
+    console.log(`  Eligible above threshold: ${eligibleReviews.length}; saveable=${filtered.length}`)
+    console.log(reviewLine)
+    if (!includeStale && rejectedReviews.length > 0) {
+      console.log(`  Filtered out: ${rejectedReviews.length} stale/review-only candidate(s)`)
     }
 
-    console.log(`  Saved: ${saved} instincts to .scale/instincts/`)
+    let saved = 0
+    if (!dryRun) {
+      for (const review of saveableReviews) {
+        if (store.save(review.instinct)) saved++
+      }
+    }
+
+    console.log(dryRun
+      ? '  Dry run: no instincts saved to .scale/instincts/'
+      : `  Saved: ${saved} instincts to .scale/instincts/`)
 
     if (args.json) {
-      console.log(JSON.stringify(filtered, null, 2))
+      console.log(JSON.stringify({
+        instincts: filtered,
+        rejected: rejectedReviews.map(formatRejectedCandidate),
+        review: reviewSummary,
+      }, null, 2))
       return
     }
 
@@ -65,6 +88,12 @@ export const cortexExtractCommand = defineCommand({
       console.log('\n  Top instincts:')
       for (const i of filtered.slice(0, 5)) {
         console.log(`  [${(i.confidence * 100).toFixed(0)}%] ${i.domain}: ${i.trigger}`)
+      }
+    }
+    if (rejectedReviews.length > 0) {
+      console.log('\n  Rejected candidates:')
+      for (const review of rejectedReviews.slice(0, 5)) {
+        console.log(`  [${review.status}] ${review.instinct.trigger} - ${review.reasons[0]}`)
       }
     }
     console.log()
@@ -153,11 +182,13 @@ export const cortexEvolveCommand = defineCommand({
   },
   args: {
     dir: { type: 'string', default: process.cwd(), description: 'Project directory' },
+    'include-stale': { type: 'boolean', default: false, description: 'Save stale or review-only candidates for backwards-compatible evolution' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
     const projectDir = String(args.dir ?? process.cwd())
     const scaleDir = join(projectDir, '.scale')
+    const includeStale = args['include-stale'] === true
 
     const extractor = new InstinctExtractor(scaleDir)
     const store = new InstinctStore(join(scaleDir, 'instincts'))
@@ -182,11 +213,14 @@ export const cortexEvolveCommand = defineCommand({
     console.log(`  4. Instincts:    ${instincts.length}`)
 
     // 5. Save high-confidence (0.7+) instincts
-    const highConf = instincts.filter(i => i.confidence >= 0.7)
+    const reviewed = reviewInstinctCandidates(instincts, patterns, observations)
+    const selection = selectReviewedInstinctCandidates(reviewed, 0.7, includeStale)
+    const { saveableReviews, summary: reviewSummary } = selection
     let saved = 0
-    for (const instinct of highConf) {
-      if (store.save(instinct)) saved++
+    for (const review of saveableReviews) {
+      if (store.save(review.instinct)) saved++
     }
+    console.log(`  5. Candidate review: accepted=${reviewSummary.accepted}, stale=${reviewSummary.stale}, needs-review=${reviewSummary['needs-review']}`)
     console.log(`  5. Saved:        ${saved} (confidence ≥ 0.7)\n`)
 
     // 6. Show reflection results
@@ -210,6 +244,7 @@ export const cortexEvolveCommand = defineCommand({
         patterns: patterns.length,
         instincts: instincts.length,
         saved,
+        review: reviewSummary,
         stats,
       }, null, 2))
     }
@@ -280,11 +315,18 @@ export const cortexVerifyCommand = defineCommand({
     if (observations.length > 0) {
       const patterns = extractor.detectPatterns(observations)
       const extracted = extractor.extract(patterns)
+      const reviewed = reviewInstinctCandidates(extracted, patterns, observations)
+      const reviewSummary = candidateReviewSummary(reviewed)
 
       checks.push({
         name: 'Pipeline connectivity',
         status: patterns.length > 0 && extracted.length > 0 ? 'PASS' : 'WARN',
         detail: `${observations.length} observations → ${patterns.length} patterns → ${extracted.length} instincts`,
+      })
+      checks.push({
+        name: 'Candidate review',
+        status: reviewSummary.stale > 0 || reviewSummary['needs-review'] > 0 ? 'WARN' : 'PASS',
+        detail: `accepted=${reviewSummary.accepted}, stale=${reviewSummary.stale}, needs-review=${reviewSummary['needs-review']}`,
       })
     } else {
       checks.push({
@@ -302,7 +344,7 @@ export const cortexVerifyCommand = defineCommand({
       name: 'Injection readiness',
       status: injection.instinctCount > 0 ? 'PASS' : 'WARN',
       detail: injection.instinctCount > 0
-        ? `${injection.instinctCount} high-confidence instincts ready (${injection.content.length} chars)`
+        ? `${injection.instinctCount} reviewed instinct(s) ready for SessionStart (${injection.content.length} chars)`
         : 'No high-confidence instincts (≥0.7) for injection',
     })
 
@@ -320,11 +362,11 @@ export const cortexVerifyCommand = defineCommand({
           ? `Gate pass rate: ${(metrics.gates.passRate * 100).toFixed(0)}%, instinct hit rate: ${(metrics.instincts.hitRate * 100).toFixed(0)}% (some values use estimates)`
           : `Gate pass rate: ${(metrics.gates.passRate * 100).toFixed(0)}%, instinct hit rate: ${(metrics.instincts.hitRate * 100).toFixed(0)}%`,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       checks.push({
         name: 'Metrics computability',
         status: 'FAIL',
-        detail: `Failed to compute metrics: ${err.message}`,
+        detail: `Failed to compute metrics: ${err instanceof Error ? err.message : String(err)}`,
       })
     }
 
@@ -399,7 +441,6 @@ export const cortexAuditCommand = defineCommand({
   },
 })
 
-// ---------------------------------------------------------------------------
 // scale cortex restore
 // ---------------------------------------------------------------------------
 
@@ -435,10 +476,6 @@ export const cortexRestoreCommand = defineCommand({
   },
 })
 
-// ---------------------------------------------------------------------------
-// scale cortex (parent)
-// ---------------------------------------------------------------------------
-
 export const cortexCommand = defineCommand({
   meta: {
     name: 'cortex',
@@ -449,7 +486,10 @@ export const cortexCommand = defineCommand({
     inject: cortexInjectCommand,
     metrics: cortexMetricsCommand,
     evolve: cortexEvolveCommand,
+    approve: cortexApproveCommand,
+    reject: cortexRejectCommand,
     verify: cortexVerifyCommand,
+    apply: cortexApplyCommand,
     audit: cortexAuditCommand,
     restore: cortexRestoreCommand,
   },

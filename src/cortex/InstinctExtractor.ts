@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { logger } from '../core/logger.js'
+import { dedupeCortexObservations, loadGateEvidenceObservations } from './GateEvidenceObservations.js'
 
 // ---------------------------------------------------------------------------
 // Instinct types (aligned with ECC format)
@@ -54,10 +55,12 @@ export interface PatternMatch {
 // ---------------------------------------------------------------------------
 
 export class InstinctExtractor {
+  private scaleDir: string
   private observationsDir: string
   private instinctsDir: string
 
   constructor(baseDir: string = join(process.cwd(), '.scale')) {
+    this.scaleDir = baseDir
     this.observationsDir = join(baseDir, 'observations')
     this.instinctsDir = join(baseDir, 'instincts')
   }
@@ -66,23 +69,32 @@ export class InstinctExtractor {
    * Load observations from .scale/observations/ directory.
    */
   loadObservations(): Observation[] {
-    if (!existsSync(this.observationsDir)) return []
-
     const observations: Observation[] = []
-    try {
-      for (const file of readdirSync(this.observationsDir)) {
-        if (!file.endsWith('.jsonl')) continue
-        const lines = readFileSync(join(this.observationsDir, file), 'utf-8')
-          .split('\n')
-          .filter(Boolean)
-        for (const line of lines) {
-          try { observations.push(JSON.parse(line)) } catch { /* skip malformed */ }
+
+    if (existsSync(this.observationsDir)) {
+      try {
+        for (const file of readdirSync(this.observationsDir)) {
+          if (!file.endsWith('.jsonl')) continue
+          const lines = readFileSync(join(this.observationsDir, file), 'utf-8')
+            .split('\n')
+            .filter(Boolean)
+          for (const [index, line] of lines.entries()) {
+            try {
+              observations.push(JSON.parse(line))
+            } catch (err) {
+              logger.debug({ err, file, lineNumber: index + 1 }, 'Skipped malformed observation line')
+            }
+          }
         }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to load observations')
       }
-    } catch (err) {
-      logger.warn({ err }, 'Failed to load observations')
     }
-    return observations
+
+    return dedupeCortexObservations([
+      ...observations,
+      ...loadGateEvidenceObservations(this.scaleDir),
+    ])
   }
 
   /**

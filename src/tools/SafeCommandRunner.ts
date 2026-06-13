@@ -17,6 +17,7 @@ export interface SafeCommandOptions {
   cwd?: string
   timeout?: number
   allowShell?: boolean
+  env?: NodeJS.ProcessEnv
 }
 
 export function parseCommandLine(command: string): ParsedCommand {
@@ -76,6 +77,7 @@ export async function runSafeCommand(command: string, options: SafeCommandOption
   const allowShell = options.allowShell || process.env.SCALE_ALLOW_SHELL_COMMANDS === '1'
   const execaOptions: Options = {
     cwd: options.cwd,
+    env: options.env,
     timeout: options.timeout,
     reject: false,
   }

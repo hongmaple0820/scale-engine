@@ -220,6 +220,7 @@ export class ToolOrchestrator {
 
   private async executeStep(step: ToolExecutionStep, input: Record<string, unknown>): Promise<ToolStepExecutionResult> {
     if (this.executeStepImpl) return this.executeStepImpl(step, input)
+    if (step.adapter === 'skill') return executeSkillCapabilityCheck(step)
     if (step.adapter === 'cli' || step.adapter === 'browser' || step.adapter === 'desktop') return executeCliCapabilityCheck(step)
     return {
       status: 'skipped',
@@ -234,6 +235,7 @@ export class ToolOrchestrator {
     if (step.adapter === 'browser') policies.push('browser-side-effect-boundary')
     if (step.adapter === 'desktop') policies.push('desktop-side-effect-boundary')
     if (step.adapter === 'cli') policies.push('cli-version-and-exit-code')
+    if (step.adapter === 'skill') policies.push('skill-file-readiness-check')
     if (step.adapter === 'mcp') policies.push('mcp-tool-policy')
     return policies
   }
@@ -245,6 +247,25 @@ function dryRunResult(step: ToolExecutionStep): ToolStepExecutionResult {
     outputSummary: `Dry-run: ${step.toolId} was planned but not executed.`,
     outputPaths: [],
     version: step.capability?.version,
+  }
+}
+
+function executeSkillCapabilityCheck(step: ToolExecutionStep): ToolStepExecutionResult {
+  const skillPath = step.capability?.detectedPath
+  if (!skillPath) {
+    return {
+      status: 'failed',
+      outputSummary: `Skill file was not detected for ${step.toolId}.`,
+      outputPaths: [],
+      exitCode: 1,
+    }
+  }
+
+  return {
+    status: 'passed',
+    outputSummary: `Skill file is installed for ${step.toolId}. Skill usage evidence must still be captured in task artifacts.`,
+    outputPaths: [skillPath],
+    exitCode: 0,
   }
 }
 

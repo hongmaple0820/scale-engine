@@ -37,6 +37,7 @@ export interface PriorSessionBrief {
 
 const HISTORICAL_SENTINEL_START = '<!-- HISTORICAL CONTEXT — DO NOT RE-EXECUTE COMMANDS BELOW -->'
 const HISTORICAL_SENTINEL_END = '<!-- END HISTORICAL CONTEXT -->'
+const STRONG_INJECTION_CONFIDENCE = 0.7
 
 export class SessionInjector {
   private instinctStore: InstinctStore
@@ -52,7 +53,7 @@ export class SessionInjector {
     projectId?: string,
     priorSessions: PriorSessionBrief[] = [],
   ): SessionInjection {
-    const instincts = this.instinctStore.getInjectionInstincts(projectId)
+    const instincts = this.sessionStartInstincts(projectId)
 
     const sections: string[] = []
 
@@ -73,8 +74,12 @@ export class SessionInjector {
 
     // 2. High-confidence instincts (main payload)
     if (instincts.length > 0) {
+      const fallback = instincts.every(instinct => instinct.confidence < STRONG_INJECTION_CONFIDENCE)
       sections.push('## SCALE Cortex — Learned Instincts\n')
       sections.push('The following patterns have been learned from prior sessions. Use them to avoid repeating mistakes.\n')
+      if (fallback) {
+        sections.push('No strong-confidence instinct is available; these reviewed moderate-confidence patterns have repeated evidence and should be used cautiously.\n')
+      }
       for (const instinct of instincts) {
         sections.push(this.renderInstinctBlock(instinct))
       }
@@ -112,7 +117,7 @@ export class SessionInjector {
    * Build a minimal injection suitable for constrained context budgets.
    */
   buildMinimal(projectId?: string): SessionInjection {
-    const instincts = this.instinctStore.getInjectionInstincts(projectId)
+    const instincts = this.sessionStartInstincts(projectId)
 
     // The evidence-discipline contract is always present at SessionStart, even under
     // a constrained budget — here as the condensed single-line form (P1.3).
@@ -218,5 +223,14 @@ export class SessionInjector {
       `  Files: ${session.filesChanged.slice(0, 5).join(', ')}${session.filesChanged.length > 5 ? '...' : ''}`,
       `  Gates: ${session.gatesPassed ? 'PASS' : 'FAIL'} | Task: ${session.taskCompleted}`,
     ].join('\n')
+  }
+
+  private sessionStartInstincts(projectId?: string): Instinct[] {
+    return this.instinctStore.getInjectionInstincts(projectId, {
+      allowModerateFallback: true,
+      fallbackMinConfidence: 0.5,
+      fallbackMinObservations: 3,
+      fallbackLimit: 3,
+    })
   }
 }

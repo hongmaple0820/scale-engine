@@ -150,6 +150,26 @@ describe('resolveVerificationProfile', () => {
     })
   })
 
+  it('resolves ecosystem readiness policy and normalizes invalid packs', () => {
+    const dir = makeProject()
+    writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { commands: {} } },
+      policy: {
+        ecosystemReadinessGate: 'block',
+        ecosystemReadinessPacks: ['ui', 'invalid-pack', 'knowledge', 'ui'],
+      },
+    }, null, 2), 'utf-8')
+
+    const resolved = resolveVerificationTargets({ projectDir: dir })
+
+    expect(resolved.policy).toMatchObject({
+      ecosystemReadinessGate: 'block',
+      ecosystemReadinessPacks: ['ui', 'knowledge'],
+    })
+  })
+
   it('resolves explicit ci verification profile commands', () => {
     const dir = makeProject()
     writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({

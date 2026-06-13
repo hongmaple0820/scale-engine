@@ -542,6 +542,7 @@ describe('ai-os CLI', () => {
           contextQuality: { compressionRisk: string }
           evaluatorQuality: { requiredGates: number; averageUncertainty: number }
           toolStrategyQuality: { totalSteps: number; fallbackCoverage: number }
+          agentLoopQuality: { status: string; score: number; readySignals: number }
         }
       }
       nextActions: string[]
@@ -554,6 +555,7 @@ describe('ai-os CLI', () => {
       'skill-routing',
       'evaluator-intelligence',
       'tool-strategy',
+      'agent-loop-readiness',
       'adaptive-workflow',
       'evolution-shadow',
       'benchmark-intelligence',
@@ -564,6 +566,8 @@ describe('ai-os CLI', () => {
     expect(readyReport.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(readyReport.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
     expect(readyReport.intelligence.summary.toolStrategyQuality.fallbackCoverage).toBe(1)
+    expect(readyReport.intelligence.summary.agentLoopQuality.status).toBe('ready')
+    expect(readyReport.intelligence.summary.agentLoopQuality.readySignals).toBe(6)
     expect(readyReport.nextActions).toContain('AI OS closed loop is ready for guarded project work.')
 
     const readyHuman = await runScale(['ai-os', 'status', '--dir', projectDir, '--lang', 'zh'], scaleDir, projectDir)
@@ -574,10 +578,12 @@ describe('ai-os CLI', () => {
     expect(readyHuman.stdout).toContain('Context risk:')
     expect(readyHuman.stdout).toContain('Evaluator gates:')
     expect(readyHuman.stdout).toContain('Tool strategy:')
+    expect(readyHuman.stdout).toContain('Agent Loop:')
     expect(readyHuman.stdout).toContain('memory-recall')
     expect(readyHuman.stdout).toContain('skill-routing')
     expect(readyHuman.stdout).toContain('evaluator-intelligence')
     expect(readyHuman.stdout).toContain('tool-strategy')
+    expect(readyHuman.stdout).toContain('agent-loop-readiness')
     expect(readyHuman.stdout).toContain('[ready] verification-evidence')
   }, 120_000)
 

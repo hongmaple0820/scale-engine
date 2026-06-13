@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
+import { InstinctStore } from '../../src/cortex/InstinctStore.js'
+import { SessionLedger } from '../../src/runtime/SessionLedger.js'
 
 let dirs: string[] = []
 let repoFiles: string[] = []
@@ -84,6 +86,81 @@ describe('phase CLI workflow', () => {
     const result = parseJson<{ nextCommand: string; workflowState: null }>(status.stdout)
     expect(result.workflowState).toBeNull()
     expect(result.nextCommand).toContain('scale define')
+  })
+
+  it('does not report an older failed gate when newer evidence for the same gate passed', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    const evidenceDir = join(scaleDir, 'evidence')
+    mkdirSync(evidenceDir, { recursive: true })
+    const failed = {
+      id: 'GATE-G7-old',
+      gate: 'G7',
+      status: 'FAILED',
+      passed: false,
+      evidence: 'old failed security scan',
+      evidenceItems: [],
+      blockers: ['old blocker'],
+      durationMs: 10,
+      createdAt: 100,
+    }
+    const passed = {
+      id: 'GATE-G7-new',
+      gate: 'G7',
+      status: 'PASSED',
+      passed: true,
+      evidence: 'new passed security scan',
+      evidenceItems: [],
+      blockers: [],
+      durationMs: 10,
+      createdAt: 200,
+    }
+    writeFileSync(join(evidenceDir, `${failed.id}.json`), JSON.stringify(failed, null, 2), 'utf-8')
+    writeFileSync(join(evidenceDir, `${passed.id}.json`), JSON.stringify(passed, null, 2), 'utf-8')
+
+    const status = await runScale(['status', '--json'], scaleDir, projectDir)
+
+    expect(status.exitCode).toBe(0)
+    const result = parseJson<{ blockers: string[]; recentEvidence: Array<{ id: string; passed: boolean }> }>(status.stdout)
+    expect(result.recentEvidence[0]).toMatchObject({ id: 'GATE-G7-new', passed: true })
+    expect(result.blockers).toEqual([])
+  })
+
+  it('reports only blocking failed gate evidence as status blockers', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    const evidenceDir = join(scaleDir, 'evidence')
+    mkdirSync(evidenceDir, { recursive: true })
+    writeFileSync(join(evidenceDir, 'GATE-G12-meta.json'), JSON.stringify({
+      id: 'GATE-G12-meta',
+      gate: 'G12',
+      status: 'FAILED',
+      passed: false,
+      evidence: 'meta governance advisory failure',
+      evidenceItems: [],
+      blockers: ['workflow thoroughness advisory'],
+      durationMs: 1,
+      createdAt: 200,
+    }), 'utf-8')
+    writeFileSync(join(evidenceDir, 'GATE-G7-core.json'), JSON.stringify({
+      id: 'GATE-G7-core',
+      gate: 'G7',
+      status: 'FAILED',
+      passed: false,
+      evidence: 'security failure',
+      evidenceItems: [],
+      blockers: ['security blocker'],
+      durationMs: 1,
+      createdAt: 100,
+    }), 'utf-8')
+
+    const status = await runScale(['status', '--json'], scaleDir, projectDir)
+
+    expect(status.exitCode).toBe(0)
+    const result = parseJson<{ blockers: string[] }>(status.stdout)
+    expect(result.blockers.join('\n')).toContain('G7: security blocker')
+    expect(result.blockers.join('\n')).not.toContain('G12')
+    expect(result.blockers.join('\n')).not.toContain('workflow thoroughness advisory')
   })
 
   it('initializes a project-scaffold governance pack and reports clean drift', async () => {
@@ -583,10 +660,296 @@ export function login(token: string) {
     ], scaleDir, projectDir)
 
     expect(preflight.exitCode).toBe(0)
-    const result = parseJson<{ passed: boolean; preflightProfile: string; gates: string[] }>(preflight.stdout)
+    const result = parseJson<{ passed: boolean; preflightProfile: string; gates: string[]; ecosystemReadiness: { checked: boolean } }>(preflight.stdout)
     expect(result.passed).toBe(true)
     expect(result.preflightProfile).toBe('quick')
     expect(result.gates).toEqual(['G3', 'G0', 'G4', 'G5'])
+    expect(result.ecosystemReadiness.checked).toBe(false)
+  }, 120_000)
+
+  it('uses a matching quick verification profile when quick preflight is requested without an explicit profile', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    mkdirSync(scaleDir, { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: {
+        default: {
+          commands: {
+            build: 'node -e "process.exit(9)"',
+            lint: 'node -e "process.exit(9)"',
+            test: 'node -e "process.exit(9)"',
+          },
+          services: ['scale-engine'],
+        },
+        quick: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+          },
+          services: ['scale-engine'],
+        },
+      },
+      services: [{ name: 'scale-engine', path: '.', type: 'node', required: true }],
+      policy: {
+        engineeringStandardsGate: 'off',
+      },
+    }, null, 2), 'utf-8')
+
+    const preflight = await runScale([
+      'preflight',
+      '--dir',
+      projectDir,
+      '--service',
+      'all',
+      '--preflight-profile',
+      'quick',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(preflight.exitCode).toBe(0)
+    const result = parseJson<{ passed: boolean; profile: string; preflightProfile: string; gates: string[] }>(preflight.stdout)
+    expect(result.passed).toBe(true)
+    expect(result.profile).toBe('quick')
+    expect(result.preflightProfile).toBe('quick')
+    expect(result.gates).toEqual(['G3', 'G0', 'G4', 'G5'])
+  }, 120_000)
+
+  it('uses a matching fastLane verification profile when fast-lane preflight is requested without an explicit profile', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    mkdirSync(scaleDir, { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: {
+        default: {
+          commands: {
+            build: 'node -e "process.exit(9)"',
+            lint: 'node -e "process.exit(9)"',
+            test: 'node -e "process.exit(9)"',
+          },
+          services: ['scale-engine'],
+        },
+        fastLane: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+          },
+          services: ['scale-engine'],
+        },
+      },
+      services: [{ name: 'scale-engine', path: '.', type: 'node', required: true }],
+      policy: {
+        engineeringStandardsGate: 'off',
+      },
+    }, null, 2), 'utf-8')
+
+    const preflight = await runScale([
+      'preflight',
+      '--dir',
+      projectDir,
+      '--service',
+      'all',
+      '--preflight-profile',
+      'fast-lane',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(preflight.exitCode).toBe(0)
+    const result = parseJson<{ passed: boolean; profile: string; preflightProfile: string; gates: string[] }>(preflight.stdout)
+    expect(result.passed).toBe(true)
+    expect(result.profile).toBe('fastLane')
+    expect(result.preflightProfile).toBe('fast-lane')
+    expect(result.gates).toEqual(['G3', 'G0', 'G4', 'G5'])
+  }, 120_000)
+
+  it('uses fastLane verification commands when default profile is paired with fast-lane preflight', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    mkdirSync(scaleDir, { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: {
+        default: {
+          commands: {
+            build: 'node -e "process.exit(9)"',
+            lint: 'node -e "process.exit(9)"',
+            test: 'node -e "process.exit(9)"',
+          },
+          services: ['scale-engine'],
+        },
+        fastLane: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+          },
+          services: ['scale-engine'],
+        },
+      },
+      services: [{ name: 'scale-engine', path: '.', type: 'node', required: true }],
+      policy: {
+        engineeringStandardsGate: 'off',
+      },
+    }, null, 2), 'utf-8')
+
+    const preflight = await runScale([
+      'preflight',
+      '--dir',
+      projectDir,
+      '--service',
+      'all',
+      '--profile',
+      'default',
+      '--preflight-profile',
+      'fast-lane',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(preflight.exitCode).toBe(0)
+    const result = parseJson<{
+      passed: boolean
+      profile: string
+      preflightProfile: string
+      warnings: string[]
+      gates: string[]
+    }>(preflight.stdout)
+    expect(result.passed).toBe(true)
+    expect(result.profile).toBe('fastLane')
+    expect(result.preflightProfile).toBe('fast-lane')
+    expect(result.gates).toEqual(['G3', 'G0', 'G4', 'G5'])
+    expect(result.warnings.join('\n')).toContain('instead of default profile "default"')
+  }, 120_000)
+
+  it('uses a matching verification profile when ci preflight is requested without an explicit profile', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    mkdirSync(scaleDir, { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: {
+        default: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+          },
+          services: ['scale-engine'],
+        },
+        ci: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+            coverage: coverageFixtureCommand(),
+          },
+          services: ['scale-engine'],
+        },
+      },
+      services: [{ name: 'scale-engine', path: '.', type: 'node', required: true }],
+      policy: {
+        engineeringStandardsGate: 'off',
+        ecosystemReadinessPacks: ['external-cli'],
+      },
+    }, null, 2), 'utf-8')
+
+    const preflight = await runScale([
+      'preflight',
+      '--dir',
+      projectDir,
+      '--service',
+      'all',
+      '--preflight-profile',
+      'ci',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(preflight.exitCode).toBe(0)
+    const result = parseJson<{
+      passed: boolean
+      profile: string
+      preflightProfile: string
+      ecosystemReadiness: { checked: boolean; mode: string; blocked: boolean }
+      targets: Array<{ gates: Array<{ gate: string; passed: boolean; evidence: string }> }>
+    }>(preflight.stdout)
+    expect(result.passed).toBe(true)
+    expect(result.profile).toBe('ci')
+    expect(result.preflightProfile).toBe('ci')
+    expect(result.ecosystemReadiness).toMatchObject({
+      checked: true,
+      mode: 'warn',
+      blocked: false,
+    })
+    expect(result.targets[0]?.gates.find(gate => gate.gate === 'G6')).toMatchObject({
+      passed: true,
+      evidence: expect.stringContaining('Coverage: 100%'),
+    })
+  }, 120_000)
+
+  it('keeps an explicit verification profile even when ci preflight is requested', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    mkdirSync(scaleDir, { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: {
+        default: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+          },
+          services: ['scale-engine'],
+        },
+        ci: {
+          commands: {
+            build: 'node -v',
+            lint: 'node -v',
+            test: 'node -v',
+            coverage: coverageFixtureCommand(),
+          },
+          services: ['scale-engine'],
+        },
+      },
+      services: [{ name: 'scale-engine', path: '.', type: 'node', required: true }],
+      policy: {
+        engineeringStandardsGate: 'off',
+        ecosystemReadinessPacks: ['external-cli'],
+      },
+    }, null, 2), 'utf-8')
+
+    const preflight = await runScale([
+      'preflight',
+      '--dir',
+      projectDir,
+      '--service',
+      'all',
+      '--profile',
+      'default',
+      '--preflight-profile',
+      'ci',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(preflight.exitCode).toBe(1)
+    const result = parseJson<{
+      passed: boolean
+      profile: string
+      targets: Array<{ gates: Array<{ gate: string; passed: boolean; status: string }> }>
+    }>(preflight.stdout)
+    expect(result.passed).toBe(false)
+    expect(result.profile).toBe('default')
+    expect(result.targets[0]?.gates.find(gate => gate.gate === 'G6')).toMatchObject({
+      passed: false,
+      status: 'BLOCKED',
+    })
   }, 120_000)
 
   it('blocks preflight when engineering standards gate is configured as block', async () => {
@@ -1307,11 +1670,251 @@ export function leaky(token: string) {
     const headAfter = await execa('git', ['rev-parse', 'HEAD'])
 
     expect(ship.exitCode).toBe(0)
-    const shipResult = parseJson<{ commitHash: string | null; reviewValidation: { ok: boolean }; evidenceValidation: { ok: boolean } }>(ship.stdout)
+    const shipResult = parseJson<{ commitHash: string | null; reviewValidation: { ok: boolean }; evidenceValidation: { ok: boolean }; shipMode: string }>(ship.stdout)
     expect(shipResult.commitHash).toBeNull()
+    expect(shipResult.shipMode).toBe('no-commit')
     expect(shipResult.reviewValidation.ok).toBe(true)
     expect(shipResult.evidenceValidation.ok).toBe(true)
     expect(headAfter.stdout).toBe(headBefore.stdout)
+
+    const afterShipStatus = await runScale(['status', '--json'], scaleDir, projectDir)
+    expect(afterShipStatus.exitCode).toBe(0)
+    const afterShipStatusResult = parseJson<{
+      blockers: string[]
+      nextCommand: string
+      artifacts: { latestTask: { shipPassed?: boolean; shipMode?: string } }
+    }>(afterShipStatus.stdout)
+    expect(afterShipStatusResult.blockers).toEqual([])
+    expect(afterShipStatusResult.artifacts.latestTask.shipPassed).toBe(true)
+    expect(afterShipStatusResult.artifacts.latestTask.shipMode).toBe('no-commit')
+    expect(afterShipStatusResult.nextCommand).toBe('scale evidence list')
+
+    const noCommitDeployment = await runScale(['ship', taskId, '--no-commit', '--record-deployment', '--json'], scaleDir, projectDir)
+    expect(noCommitDeployment.exitCode).not.toBe(0)
+    expect(noCommitDeployment.stderr).toContain('Deployment recording requires a new ship commit')
+    expect(existsSync(join(scaleDir, 'release', 'deployments.jsonl'))).toBe(false)
+  }, 120_000)
+
+  it('records DORA deployment evidence when ship explicitly marks a real deployment', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    await execa('git', ['init'], { cwd: projectDir })
+    await execa('git', ['config', 'user.email', 'scale-test@example.com'], { cwd: projectDir })
+    await execa('git', ['config', 'user.name', 'Scale Test'], { cwd: projectDir })
+    writeFileSync(join(projectDir, 'README.md'), 'fixture\n', 'utf-8')
+    await execa('git', ['add', 'README.md'], { cwd: projectDir })
+    await execa('git', ['commit', '-m', 'test fixture'], { cwd: projectDir })
+    await execa('git', ['checkout', '-b', 'feat/deployment-record'], { cwd: projectDir })
+
+    const define = await runScale([
+      'define',
+      'Deployment Record Feature',
+      '--description',
+      'Implement a deterministic TypeScript CLI workflow that records successful ship deployment evidence with commit and version metadata for DORA effectiveness metrics.',
+      '--success-criteria',
+      'verification evidence is persisted,review evidence is persisted,deployment evidence is recorded',
+      '--goal',
+      'Record deployment evidence only after a real governed ship commit succeeds.',
+      '--constraint',
+      'A no-commit ship report must not be counted as a deployment.',
+      '--acceptance',
+      'Ship returns a deploymentRecord with source ship and workflow effectiveness reports measured DORA deployment metrics.',
+      '--context',
+      'The regression fixture uses a temporary git repository and temporary SCALE_DIR ledger.',
+      '--risk',
+      'False deployment evidence would inflate workflow effectiveness metrics.',
+      '--priority',
+      'Protect DORA measurement accuracy before release reporting.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(define.exitCode).toBe(0)
+    const specId = parseJson<{ spec: { id: string } }>(define.stdout).spec.id
+
+    const plan = await runScale(['plan', specId, '--rollback', 'Remove temporary deployment record fixture', '--json'], scaleDir, projectDir)
+    expect(plan.exitCode).toBe(0)
+    const planId = parseJson<{ plan: { id: string } }>(plan.stdout).plan.id
+
+    const build = await runScale(['build', planId, '--description', 'Deployment ledger task', '--level', 'S', '--json'], scaleDir, projectDir)
+    expect(build.exitCode).toBe(0)
+    const taskId = parseJson<{ task: { id: string } }>(build.stdout).task.id
+
+    const verify = await runScale([
+      'verify',
+      taskId,
+      '--build-cmd',
+      'node -v',
+      '--lint-cmd',
+      'node -v',
+      '--test-cmd',
+      'node -v',
+      '--coverage-cmd',
+      coverageFixtureCommand(),
+      '--json',
+    ], scaleDir, projectDir)
+    expect(verify.exitCode).toBe(0)
+    expect(parseJson<{ passed: boolean }>(verify.stdout).passed).toBe(true)
+
+    mkdirSync(join(projectDir, 'src'), { recursive: true })
+    writeFileSync(join(projectDir, 'src', 'deployed.ts'), 'export const deployed = true\n', 'utf-8')
+
+    const review = await runScale(['review', taskId, '--json'], scaleDir, projectDir)
+    expect(review.exitCode).toBe(0)
+    expect(parseJson<{ passed: boolean }>(review.stdout).passed).toBe(true)
+
+    const ship = await runScale([
+      'ship',
+      taskId,
+      '--message',
+      'test: deployment record',
+      '--record-deployment',
+      '--deploy-service',
+      'scale-engine',
+      '--deploy-environment',
+      'staging',
+      '--deploy-version',
+      'v-test',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(ship.exitCode).toBe(0)
+    const shipResult = parseJson<{
+      commitHash: string
+      deploymentRecord: {
+        id: string
+        service: string
+        environment: string
+        status: string
+        source: string
+        version: string
+        commitSha: string
+        commitTimestamp?: string
+      }
+    }>(ship.stdout)
+    expect(shipResult.commitHash).toMatch(/^[0-9a-f]{40}$/)
+    expect(shipResult.deploymentRecord).toMatchObject({
+      service: 'scale-engine',
+      environment: 'staging',
+      status: 'succeeded',
+      source: 'ship',
+      version: 'v-test',
+      commitSha: shipResult.commitHash,
+    })
+    expect(shipResult.deploymentRecord.commitTimestamp).toEqual(expect.any(String))
+
+    const ledgerPath = join(scaleDir, 'release', 'deployments.jsonl')
+    const records = readFileSync(ledgerPath, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(line => JSON.parse(line) as { id: string; commitSha: string; source: string })
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      id: shipResult.deploymentRecord.id,
+      commitSha: shipResult.commitHash,
+      source: 'ship',
+    })
+
+    const effectiveness = await runScale(['workflow', 'effectiveness', '--dir', projectDir, '--skip-memory-recall', '--json'], scaleDir, projectDir)
+    expect(effectiveness.exitCode).toBe(0)
+    const report = parseJson<{
+      delivery: { deploymentFrequency: { evidence: string }; leadTimeForChanges: { evidence: string } }
+      stability: { changeFailureProxy: { evidence: string }; restoreTime: { evidence: string } }
+    }>(effectiveness.stdout)
+    expect(report.delivery.deploymentFrequency.evidence).toBe('measured')
+    expect(report.delivery.leadTimeForChanges.evidence).toBe('measured')
+    expect(report.stability.changeFailureProxy.evidence).toBe('measured')
+    expect(report.stability.restoreTime.evidence).toBe('measured')
+  }, 120_000)
+
+  it('records runtime Cortex instinct outcomes when verify completes', async () => {
+    const scaleDir = makeScaleDir()
+    const projectDir = makeProjectDir()
+    const instinctStore = new InstinctStore(join(scaleDir, 'instincts'))
+    const instinctId = instinctStore.save({
+      id: 'instinct-phase-verify',
+      trigger: 'phase verify cortex outcome',
+      confidence: 0.9,
+      domain: 'governance',
+      source: 'test',
+      scope: 'global',
+      action: '## Action\nRecord applied Cortex instincts after phase verification',
+      evidence: ['[2026-06-13] phase verify cortex outcome'],
+      observations: 4,
+      createdAt: '2026-06-13T00:00:00.000Z',
+      updatedAt: '2026-06-13T00:00:00.000Z',
+      appliedCount: 0,
+      hitRate: 0,
+    })
+
+    const define = await runScale([
+      'define',
+      'Cortex Verify Outcome',
+      '--description',
+      'Implement a deterministic CLI path that records runtime Cortex instinct application outcomes after verification.',
+      '--success-criteria',
+      'verification passes,cortex instinct outcome is recorded',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(define.exitCode).toBe(0)
+    const specId = parseJson<{ spec: { id: string } }>(define.stdout).spec.id
+
+    const plan = await runScale(['plan', specId, '--rollback', 'Delete temporary cortex outcome fixture', '--json'], scaleDir, projectDir)
+    expect(plan.exitCode).toBe(0)
+    const planId = parseJson<{ plan: { id: string } }>(plan.stdout).plan.id
+
+    const build = await runScale(['build', planId, '--description', 'Cortex outcome task', '--level', 'S', '--json'], scaleDir, projectDir)
+    expect(build.exitCode).toBe(0)
+    const taskId = parseJson<{ task: { id: string } }>(build.stdout).task.id
+
+    new SessionLedger({ projectDir, scaleDir }).start({
+      sessionId: 'SESSION-PHASE-VERIFY-CORTEX',
+      taskId,
+      metadata: { cortex: { instinctsApplied: [instinctId] } },
+    })
+
+    const verify = await runScale([
+      'verify',
+      taskId,
+      '--build-cmd',
+      'node -v',
+      '--lint-cmd',
+      'node -v',
+      '--test-cmd',
+      'node -v',
+      '--coverage-cmd',
+      coverageFixtureCommand(),
+      '--json',
+    ], scaleDir, projectDir)
+    expect(verify.exitCode).toBe(0)
+    const verifyResult = parseJson<{
+      passed: boolean
+      cortexInstinctApplications: {
+        checked: boolean
+        phase: string
+        success: boolean
+        sessionId: string
+        recorded: string[]
+      }
+    }>(verify.stdout)
+    expect(verifyResult.passed).toBe(true)
+    expect(verifyResult.cortexInstinctApplications).toMatchObject({
+      checked: true,
+      phase: 'verify',
+      success: true,
+      sessionId: 'SESSION-PHASE-VERIFY-CORTEX',
+      recorded: [instinctId],
+    })
+    expect(instinctStore.history(instinctId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ op: 'apply', reason: 'application-succeeded' }),
+    ]))
+
+    const effectiveness = await runScale(['workflow', 'effectiveness', '--dir', projectDir, '--skip-memory-recall', '--json'], scaleDir, projectDir)
+    expect(effectiveness.exitCode).toBe(0)
+    const effectivenessReport = parseJson<{
+      orchestration: { instinctHitRate: { evidence: string; value: number } }
+    }>(effectiveness.stdout)
+    expect(effectivenessReport.orchestration.instinctHitRate).toMatchObject({
+      evidence: 'measured',
+      value: 1,
+    })
   }, 120_000)
 
   it('derives Karpathy review context from task scope instead of hardcoded pass values', async () => {

@@ -12,6 +12,7 @@ export type MemoryNodeLayer = 'L1-trace' | 'L2-policy' | 'L3-world-model' | 'cry
 export type MemoryNodeSource = 'runtime-evidence' | 'task-artifact' | 'docs' | 'git' | 'manual'
 export type MemoryNodeScope = 'project' | 'workspace' | 'global-candidate'
 export type MemoryNodeStatus = 'candidate' | 'active' | 'stale' | 'rejected'
+export type MemoryReviewAction = 'approve' | 'reject' | 'stale' | 'restore'
 
 export interface MemoryNode {
   id: string
@@ -101,6 +102,14 @@ export interface MemoryDreamReport {
 
 export interface MemoryPromoteReport {
   ok: boolean
+  node?: MemoryNode
+  warnings: string[]
+}
+
+export interface MemoryReviewReport {
+  ok: boolean
+  action: MemoryReviewAction
+  previousStatus?: MemoryNodeStatus
   node?: MemoryNode
   warnings: string[]
 }
@@ -309,6 +318,55 @@ export class MemoryBrain {
     assertNode(promoted)
     this.upsert(promoted)
     return { ok: true, node: promoted, warnings }
+  }
+
+  review(id: string, action: MemoryReviewAction, options: { reason?: string; actor?: string; scope?: MemoryNodeScope } = {}): MemoryReviewReport {
+    const node = this.get(id)
+    const previousStatus = node?.status
+    if (action === 'approve' || action === 'restore') {
+      if (node && action === 'approve' && node.status !== 'candidate') {
+        return { ok: false, action, previousStatus, node, warnings: [`Approve requires candidate memory, got ${node.status}.`] }
+      }
+      if (node && action === 'restore' && !['stale', 'rejected'].includes(node.status)) {
+        return { ok: false, action, previousStatus, node, warnings: [`Restore requires stale or rejected memory, got ${node.status}.`] }
+      }
+      const report = this.promote(id, { scope: options.scope })
+      return {
+        ok: report.ok,
+        action,
+        previousStatus,
+        node: report.node,
+        warnings: report.warnings,
+      }
+    }
+
+    if (!node) return { ok: false, action, warnings: [`Memory node not found: ${id}`] }
+    if (action === 'reject' && node.status !== 'candidate') {
+      return { ok: false, action, previousStatus, node, warnings: [`Reject requires candidate memory, got ${node.status}.`] }
+    }
+    if (action === 'stale' && node.status !== 'active') {
+      return { ok: false, action, previousStatus, node, warnings: [`Stale requires active memory, got ${node.status}.`] }
+    }
+
+    const now = this.now().toISOString()
+    const reviewed: MemoryNode = {
+      ...node,
+      status: action === 'reject' ? 'rejected' : 'stale',
+      updatedAt: now,
+      metadata: {
+        ...(node.metadata ?? {}),
+        lastReview: {
+          action,
+          actor: options.actor ?? 'system',
+          reason: options.reason,
+          reviewedAt: now,
+          previousStatus: node.status,
+        },
+      },
+    }
+    assertNode(reviewed)
+    this.upsert(reviewed)
+    return { ok: true, action, previousStatus, node: reviewed, warnings: [] }
   }
 
   exportJsonl(): string {

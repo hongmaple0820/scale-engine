@@ -1,8 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
+import { externalCommandExists, resolveExternalCommandPath } from '../core/ExternalCommand.js'
 import { WORKFLOW_AGENT_SKILL_CATALOG } from './SkillCatalog.js'
-import type { WorkflowSkillCatalogEntry } from './SkillCatalog.js'
+import type { WorkflowSkillCatalogEntry, WorkflowSkillReadinessTier } from './SkillCatalog.js'
 
 const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
   {
@@ -12,6 +13,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/eze-is/web-access',
     installCommand: 'npx skills add https://github.com/eze-is/web-access --skill web-access',
     trust: 'ecosystem',
+    readiness: 'required',
     definition: {
       id: 'web-access',
       name: 'Web Access',
@@ -31,6 +33,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/VoltAgent/awesome-design-md',
     installCommand: 'scale setup --pack ui --include awesome-design-md --apply',
     trust: 'ecosystem',
+    readiness: 'required',
     definition: {
       id: 'awesome-design-md',
       name: 'Awesome Design.md',
@@ -50,6 +53,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
     installCommand: 'scale setup --pack ui --include ui-ux-pro-max --apply',
     trust: 'ecosystem',
+    readiness: 'required',
     definition: {
       id: 'ui-ux-pro-max',
       name: 'UI/UX Pro Max',
@@ -69,6 +73,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/vercel-labs/agent-browser',
     installCommand: 'Install or configure Agent Browser from https://github.com/vercel-labs/agent-browser',
     trust: 'ecosystem',
+    readiness: 'recommended',
     definition: {
       id: 'agent-browser',
       name: 'Agent Browser',
@@ -88,6 +93,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/ChromeDevTools/chrome-devtools-mcp',
     installCommand: 'Configure Chrome DevTools MCP for the active agent platform',
     trust: 'ecosystem',
+    readiness: 'recommended',
     definition: {
       id: 'mcp-chrome-devtools',
       name: 'Chrome DevTools MCP',
@@ -107,6 +113,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/trycua/cua',
     installCommand: 'Install or configure CUA from https://github.com/trycua/cua',
     trust: 'ecosystem',
+    readiness: 'optional',
     definition: {
       id: 'cua',
       name: 'CUA',
@@ -126,6 +133,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/openai/codex',
     installCommand: 'Install Codex CLI and verify with: codex --version',
     trust: 'ecosystem',
+    readiness: 'recommended',
     definition: {
       id: 'codex-cli',
       name: 'Codex CLI',
@@ -144,6 +152,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/google-gemini/gemini-cli',
     installCommand: 'Install Gemini CLI and verify with: gemini --version',
     trust: 'ecosystem',
+    readiness: 'recommended',
     definition: {
       id: 'gemini-cli',
       name: 'Gemini CLI',
@@ -162,6 +171,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/sst/opencode',
     installCommand: 'Install OpenCode CLI and verify with: opencode --version',
     trust: 'ecosystem',
+    readiness: 'recommended',
     definition: {
       id: 'opencode-cli',
       name: 'OpenCode CLI',
@@ -177,7 +187,18 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
 
 export interface SkillDoctorOptions {
   projectDir?: string
+  scaleDir?: string
   homeDir?: string
+  env?: Record<string, string | undefined>
+  commandExists?: (command: string) => boolean
+  resolveCommandPath?: (command: string) => string | null
+  waivers?: WorkflowSkillWaiver[]
+}
+
+export interface WorkflowSkillWaiver {
+  id: string
+  reason: string
+  expiresAt?: string
 }
 
 export interface SkillDoctorEntry {
@@ -187,13 +208,16 @@ export interface SkillDoctorEntry {
   source: string
   installCommand: string
   trust: WorkflowSkillCatalogEntry['trust']
+  readiness: WorkflowSkillReadinessTier
   executionType: string
   declaredPath?: string
   checkedPaths: string[]
   installed: boolean
   detectedPath?: string
-  status: 'installed' | 'missing'
+  status: 'installed' | 'missing' | 'waived'
   missingReason?: string
+  waiverReason?: string
+  waiverExpiresAt?: string
 }
 
 export interface SkillDoctorReport {
@@ -201,6 +225,10 @@ export interface SkillDoctorReport {
   total: number
   installed: number
   missing: number
+  waived: number
+  missingByReadiness: Record<WorkflowSkillReadinessTier, string[]>
+  installedByReadiness: Record<WorkflowSkillReadinessTier, string[]>
+  waivedByReadiness: Record<WorkflowSkillReadinessTier, string[]>
   skills: SkillDoctorEntry[]
 }
 
@@ -215,15 +243,31 @@ export interface RequiredSkillInstallationReport {
 
 export function inspectWorkflowSkills(options: SkillDoctorOptions = {}): SkillDoctorReport {
   const projectDir = resolve(options.projectDir ?? process.cwd())
+  const scaleDir = resolveScaleDir(projectDir, options.scaleDir)
   const homeDir = options.homeDir ?? homedir()
-  const skills = workflowSkillCatalog().map(entry => inspectWorkflowSkill(entry, projectDir, homeDir))
+  const waivers = loadWorkflowSkillWaivers({ projectDir, scaleDir, waivers: options.waivers })
+  const skills = workflowSkillCatalog().map(entry => inspectWorkflowSkill(entry, {
+    projectDir,
+    homeDir,
+    env: options.env ?? process.env,
+    commandExists: options.commandExists ?? externalCommandExists,
+    resolveCommandPath: options.resolveCommandPath ?? resolveExternalCommandPath,
+  }, waivers.get(entry.id)))
   const installed = skills.filter(skill => skill.installed).length
-  const missing = skills.length - installed
+  const missing = skills.filter(skill => skill.status === 'missing').length
+  const waived = skills.filter(skill => skill.status === 'waived').length
+  const missingByReadiness = readinessBuckets(skills.filter(skill => skill.status === 'missing'))
+  const installedByReadiness = readinessBuckets(skills.filter(skill => skill.installed))
+  const waivedByReadiness = readinessBuckets(skills.filter(skill => skill.status === 'waived'))
   return {
-    ok: missing === 0,
+    ok: missingByReadiness.required.length === 0 && missingByReadiness.recommended.length === 0,
     total: skills.length,
     installed,
     missing,
+    waived,
+    missingByReadiness,
+    installedByReadiness,
+    waivedByReadiness,
     skills,
   }
 }
@@ -259,17 +303,38 @@ export function inspectRequiredWorkflowSkills(requiredSkills: string[], options:
   }
 }
 
-function inspectWorkflowSkill(entry: WorkflowSkillCatalogEntry, projectDir: string, homeDir: string): SkillDoctorEntry {
+interface InspectWorkflowSkillContext {
+  projectDir: string
+  homeDir: string
+  env: Record<string, string | undefined>
+  commandExists: (command: string) => boolean
+  resolveCommandPath: (command: string) => string | null
+}
+
+function inspectWorkflowSkill(
+  entry: WorkflowSkillCatalogEntry,
+  context: InspectWorkflowSkillContext,
+  waiver?: WorkflowSkillWaiver,
+): SkillDoctorEntry {
+  const inspected = entry.definition.execution.type === 'cli-command'
+    ? inspectCliWorkflowSkill(entry, context)
+    : entry.definition.execution.type === 'mcp-tool'
+      ? inspectMcpWorkflowSkill(entry, context)
+      : inspectSkillFileWorkflowSkill(entry, context)
+  return applyRecommendedWaiver(inspected, waiver)
+}
+
+function inspectSkillFileWorkflowSkill(entry: WorkflowSkillCatalogEntry, context: InspectWorkflowSkillContext): SkillDoctorEntry {
   const declaredPath = entry.definition.execution.config.skillPath
   const checkedPaths = unique([
-    declaredPath ? resolveSkillPath(declaredPath, projectDir, homeDir) : undefined,
-    join(homeDir, '.agents', 'skills', entry.id, 'SKILL.md'),
-    join(homeDir, '.codex', 'skills', entry.id, 'SKILL.md'),
-    join(homeDir, '.claude', 'skills', entry.id, 'SKILL.md'),
-    join(homeDir, '.gemini', 'skills', entry.id, 'SKILL.md'),
-    join(homeDir, '.omx', 'skills', entry.id, 'SKILL.md'),
-    join(projectDir, 'skills', entry.id, 'SKILL.md'),
-    join(projectDir, '.scale', 'skills', entry.id, 'SKILL.md'),
+    declaredPath ? resolveSkillPath(declaredPath, context.projectDir, context.homeDir) : undefined,
+    join(context.homeDir, '.agents', 'skills', entry.id, 'SKILL.md'),
+    join(context.homeDir, '.codex', 'skills', entry.id, 'SKILL.md'),
+    join(context.homeDir, '.claude', 'skills', entry.id, 'SKILL.md'),
+    join(context.homeDir, '.gemini', 'skills', entry.id, 'SKILL.md'),
+    join(context.homeDir, '.omx', 'skills', entry.id, 'SKILL.md'),
+    join(context.projectDir, 'skills', entry.id, 'SKILL.md'),
+    join(context.projectDir, '.scale', 'skills', entry.id, 'SKILL.md'),
   ].filter((path): path is string => Boolean(path)))
 
   const detectedPath = checkedPaths.find(path => existsSync(path))
@@ -280,6 +345,7 @@ function inspectWorkflowSkill(entry: WorkflowSkillCatalogEntry, projectDir: stri
     source: entry.source,
     installCommand: entry.installCommand,
     trust: entry.trust,
+    readiness: entry.readiness ?? 'recommended',
     executionType: entry.definition.execution.type,
     declaredPath,
     checkedPaths,
@@ -290,6 +356,73 @@ function inspectWorkflowSkill(entry: WorkflowSkillCatalogEntry, projectDir: stri
   }
 }
 
+function inspectCliWorkflowSkill(entry: WorkflowSkillCatalogEntry, context: InspectWorkflowSkillContext): SkillDoctorEntry {
+  const command = firstCommandToken(entry.definition.execution.config.command ?? entry.id)
+  const checkedPaths = [`PATH:${command}`]
+  const detectedPath = context.resolveCommandPath(command) ?? undefined
+  const installed = Boolean(detectedPath) || context.commandExists(command)
+  return {
+    id: entry.id,
+    name: entry.name,
+    description: entry.description,
+    source: entry.source,
+    installCommand: entry.installCommand,
+    trust: entry.trust,
+    readiness: entry.readiness ?? 'recommended',
+    executionType: entry.definition.execution.type,
+    checkedPaths,
+    installed,
+    detectedPath,
+    status: installed ? 'installed' : 'missing',
+    missingReason: installed ? undefined : `Command not found on PATH: ${command}`,
+  }
+}
+
+function inspectMcpWorkflowSkill(entry: WorkflowSkillCatalogEntry, context: InspectWorkflowSkillContext): SkillDoctorEntry {
+  const toolName = entry.definition.execution.config.toolName ?? entry.id
+  const envFlag = `SCALE_MCP_${toolName.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`
+  const checkedPaths = [`env:${envFlag}`]
+  const installed = truthy(context.env[envFlag])
+  return {
+    id: entry.id,
+    name: entry.name,
+    description: entry.description,
+    source: entry.source,
+    installCommand: entry.installCommand,
+    trust: entry.trust,
+    readiness: entry.readiness ?? 'recommended',
+    executionType: entry.definition.execution.type,
+    checkedPaths,
+    detectedPath: installed ? checkedPaths[0] : undefined,
+    installed,
+    status: installed ? 'installed' : 'missing',
+    missingReason: installed ? undefined : `MCP availability flag is not set: ${envFlag}`,
+  }
+}
+
+function firstCommandToken(command: string): string {
+  const trimmed = command.trim()
+  const quoted = /^"([^"]+)"/.exec(trimmed) ?? /^'([^']+)'/.exec(trimmed)
+  if (quoted) return quoted[1]
+  return trimmed.split(/\s+/)[0] || command
+}
+
+function truthy(value: string | undefined): boolean {
+  if (!value) return false
+  return ['1', 'true', 'yes', 'on', 'enabled'].includes(value.toLowerCase())
+}
+
+function applyRecommendedWaiver(entry: SkillDoctorEntry, waiver: WorkflowSkillWaiver | undefined): SkillDoctorEntry {
+  if (!waiver || entry.installed || entry.readiness !== 'recommended') return entry
+  return {
+    ...entry,
+    status: 'waived',
+    missingReason: undefined,
+    waiverReason: waiver.reason,
+    waiverExpiresAt: waiver.expiresAt,
+  }
+}
+
 function workflowSkillCatalog(): WorkflowSkillCatalogEntry[] {
   const entries = [...WORKFLOW_AGENT_SKILL_CATALOG, ...TOOL_ORCHESTRATION_SKILL_CATALOG]
   const byId = new Map<string, WorkflowSkillCatalogEntry>()
@@ -297,11 +430,68 @@ function workflowSkillCatalog(): WorkflowSkillCatalogEntry[] {
   return [...byId.values()]
 }
 
+function readinessBuckets(skills: SkillDoctorEntry[]): Record<WorkflowSkillReadinessTier, string[]> {
+  return {
+    required: skills.filter(skill => skill.readiness === 'required').map(skill => skill.id),
+    recommended: skills.filter(skill => skill.readiness === 'recommended').map(skill => skill.id),
+    optional: skills.filter(skill => skill.readiness === 'optional').map(skill => skill.id),
+  }
+}
+
 function resolveSkillPath(path: string, projectDir: string, homeDir: string): string {
   if (path === '~') return homeDir
   if (path.startsWith('~/') || path.startsWith('~\\')) return join(homeDir, path.slice(2))
   if (isAbsolute(path)) return path
   return resolve(projectDir, path)
+}
+
+function resolveScaleDir(projectDir: string, scaleDir = '.scale'): string {
+  return isAbsolute(scaleDir) ? scaleDir : resolve(projectDir, scaleDir)
+}
+
+function loadWorkflowSkillWaivers(options: {
+  projectDir: string
+  scaleDir: string
+  waivers?: WorkflowSkillWaiver[]
+}): Map<string, WorkflowSkillWaiver> {
+  const waiverMap = new Map<string, WorkflowSkillWaiver>()
+  for (const waiver of options.waivers ?? []) {
+    if (waiver.id && waiver.reason) waiverMap.set(waiver.id, waiver)
+  }
+
+  const policyPath = join(options.scaleDir, 'skills.json')
+  if (!existsSync(policyPath)) return waiverMap
+  try {
+    const parsed = JSON.parse(readFileSync(policyPath, 'utf-8')) as {
+      policy?: {
+        waivedRecommendedSkills?: unknown
+      }
+    }
+    for (const waiver of normalizeWorkflowSkillWaivers(parsed.policy?.waivedRecommendedSkills)) {
+      if (!waiverMap.has(waiver.id)) waiverMap.set(waiver.id, waiver)
+    }
+  } catch {
+    return waiverMap
+  }
+  return waiverMap
+}
+
+function normalizeWorkflowSkillWaivers(value: unknown): WorkflowSkillWaiver[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => {
+      if (typeof item === 'string') {
+        const id = item.trim()
+        return id ? { id, reason: 'Waived by repo skill policy.' } : null
+      }
+      if (!item || typeof item !== 'object') return null
+      const record = item as Record<string, unknown>
+      const id = typeof record.id === 'string' ? record.id.trim() : ''
+      const reason = typeof record.reason === 'string' ? record.reason.trim() : ''
+      const expiresAt = typeof record.expiresAt === 'string' ? record.expiresAt.trim() : undefined
+      return id && reason ? { id, reason, expiresAt } : null
+    })
+    .filter((item): item is WorkflowSkillWaiver => Boolean(item))
 }
 
 function unique<T>(items: T[]): T[] {

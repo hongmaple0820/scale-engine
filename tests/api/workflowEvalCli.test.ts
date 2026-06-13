@@ -75,6 +75,35 @@ function writeFailingSuite(scaleDir: string) {
   }, null, 2), 'utf-8')
 }
 
+function writePassingSuite(scaleDir: string) {
+  const suitesDir = join(scaleDir, 'evals', 'suites')
+  mkdirSync(suitesDir, { recursive: true })
+  writeFileSync(join(suitesDir, 'failing.json'), JSON.stringify({
+    version: '1.0',
+    id: 'failing',
+    name: 'Failing replay suite',
+    cases: [
+      {
+        id: 'missing-proof',
+        type: 'bugfix',
+        title: 'Missing verification evidence is preserved',
+        task: 'Simulate an agent claim with runtime evidence.',
+        phase: 'verify',
+        successCriteria: ['command exits 0'],
+        expectedFailureCategory: 'missing-verification-evidence',
+        attempts: [
+          {
+            id: 'attempt-1',
+            command: 'node -e "console.log(\'proof-ok\')"',
+            expectedExitCode: 0,
+            outputEquals: 'proof-ok',
+          },
+        ],
+      },
+    ],
+  }, null, 2), 'utf-8')
+}
+
 describe('workflow eval CLI', () => {
   it('initializes and runs the default workflow baseline suite', async () => {
     const scaleDir = makeDir('scale-eval-cli-scale-')
@@ -85,13 +114,21 @@ describe('workflow eval CLI', () => {
     const initReport = parseJson<{
       written: boolean
       path: string
-      suite: { id: string; cases: Array<{ id: string }> }
+      suite: { id: string; cases: Array<{ id: string; attempts?: Array<{ command: string; outputEquals?: string }> }> }
     }>(init.stdout, init.stderr)
     expect(initReport.written).toBe(true)
     expect(initReport.path.replace(/\\/g, '/')).toContain('/evals/suites/workflow-baseline.json')
     expect(initReport.suite.cases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'governance-command-smoke' }),
+      expect.objectContaining({ id: 'bugfix-regex-escape' }),
+      expect.objectContaining({ id: 'bugfix-concurrent-write' }),
+      expect.objectContaining({ id: 'bugfix-encoding-utf8' }),
+      expect.objectContaining({ id: 'feature-diff-view' }),
     ]))
+    expect(initReport.suite.cases.length).toBeGreaterThan(10)
+    const endpointCase = initReport.suite.cases.find(item => item.id === 'feature-api-endpoint')
+    expect(endpointCase?.attempts?.[0].command).not.toContain('\\d')
+    expect(endpointCase?.attempts?.[0].outputEquals).toBe('valid-id')
 
     const run = await runScale(['eval', 'run', '--json'], scaleDir, projectDir)
     expect(run.exitCode).toBe(0)
@@ -100,16 +137,18 @@ describe('workflow eval CLI', () => {
         ok: boolean
         id: string
         suiteId: string
+        cases: Array<{ id: string; attempts: Array<{ outputSummary: string }> }>
         metrics: { total: number; passed: number; passAt1Rate: number; failureReplayCount: number }
       }
       runPath: string
     }>(run.stdout, run.stderr)
     expect(runReport.run.ok).toBe(true)
     expect(runReport.run.suiteId).toBe('workflow-baseline')
-    expect(runReport.run.metrics.total).toBe(1)
-    expect(runReport.run.metrics.passed).toBe(1)
+    expect(runReport.run.metrics.total).toBe(initReport.suite.cases.length)
+    expect(runReport.run.metrics.passed).toBe(runReport.run.metrics.total)
     expect(runReport.run.metrics.passAt1Rate).toBe(1)
     expect(runReport.run.metrics.failureReplayCount).toBe(0)
+    expect(runReport.run.cases.find(item => item.id === 'feature-api-endpoint')?.attempts[0].outputSummary).toBe('valid-id')
     expect(existsSync(runReport.runPath)).toBe(true)
   }, 120_000)
 
@@ -159,6 +198,42 @@ describe('workflow eval CLI', () => {
     expect(candidate.failureId).toBe(failuresReport.failures[0].id)
     expect(candidate.status).toBe('candidate')
     expect(existsSync(candidate.evidencePath)).toBe(true)
+  }, 120_000)
+
+  it('closes open failure replay records after a passing rerun of the same case', async () => {
+    const scaleDir = makeDir('scale-eval-cli-scale-')
+    const projectDir = makeDir('scale-eval-cli-project-')
+    writeFailingSuite(scaleDir)
+
+    const failed = await runScale(['eval', 'run', '--suite', 'failing', '--json'], scaleDir, projectDir)
+    expect(failed.exitCode).toBe(1)
+    const failedReport = parseJson<{
+      run: { failureReplayIds: string[] }
+    }>(failed.stdout, failed.stderr)
+    const failureId = failedReport.run.failureReplayIds[0]
+    expect(failureId).toBeTruthy()
+
+    writePassingSuite(scaleDir)
+    const passed = await runScale(['eval', 'run', '--suite', 'failing', '--json'], scaleDir, projectDir)
+    expect(passed.exitCode).toBe(0)
+    const passedReport = parseJson<{
+      run: { id: string; ok: boolean; metrics: { failureReplayCount: number } }
+      closedFailureIds: string[]
+    }>(passed.stdout, passed.stderr)
+    expect(passedReport.run.ok).toBe(true)
+    expect(passedReport.run.metrics.failureReplayCount).toBe(0)
+    expect(passedReport.closedFailureIds).toContain(failureId)
+
+    const failures = await runScale(['eval', 'failures', '--task-id', 'missing-proof', '--json'], scaleDir, projectDir)
+    expect(failures.exitCode).toBe(0)
+    const failuresReport = parseJson<{
+      failures: Array<{ id: string; status: string; closedByEvalRunId?: string }>
+    }>(failures.stdout, failures.stderr)
+    expect(failuresReport.failures.filter(item => item.status === 'open')).toHaveLength(0)
+    expect(failuresReport.failures.find(item => item.id === failureId)).toMatchObject({
+      status: 'closed',
+      closedByEvalRunId: passedReport.run.id,
+    })
   }, 120_000)
 
   it('accepts UTF-8 BOM suite files generated by Windows tooling', async () => {

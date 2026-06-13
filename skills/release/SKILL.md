@@ -1,3 +1,17 @@
+---
+name: release
+version: 1.0.0
+description: SCALE Engine release workflow
+triggers:
+  - release
+  - publish
+  - 发版
+  - 发布
+agents:
+  - implementer
+  - reviewer
+---
+
 # SCALE Engine Release Workflow
 
 ## Trigger

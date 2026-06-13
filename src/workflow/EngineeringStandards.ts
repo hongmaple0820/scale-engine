@@ -653,7 +653,7 @@ function scanFile(
     const line = lines[index]
     const startedInsideTemplateLiteral = insideTemplateLiteral
     insideTemplateLiteral = updateTemplateLiteralState(line, insideTemplateLiteral)
-    if (startedInsideTemplateLiteral || isNonExecutablePatternLine(line)) continue
+    if (startedInsideTemplateLiteral || isNonExecutablePatternLine(line) || isSecurityRuleDefinitionLine(path, line)) continue
     const lineNumber = index + 1
     findings.push(...scanLine(path, line, lineNumber, policy, frameworks, astConfirmer))
   }
@@ -1271,7 +1271,16 @@ function sensitiveFieldPattern(policy: ResolvedEngineeringStandardsPolicy): RegE
 }
 
 function isLogCall(line: string): boolean {
-  return /\b(?:console\.(?:log|debug|info|warn|error)|logger\.(?:trace|debug|info|warn|error|fatal)|log(?:ger)?\.(?:trace|debug|info|warn|error|fatal)|log[A-Za-z0-9_]*\s*\()\b/.test(line)
+  for (const match of line.matchAll(/\b(?:console\.(?:log|debug|info|warn|error)|logger\.(?:trace|debug|info|warn|error|fatal)|log(?:ger)?\.(?:trace|debug|info|warn|error|fatal)|log[A-Za-z0-9_]*\s*\()/g)) {
+    if (
+      match.index !== undefined &&
+      !isInsideQuotedString(line, match.index) &&
+      !isInsideRegexLiteral(line, match.index)
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 function isAdHocOutputCall(line: string): boolean {
@@ -1291,7 +1300,14 @@ function isHardcodedSecret(line: string, policy: ResolvedEngineeringStandardsPol
   const fields = policy.logging.sensitiveFields.map(escapeRegex).join('|')
   const match = new RegExp(`\\b\\w*(?:${fields})\\w*\\b\\s*[:=]\\s*(['"\`])([^'"\`]{12,})\\1`, 'i').exec(line)
   if (!match) return false
-  return !/\b(example|sample|placeholder|changeme|replace-me|dummy|test-value)\b/i.test(match[2])
+  return !isAllowedSecretLiteralReference(match[2])
+}
+
+function isAllowedSecretLiteralReference(value: string): boolean {
+  if (/\b(example|sample|placeholder|changeme|replace-me|dummy|test-value)\b/i.test(value)) return true
+  if (/\b(?:process\.env|import\.meta\.env|Deno\.env|getenv)\b/.test(value)) return true
+  if (value.includes('${')) return true
+  return /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(value)
 }
 
 function isRawSqlConstruction(line: string): boolean {
@@ -1326,6 +1342,30 @@ function isNonExecutablePatternLine(line: string): boolean {
     /=\s*\/.*\/[dgimsuy]*\s*(?:[),;]|$)/.test(trimmed) ||
     /^pattern:\s*\/.*\/[dgimsuy]*,?$/.test(trimmed) ||
     /\(\s*\/.*\/[dgimsuy]*\.(?:test|exec)\(/.test(trimmed)
+}
+
+function isSecurityRuleDefinitionLine(path: string, line: string): boolean {
+  if (!isSecurityRuleSource(path)) return false
+  const trimmed = line.trim()
+  if (/^id:\s*['"`][^'"`]+['"`],?$/.test(trimmed)) return true
+  if (/^\{?\s*pattern:\s*\/.*\/[dgimsuy]*,?/.test(trimmed)) return true
+  if (/^patterns:\s*\[/.test(trimmed)) return true
+  if (/^\/.*\/[dgimsuy]*,?(?:\s*\/\/.*)?$/.test(trimmed)) return true
+  if (/^(?:const|let|var)\s+\w*pattern\w*\s*=\s*\/.*\/[dgimsuy]*/i.test(trimmed)) return true
+  if (/^(?:name|title|description|recommendation|remediation):\s*['"`].*(?:dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|curl pipe|shell:\s*true)/i.test(trimmed)) return true
+  return /^(?:if\s*\(|return\s+)?\/?.*(?:dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|curl pipe|shell:\s*true).*\/[dgimsuy]*\.test\(/i.test(trimmed) ||
+    /^(?:\/\/|\/\*\*?|\*)\s*.*(?:dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|curl pipe|shell:\s*true)/i.test(trimmed)
+}
+
+function isSecurityRuleSource(path: string): boolean {
+  return [
+    'src/guardrails/advancedDetectors.ts',
+    'src/guardrails/ast/confirmers.ts',
+    'src/guardrails/OWASPDetector.ts',
+    'src/workflow/gates/GateSystem.ts',
+    'src/workflow/ReviewAnalyzer.ts',
+    'src/workflow/SecurityAudit.ts',
+  ].some(ruleSource => path.endsWith(ruleSource))
 }
 
 function updateTemplateLiteralState(line: string, currentlyInside: boolean): boolean {

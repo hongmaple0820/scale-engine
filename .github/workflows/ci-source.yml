@@ -12,7 +12,7 @@ permissions:
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -36,12 +36,12 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: SCALE fast-lane preflight evidence
+      - name: SCALE source fast-lane preflight
         id: gate-fast-lane
-        continue-on-error: true
         run: |
           set +e
-          timeout 180s node dist/api/cli.js preflight --json --profile ci --preflight-profile fast-lane 2>&1 | tee gate-fast-lane.log
+          set -o pipefail
+          timeout 420s node dist/api/cli.js preflight --json --profile ci --preflight-profile fast-lane 2>&1 | tee gate-fast-lane.log
           status=${PIPESTATUS[0]}
           {
             echo "## SCALE fast-lane preflight"

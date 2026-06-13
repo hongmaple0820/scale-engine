@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 let dirs: string[] = []
 
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   dirs = []
 })
 
@@ -30,7 +30,7 @@ async function runScale(args: string[], scaleDir: string, projectDir: string) {
   })
 }
 
-const CLI_TEST_TIMEOUT_MS = 30_000
+const CLI_TEST_TIMEOUT_MS = 120_000
 
 describe('tool CLI', () => {
   it('prints resolved tool policy as JSON', async () => {

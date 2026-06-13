@@ -35,6 +35,22 @@ make workflow-aios-adopt
 make setup-smoke
 ```
 
+## Brain operations
+
+| Trigger | Skill |
+| --- | --- |
+| api, endpoint, rest | `skills/api-design/SKILL.md` |
+| review, check, quality | `skills/code-review/SKILL.md` |
+| debug, fix, error, bug | `skills/debugging/SKILL.md` |
+| document, readme, doc | `skills/documentation/SKILL.md` |
+| commit, pr, merge | `skills/git-workflow/SKILL.md` |
+| performance, optimize, slow, latency | `skills/performance/SKILL.md` |
+| plan, design, architecture | `skills/planning/SKILL.md` |
+| refactor, clean, improve | `skills/refactoring/SKILL.md` |
+| release, publish, 发版, 发布 | `skills/release/SKILL.md` |
+| security, audit, vulnerability, owasp | `skills/security-audit/SKILL.md` |
+| test, tdd, coverage | `skills/tdd/SKILL.md` |
+
 ## SCALE 2.0 三引擎命令
 
 ```bash

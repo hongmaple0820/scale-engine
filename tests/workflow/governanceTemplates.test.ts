@@ -70,13 +70,18 @@ describe('writeGovernanceTemplates', () => {
     expect(readFileSync(join(dir, 'scripts', 'qa', 'product-smoke.ps1'), 'utf-8')).toContain('$ConfigPath = Join-Path $Root ".scale\\product-smoke.json"')
     expect(readFileSync(join(dir, 'scripts', 'qa', 'product-smoke.sh'), 'utf-8')).toContain('CONFIG_PATH="$ROOT/.scale/product-smoke.json"')
     expect(readFileSync(join(dir, 'scripts', 'qa', 'product-smoke.ps1'), 'utf-8')).toContain("replace(/^\\uFEFF/, '')")
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'github-actions-scale-preflight.yml'), 'utf-8')).toContain('scale-engine@latest preflight --service all --preflight-profile ci')
+    const githubActionsPreflight = readFileSync(join(dir, 'docs', 'workflow', 'templates', 'github-actions-scale-preflight.yml'), 'utf-8')
+    expect(githubActionsPreflight).toContain('permissions:')
+    expect(githubActionsPreflight).toContain('contents: read')
+    expect(githubActionsPreflight).toContain('scale-engine@latest preflight --service all --profile ci --preflight-profile ci')
     const verification = JSON.parse(readFileSync(join(dir, '.scale', 'verification.json'), 'utf-8'))
     expect(verification.policy).toMatchObject({
       mode: 'critical',
       artifactGate: 'block',
       engineeringStandardsGate: 'block',
       productSmokeGate: 'block',
+      ecosystemReadinessGate: 'block',
+      ecosystemReadinessPacks: ['full'],
     })
     expect(verification.profiles.productSmoke.commands.smoke).toBe('powershell -ExecutionPolicy Bypass -File scripts/qa/product-smoke.ps1')
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'product-smoke.json'), 'utf-8'))).toMatchObject({
@@ -149,6 +154,11 @@ describe('writeGovernanceTemplates', () => {
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'governance.lock.json'), 'utf-8'))).toMatchObject({
       pack: 'project-scaffold',
       packVersion: 2,
+    })
+    expect(JSON.parse(readFileSync(join(dir, '.scale', 'verification.json'), 'utf-8')).policy).toMatchObject({
+      mode: 'standard',
+      ecosystemReadinessGate: 'block',
+      ecosystemReadinessSkillScope: 'required',
     })
   })
 

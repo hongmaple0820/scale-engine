@@ -36,11 +36,16 @@ describe('GateCatalog', () => {
 
     expect(report.summary.coreStages).toBe(15)
     expect(report.summary.metaStages).toBe(9)
-    expect(report.summary.extensionGates).toBe(3)
+    expect(report.summary.extensionGates).toBe(4)
     expect(report.extensions.find(gate => gate.id === 'engineering-standards')).toMatchObject({
       active: true,
       blocking: true,
       mode: 'block',
+    })
+    expect(report.extensions.find(gate => gate.id === 'ecosystem-readiness')).toMatchObject({
+      active: true,
+      blocking: false,
+      mode: 'warn',
     })
     expect(report.profiles.find(profile => profile.id === 'preflight:quick')?.stages).toEqual(['G3', 'G0', 'G4', 'G5'])
     expect(report.profiles.find(profile => profile.id === 'preflight:fast-lane')?.stages).toEqual(['G3', 'G0', 'G4', 'G5'])

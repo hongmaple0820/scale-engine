@@ -3,9 +3,9 @@ name: git-workflow
 version: 1.0.0
 description: Commit and PR standards
 triggers:
-  - commit
-  - pr
-  - merge
+  - "commit"
+  - "pr"
+  - "merge"
 agents:
   - implementer
 ---

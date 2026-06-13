@@ -1308,9 +1308,12 @@ const skillDoctorCommand = defineCommand({
     }
     console.log('\nSCALE Skill Doctor')
     console.log(`  Installed: ${report.installed}/${report.total}`)
+    if (report.waived > 0) console.log(`  Waived: ${report.waived}`)
     for (const skill of report.skills) {
-      console.log(`  ${skill.installed ? '[OK]' : '[MISSING]'} ${skill.id}`)
+      const label = skill.status === 'waived' ? '[WAIVED]' : skill.installed ? '[OK]' : '[MISSING]'
+      console.log(`  ${label} ${skill.id}`)
       if (skill.detectedPath) console.log(`    path: ${skill.detectedPath}`)
+      if (skill.waiverReason) console.log(`    waiver: ${skill.waiverReason}`)
       if (!skill.installed) console.log(`    install: ${skill.installCommand}`)
     }
     if (supplyChain) {

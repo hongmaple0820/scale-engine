@@ -1,4 +1,4 @@
-.PHONY: help preflight new-task plan explore checkpoint gate gate-workflow gate-quality gate-fast-lane resume status lint-scaffold verify verify-list validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt setup-smoke scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
+.PHONY: help preflight preflight-ci new-task plan explore checkpoint gate gate-workflow gate-quality gate-fast-lane resume status lint-scaffold verify verify-list validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt setup-smoke scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
 
 SCALE ?= scale
 SCALE_SMOKE ?= node --import tsx src/api/cli.ts
@@ -14,7 +14,7 @@ help:
 	@echo "make preflight | make new-task NAME=x LEVEL=M | make explore FILES='...' MSG='...'"
 	@echo "make plan NAME=x LEVEL=M | make gate-workflow | make gate-quality | make gate-fast-lane | make verify PROFILE=default"
 	@echo "make bootstrap-scale | make workflow-upgrade-check | make workflow-upgrade-plan | make workflow-aios-adopt"
-	@echo "make setup-smoke | make scale-smoke"
+	@echo "make preflight-ci | make setup-smoke | make scale-smoke"
 
 gate:
 	bash scripts/gates/all.sh --all
@@ -62,6 +62,9 @@ validate:
 
 preflight:
 	bash scripts/preflight/all.sh
+
+preflight-ci:
+	$(SCALE) preflight --dir . --service all --profile ci --preflight-profile ci
 
 bootstrap-scale:
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)"

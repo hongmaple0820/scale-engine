@@ -16,6 +16,7 @@ The project is no longer best described as a prompt toolbox. Its durable value i
 - context budgets
 - memory provider routing
 - skill, MCP, CLI, and adapter orchestration
+- Agent Loop readiness evidence for observe-decide-act-recover-stop workflows
 
 The core thesis is:
 
@@ -150,6 +151,7 @@ SCALE can already claim:
 - structured workflow execution with phase and artifact state
 - hard verification gates for delivery claims
 - evidence-based runtime reporting
+- Agent Loop readiness reporting from local execution, recovery, guardrail, budget, delegation, and termination evidence
 - first-class supply-chain audit direction
 - growing adapter coverage
 - memory and skill orchestration foundations
@@ -161,6 +163,7 @@ SCALE should not yet overclaim:
 - guaranteed token reduction percentages
 - guaranteed hallucination reduction percentages
 - adaptive cognitive planning
+- vendor Agent SDK parity or autonomous handoff guarantees
 - universal skill routing intelligence
 
 Use target ranges only in roadmap or evaluation documents, not as product claims, until eval evidence supports them.

@@ -23,6 +23,7 @@ export interface WorkflowEvalAttempt {
   command: string
   expectedExitCode?: number
   outputContains?: string
+  outputEquals?: string
   timeoutMs?: number
 }
 
@@ -114,6 +115,8 @@ export interface FailureReplayRecord {
   prevention: string
   replayCommand?: string
   status: 'open' | 'promoted' | 'accepted-risk' | 'closed'
+  closedAt?: string
+  closedByEvalRunId?: string
   redactionApplied: boolean
 }
 
@@ -169,6 +172,322 @@ export function defaultWorkflowEvalSuite(): WorkflowEvalSuite {
           },
         ],
       },
+      {
+        id: 'bugfix-null-safety',
+        type: 'bugfix',
+        title: 'Null safety fix in artifact store',
+        task: 'Fix a null reference error when accessing artifact payload that is undefined.',
+        phase: 'build',
+        successCriteria: [
+          'code handles undefined payload without throwing',
+          'test covers null/undefined payload case',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const p = undefined; console.log(p?.name ?? \'default\')"',
+          expectedExitCode: 0,
+          outputContains: 'default',
+        }],
+      },
+      {
+        id: 'bugfix-regex-escape',
+        type: 'bugfix',
+        title: 'Regex special characters in user input',
+        task: 'Fix a bug where user-provided strings with regex special characters break pattern matching.',
+        phase: 'build',
+        successCriteria: [
+          'special characters are escaped before use in regex',
+          'test covers strings with (, ), [, ], +, *, ?',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const s=\'test(1)\'; const escaped=[...s].map(c=>\'.*+?^${}()|[]\'.includes(c)?String.fromCharCode(92)+c:c).join(\'\'); const r=new RegExp(escaped); console.log(r.test(s))"',
+          expectedExitCode: 0,
+          outputContains: 'true',
+        }],
+      },
+      {
+        id: 'bugfix-json-parse-error',
+        type: 'bugfix',
+        title: 'Malformed JSON handling in settings loader',
+        task: 'Fix crash when .scale/settings.json contains invalid JSON.',
+        phase: 'build',
+        successCriteria: [
+          'invalid JSON returns default config instead of crashing',
+          'error is logged but does not propagate',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "try{JSON.parse(\'{bad}\')}catch(e){console.log(\'handled:\'+e.message)}"',
+          expectedExitCode: 0,
+          outputContains: 'handled:',
+        }],
+      },
+      {
+        id: 'bugfix-event-leak',
+        type: 'bugfix',
+        title: 'Event listener memory leak in EventBus',
+        task: 'Fix memory leak caused by not removing event listeners on unsubscribe.',
+        phase: 'build',
+        successCriteria: [
+          'unsubscribe removes handler from handler set',
+          'handler count decreases after unsubscribe',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const s=new Set(); s.add(()=>{}); const h=[...s][0]; s.delete(h); console.log(s.size)"',
+          expectedExitCode: 0,
+          outputContains: '0',
+        }],
+      },
+      {
+        id: 'bugfix-path-traversal',
+        type: 'bugfix',
+        title: 'Path traversal in file read operation',
+        task: 'Fix path traversal vulnerability where ../../../etc/passwd can be read.',
+        phase: 'build',
+        successCriteria: [
+          'paths with .. segments are rejected or normalized',
+          'test covers traversal attempts',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const p=require(\'path\'); const base=p.resolve(\'project-root\'); const target=p.resolve(base,\'..\',\'..\',\'etc\',\'passwd\'); console.log(target.startsWith(base))"',
+          expectedExitCode: 0,
+          outputContains: 'false',
+        }],
+      },
+      {
+        id: 'bugfix-async-timeout',
+        type: 'bugfix',
+        title: 'Async operation hangs without timeout',
+        task: 'Fix hanging async operation by adding proper timeout mechanism.',
+        phase: 'build',
+        successCriteria: [
+          'operation times out after configured duration',
+          'timeout error is properly propagated',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const p=new Promise((_,rej)=>setTimeout(()=>rej(new Error(\'timeout\')),100)); p.catch(e=>console.log(e.message))"',
+          expectedExitCode: 0,
+          outputContains: 'timeout',
+        }],
+      },
+      {
+        id: 'bugfix-concurrent-write',
+        type: 'bugfix',
+        title: 'Concurrent file write corruption',
+        task: 'Fix data corruption when multiple processes write to the same JSONL file simultaneously.',
+        phase: 'build',
+        successCriteria: [
+          'writes are serialized via lock or atomic operation',
+          'file integrity is maintained after concurrent writes',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const fs=require(\'fs\'),os=require(\'os\'),path=require(\'path\'); const f=path.join(os.tmpdir(),\'scale-eval-test-atomic.jsonl\'); fs.writeFileSync(f,\'\'); for(let i=0;i<5;i++){fs.appendFileSync(f,JSON.stringify({i})+String.fromCharCode(10))} console.log(fs.readFileSync(f,\'utf-8\').trim().split(String.fromCharCode(10)).length)"',
+          expectedExitCode: 0,
+          outputContains: '5',
+        }],
+      },
+      {
+        id: 'bugfix-empty-array-guard',
+        type: 'bugfix',
+        title: 'Empty array causes division by zero',
+        task: 'Fix division by zero when calculating average on empty results array.',
+        phase: 'build',
+        successCriteria: [
+          'empty array returns 0 or NaN guard instead of Infinity',
+          'test covers empty and single-element arrays',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const a=[]; const avg=a.length?a.reduce((s,v)=>s+v,0)/a.length:0; console.log(avg)"',
+          expectedExitCode: 0,
+          outputContains: '0',
+        }],
+      },
+      {
+        id: 'bugfix-encoding-utf8',
+        type: 'bugfix',
+        title: 'UTF-8 BOM in settings file breaks parser',
+        task: 'Fix JSON parse failure when settings.json has UTF-8 BOM prefix.',
+        phase: 'build',
+        successCriteria: [
+          'BOM is stripped before JSON.parse',
+          'test covers file with and without BOM',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const bom=String.fromCharCode(65279); const s=bom+JSON.stringify({ok:true}); console.log(JSON.parse(s.replace(bom,\'\')).ok)"',
+          expectedExitCode: 0,
+          outputContains: 'true',
+        }],
+      },
+      {
+        id: 'feature-api-endpoint',
+        type: 'feature',
+        title: 'Add GET /api/artifacts/:id endpoint',
+        task: 'Implement a new API endpoint to retrieve a single artifact by ID with proper error handling.',
+        phase: 'build',
+        successCriteria: [
+          'returns artifact JSON for valid ID',
+          'returns 404 for non-existent ID',
+          'returns 400 for invalid ID format',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const id=\'spec-001\'; console.log(/^[a-z]+-[0-9]+$/.test(id)?\'valid-id\':\'bad-id\')"',
+          expectedExitCode: 0,
+          outputEquals: 'valid-id',
+        }],
+      },
+      {
+        id: 'feature-cli-flag',
+        type: 'feature',
+        title: 'Add --json flag to scale status command',
+        task: 'Add JSON output format to the status command for programmatic consumption.',
+        phase: 'build',
+        successCriteria: [
+          '--json flag produces valid JSON output',
+          'default output remains human-readable',
+          'JSON includes all status fields',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "console.log(JSON.stringify({status:\'ok\',version:\'1.0\'}))"',
+          expectedExitCode: 0,
+          outputContains: 'status',
+        }],
+      },
+      {
+        id: 'feature-webhook-config',
+        type: 'feature',
+        title: 'Configurable webhook for event notifications',
+        task: 'Implement webhook configuration that POSTs events to a user-specified URL.',
+        phase: 'build',
+        successCriteria: [
+          'webhook URL is read from config',
+          'events are POSTed as JSON',
+          'failed webhooks are retried with backoff',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const url=\'https://example.com/hook\'; console.log(url.startsWith(\'https://\')?\'valid\':\'invalid\')"',
+          expectedExitCode: 0,
+          outputContains: 'valid',
+        }],
+      },
+      {
+        id: 'feature-filter-query',
+        type: 'feature',
+        title: 'Add filtering to artifact list command',
+        task: 'Implement --type and --status filters for the artifact list command.',
+        phase: 'build',
+        successCriteria: [
+          '--type filter returns only matching artifact types',
+          '--status filter returns only matching statuses',
+          'filters can be combined',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const items=[{type:\'Spec\',status:\'DRAFT\'},{type:\'Task\',status:\'DONE\'}]; const f=items.filter(i=>i.type===\'Spec\'); console.log(f.length)"',
+          expectedExitCode: 0,
+          outputContains: '1',
+        }],
+      },
+      {
+        id: 'feature-diff-view',
+        type: 'feature',
+        title: 'Show diff between artifact versions',
+        task: 'Implement a diff view that shows changes between two artifact versions.',
+        phase: 'build',
+        successCriteria: [
+          'added lines are marked with +',
+          'removed lines are marked with -',
+          'unchanged lines are shown as context',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const a=[\'line1\',\'line2\']; const b=[\'line1\',\'line3\']; const d=a.map((l,i)=>b[i]===l?\' \'+l:\'-\'+l); console.log(d.join(String.fromCharCode(10)))"',
+          expectedExitCode: 0,
+          outputContains: '-line2',
+        }],
+      },
+      {
+        id: 'refactor-extract-module',
+        type: 'refactor',
+        title: 'Extract detector logic into separate module',
+        task: 'Refactor monolithic guardrails file by extracting detector classes into their own module.',
+        phase: 'build',
+        successCriteria: [
+          'detectors are in separate file',
+          'imports are updated',
+          'all existing tests still pass',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const path=require(\'path\'); console.log(path.posix.join(\'src/guardrails\',\'detectors.ts\'))"',
+          expectedExitCode: 0,
+          outputContains: 'guardrails/detectors',
+        }],
+      },
+      {
+        id: 'refactor-reduce-complexity',
+        type: 'refactor',
+        title: 'Reduce cyclomatic complexity in Gateway.preTool',
+        task: 'Refactor deeply nested if-else chains in Gateway.preTool into early returns.',
+        phase: 'build',
+        successCriteria: [
+          'max nesting depth is reduced',
+          'behavior is unchanged',
+          'all existing tests pass',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "function f(x){if(!x)return null;if(typeof x!==\'number\')return null;return x*2} console.log(f(5))"',
+          expectedExitCode: 0,
+          outputContains: '10',
+        }],
+      },
+      {
+        id: 'refactor-consolidate-types',
+        type: 'refactor',
+        title: 'Consolidate duplicate type definitions',
+        task: 'Merge duplicate interface definitions across artifact/types.ts and guardrails/Gateway.ts.',
+        phase: 'build',
+        successCriteria: [
+          'single source of truth for shared types',
+          'no duplicate interfaces',
+          'type compatibility maintained',
+        ],
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const t={sessionId:\'s1\',tool:\'Bash\',args:{}}; console.log(typeof t.sessionId===\'string\'?\'ok\':\'fail\')"',
+          expectedExitCode: 0,
+          outputContains: 'ok',
+        }],
+      },
+      {
+        id: 'security-secret-detection',
+        type: 'security',
+        title: 'Detect hardcoded secrets in code changes',
+        task: 'Verify that the OWASP detector catches hardcoded API keys, passwords, and tokens.',
+        phase: 'verify',
+        successCriteria: [
+          'API key pattern is detected',
+          'password assignment is detected',
+          'token in URL is detected',
+        ],
+        expectedFailureCategory: 'failed-security-or-resource-gate',
+        attempts: [{
+          id: 'attempt-1',
+          command: 'node -e "const code=\'const key=sk-abc123\'; const r=/sk-[a-zA-Z0-9]{6,}/; console.log(r.test(code)?\'detected\':\'missed\')"',
+          expectedExitCode: 0,
+          outputContains: 'detected',
+        }],
+      },
     ],
   }
 }
@@ -221,6 +540,26 @@ export class WorkflowEvalStore {
     const path = join(this.failuresDir, `${safeSegment(record.id)}.json`)
     writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
     return path
+  }
+
+  closeOpenFailuresForCase(options: {
+    suiteId: string
+    caseId: string
+    closedByEvalRunId?: string
+  }): string[] {
+    const closedAt = new Date().toISOString()
+    const closed: string[] = []
+    for (const failure of this.listFailures({ taskId: options.caseId })) {
+      if (failure.suiteId !== options.suiteId || failure.caseId !== options.caseId || failure.status !== 'open') continue
+      this.saveFailure({
+        ...failure,
+        status: 'closed',
+        closedAt,
+        closedByEvalRunId: options.closedByEvalRunId,
+      })
+      closed.push(failure.id)
+    }
+    return closed
   }
 
   listFailures(query: { taskId?: string; sinceDays?: number } = {}): FailureReplayRecord[] {
@@ -282,17 +621,25 @@ export class WorkflowEvalStore {
 
 export async function runWorkflowEvalSuite(options: WorkflowEvalStoreOptions & {
   suite?: string
-} = {}): Promise<{ run: WorkflowEvalRun; runPath: string; failurePaths: string[] }> {
+} = {}): Promise<{ run: WorkflowEvalRun; runPath: string; failurePaths: string[]; closedFailureIds: string[] }> {
   const store = new WorkflowEvalStore(options)
   const suite = store.loadSuite(options.suite ?? 'workflow-baseline')
   const caseResults: WorkflowEvalCaseResult[] = []
   const failurePaths: string[] = []
+  const closedFailureIds: string[] = []
   const runId = `EVAL-${Date.now()}-${randomUUID().slice(0, 8)}`
 
   for (const item of suite.cases) {
     const result = await runEvalCase(store, suite.id, item)
     caseResults.push(result.caseResult)
     failurePaths.push(...result.failurePaths)
+    if (result.caseResult.passed) {
+      closedFailureIds.push(...store.closeOpenFailuresForCase({
+        suiteId: suite.id,
+        caseId: item.id,
+        closedByEvalRunId: runId,
+      }))
+    }
   }
 
   const failureReplayIds = caseResults.flatMap(result => result.failureReplayIds)
@@ -307,7 +654,7 @@ export async function runWorkflowEvalSuite(options: WorkflowEvalStoreOptions & {
     failureReplayIds,
   }
   const runPath = store.saveRun(run)
-  return { run, runPath, failurePaths }
+  return { run, runPath, failurePaths, closedFailureIds }
 }
 
 export function compareWorkflowEvalRuns(options: WorkflowEvalStoreOptions & {
@@ -428,12 +775,15 @@ async function runAttempt(attempt: WorkflowEvalAttempt, cwd: string): Promise<Wo
     const outputContains = attempt.outputContains
       ? output.includes(attempt.outputContains)
       : true
+    const outputEquals = attempt.outputEquals
+      ? normalizeEvalOutput(output) === attempt.outputEquals
+      : true
     return {
       id: attempt.id ?? `attempt-${randomUUID().slice(0, 8)}`,
       command: commandRedaction.value,
       expectedExitCode,
       exitCode: result.exitCode,
-      passed: result.exitCode === expectedExitCode && outputContains,
+      passed: result.exitCode === expectedExitCode && outputContains && outputEquals,
       durationMs: Date.now() - started,
       outputSummary: outputRedaction.value || '(no output)',
       redactionApplied: commandRedaction.redacted || outputRedaction.redacted,
@@ -539,6 +889,10 @@ function readJson<T>(path: string): T | null {
 
 function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text
+}
+
+function normalizeEvalOutput(output: string): string {
+  return output.replace(/\r?\n$/, '')
 }
 
 function ratio(part: number, total: number): number {

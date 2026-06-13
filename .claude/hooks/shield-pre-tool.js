@@ -1,5 +1,5 @@
 // SCALE Shield Combined PreToolUse Hook
-// Policy hash: d3410c07039f | Rules: 8 | Mode: strict  # strict = 阻断, warn = 仅警告
+// Policy hash: 39707e824869 | Rules: 8 | Mode: strict  # strict = 阻断, warn = 仅警告
 // Auto-generated — DO NOT EDIT
 
 const BLOCKED_COMMANDS = ["rm -rf","DROP TABLE","DROP DATABASE","TRUNCATE TABLE","git push --force","git push -f","git reset --hard","curl | bash","wget | bash","chmod 777","chmod -R 777","docker rm -f","docker system prune","kubectl delete","cat .env","eval ","--no-verify","allowDangerously"];
@@ -71,7 +71,9 @@ try {
             process.exit(2);
           }
         }
-      } catch (e) { /* allow on error */ }
+      } catch (e) {
+        process.stderr.write('[SCALE SHIELD WARN] Gate state check skipped: ' + (e && e.message ? e.message : String(e)) + '\n');
+      }
     }
   }
 
@@ -89,7 +91,9 @@ try {
       toolName,
       blocked: false,
     }));
-  } catch (e) { /* state write is best-effort */ }
+  } catch (e) {
+    process.stderr.write('[SCALE SHIELD WARN] Hook state write skipped: ' + (e && e.message ? e.message : String(e)) + '\n');
+  }
 
   process.exit(0);
 } catch (e) {

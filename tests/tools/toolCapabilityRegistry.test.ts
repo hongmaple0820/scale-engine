@@ -118,4 +118,26 @@ describe('ToolCapabilityRegistry', () => {
     expect(report.tools.find(tool => tool.id === 'codegraph')?.installHint).toBe('scale bootstrap deps --pack knowledge --apply')
     expect(report.tools.find(tool => tool.id === 'graphify')?.installHint).toBe('scale bootstrap deps --pack knowledge --apply')
   })
+
+  it('detects policy-selected skills that are not in the static tool catalog', () => {
+    const projectDir = makeDir('scale-tools-project-')
+    const skillPath = writeSkill(projectDir, 'code-reviewer')
+
+    const report = inspectToolCapabilities({
+      projectDir,
+      homeDir: makeDir('scale-tools-home-'),
+      toolIds: ['code-reviewer'],
+    })
+
+    expect(report.ok).toBe(true)
+    expect(report.tools).toHaveLength(1)
+    expect(report.tools[0]).toMatchObject({
+      id: 'code-reviewer',
+      name: 'Code Reviewer',
+      category: 'skill',
+      installed: true,
+      status: 'installed',
+      detectedPath: skillPath,
+    })
+  })
 })

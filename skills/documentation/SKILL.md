@@ -3,9 +3,9 @@ name: documentation
 version: 1.0.0
 description: Documentation writing standards
 triggers:
-  - document
-  - readme
-  - doc
+  - "document"
+  - "readme"
+  - "doc"
 agents:
   - doc-writer
 ---

@@ -11,6 +11,7 @@ export interface VerificationCommandConfig {
   tddEvidence?: string
   tddStrict?: boolean
   cwd?: string
+  scaleDir?: string
 }
 
 export interface VerificationRuntimeEvidenceConfig {

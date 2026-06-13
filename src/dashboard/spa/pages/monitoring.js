@@ -4,20 +4,21 @@
 ;(() => {
   'use strict'
 
-  const { fetchJSON, formatTime, relativeTime, formatNumber, registerChart, getTheme, t, $, $$ } = window.Dashboard
+  const { fetchJSON, relativeTime, formatNumber, registerChart, getTheme, runtimeLabel, t, $, $$, dom } = window.Dashboard
+  const { chartContainer, dataTable, el, emptyState, metricCard, panel, renderText, safeClassToken } = dom
 
   async function renderMonitoring() {
     const app = $('#app')
-    app.innerHTML = `
-      <div class="metrics-row" id="mon-metrics"></div>
-      <div class="tabs" id="mon-tabs">
-        <div class="tab active" data-tab="overview">${t('monitoring.overview')}</div>
-        <div class="tab" data-tab="detectors">${t('monitoring.detectors')}</div>
-        <div class="tab" data-tab="defects">${t('monitoring.defects')}</div>
-        <div class="tab" data-tab="commands">${t('monitoring.commands')}</div>
-      </div>
-      <div id="mon-content"></div>
-    `
+    app.replaceChildren(
+      el('div', { className: 'metrics-row', id: 'mon-metrics' }),
+      el('div', { className: 'tabs', id: 'mon-tabs' }, [
+        el('div', { className: 'tab active', text: t('monitoring.overview'), dataset: { tab: 'overview' } }),
+        el('div', { className: 'tab', text: t('monitoring.detectors'), dataset: { tab: 'detectors' } }),
+        el('div', { className: 'tab', text: t('monitoring.defects'), dataset: { tab: 'defects' } }),
+        el('div', { className: 'tab', text: t('monitoring.commands'), dataset: { tab: 'commands' } }),
+      ]),
+      el('div', { id: 'mon-content' })
+    )
 
     const [state, metrics] = await Promise.all([
       fetchJSON('/api/state'),
@@ -46,18 +47,14 @@
     const cmdPassRate = commands > 0 ? ((metrics.commandRuns.passed / commands) * 100).toFixed(0) + '%' : '-'
     const events = state?.recentEvents?.length ?? 0
 
-    container.innerHTML = [
+    const cards = [
       { label: t('monitoring.activeDetectors'), value: detectors, cls: '' },
       { label: t('monitoring.autoDefects'), value: formatNumber(defects), cls: defects > 0 ? '' : 'accent' },
       { label: t('monitoring.commandRuns'), value: formatNumber(commands), cls: '' },
       { label: t('monitoring.commandPassRate'), value: cmdPassRate, cls: parseInt(cmdPassRate) >= 80 ? 'accent' : '' },
       { label: t('monitoring.recentEvents'), value: events, cls: '' },
-    ].map(c => `
-      <div class="metric-card">
-        <div class="metric-label">${c.label}</div>
-        <div class="metric-value ${c.cls}">${c.value}</div>
-      </div>
-    `).join('')
+    ]
+    container.replaceChildren(...cards.map(c => metricCard(c.label, c.value, c.cls)))
   }
 
   function renderMonTab(tab, state, metrics) {
@@ -73,28 +70,18 @@
   // ── Overview ───────────────────────────────────────────────────────
 
   function renderOverview(container, state, metrics) {
-    container.innerHTML = `
-      <div class="grid-2 mb-24">
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('monitoring.defectsByRootCause')}</span></div>
-          <div class="chart-area" id="mon-rootcause-chart"></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('monitoring.defectsBySeverity')}</span></div>
-          <div class="chart-area" id="mon-severity-chart"></div>
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('monitoring.commandStatus')}</span></div>
-          <div class="chart-area" id="mon-cmd-chart"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">${t('monitoring.recentEvents')} <span class="count">(${(state?.recentEvents ?? []).length})</span></div>
-          <div class="event-stream" id="mon-events" style="max-height:300px"></div>
-        </div>
-      </div>
-    `
+    const eventCount = el('span', { className: 'count', text: `(${(state?.recentEvents ?? []).length})` })
+    container.replaceChildren(
+      el('div', { className: 'grid-2 mb-24' }, [
+        chartContainer(t('monitoring.defectsByRootCause'), 'mon-rootcause-chart'),
+        chartContainer(t('monitoring.defectsBySeverity'), 'mon-severity-chart'),
+      ]),
+      el('div', { className: 'grid-2' }, [
+        chartContainer(t('monitoring.commandStatus'), 'mon-cmd-chart'),
+        panel(t('monitoring.recentEvents'), 'mon-events', { titleSuffix: eventCount, bodyClassName: 'event-stream' }),
+      ])
+    )
+    $('#mon-events').style.maxHeight = '300px'
 
     renderRootCauseChart(state)
     renderSeverityChart(state)
@@ -108,7 +95,7 @@
     const entries = Object.entries(data)
 
     if (entries.length === 0) {
-      el.innerHTML = `<div class="empty-state"><p>${t('monitoring.noDefectData')}</p></div>`
+      el.replaceChildren(emptyState(t('monitoring.noDefectData')))
       return
     }
 
@@ -120,7 +107,7 @@
       tooltip: { trigger: 'axis' },
       grid: { left: 120, right: 20, top: 10, bottom: 30 },
       xAxis: { type: 'value', axisLabel: { color: '#a1a1a1' }, splitLine: { lineStyle: { color: '#2a2a2a' } } },
-      yAxis: { type: 'category', data: entries.map(([k]) => k), axisLabel: { color: '#a1a1a1', fontSize: 11 } },
+      yAxis: { type: 'category', data: entries.map(([k]) => runtimeLabel('status', k)), axisLabel: { color: '#a1a1a1', fontSize: 11 } },
       series: [{
         type: 'bar',
         data: entries.map(([, v], i) => ({
@@ -138,7 +125,7 @@
     const entries = Object.entries(data)
 
     if (entries.length === 0) {
-      el.innerHTML = `<div class="empty-state"><p>${t('common.noData')}</p></div>`
+      el.replaceChildren(emptyState(t('common.noData')))
       return
     }
 
@@ -152,7 +139,7 @@
         type: 'pie', radius: ['40%', '70%'],
         label: { color: '#a1a1a1', formatter: '{b}\n{d}%' },
         data: entries.map(([sev, count]) => ({
-          name: sev, value: count,
+          name: runtimeLabel('severity', sev), value: count,
           itemStyle: { color: severityColors[sev] || '#888' },
         })),
       }],
@@ -163,7 +150,7 @@
     const el = $('#mon-cmd-chart')
     const cmd = metrics?.commandRuns
     if (!cmd || cmd.total === 0) {
-      el.innerHTML = `<div class="empty-state"><p>${t('monitoring.noCommandData')}</p></div>`
+      el.replaceChildren(emptyState(t('monitoring.noCommandData')))
       return
     }
 
@@ -188,17 +175,18 @@
     const events = state?.recentEvents ?? []
 
     if (events.length === 0) {
-      container.innerHTML = `<div class="text-muted text-sm">${t('overview.noEvents')}</div>`
+      renderText(container, t('overview.noEvents'))
       return
     }
 
-    container.innerHTML = events.slice(0, 30).map(e => `
-      <div class="event-item">
-        <span class="event-type">${e.type}</span>
-        <span class="text-sm">${e.artifactId ? t('monitoring.artifactPrefix', { id: e.artifactId.slice(0, 8) }) : ''}</span>
-        <span class="event-time">${relativeTime(e.timestamp)}</span>
-      </div>
-    `).join('')
+    container.replaceChildren(...events.slice(0, 30).map(e => {
+      const artifactText = e.artifactId ? t('monitoring.artifactPrefix', { id: e.artifactId.slice(0, 8) }) : ''
+      return el('div', { className: 'event-item' }, [
+        el('span', { className: 'event-type', text: e.type }),
+        el('span', { className: 'text-sm', text: artifactText }),
+        el('span', { className: 'event-time', text: relativeTime(e.timestamp) }),
+      ])
+    }))
   }
 
   // ── Detectors ──────────────────────────────────────────────────────
@@ -207,48 +195,41 @@
     const detectors = state?.detectorStats ?? []
 
     if (detectors.length === 0) {
-      container.innerHTML = `<div class="empty-state"><div class="icon">&#128270;</div><p>${t('monitoring.noDetectorData')}</p></div>`
+      container.replaceChildren(emptyState(t('monitoring.noDetectorData'), '\uD83D\uDD0E'))
       return
     }
 
-    container.innerHTML = `
-      <div class="panel mb-24">
-        <div class="panel-title">${t('monitoring.detectorPerformance')}</div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>${t('monitoring.detectors')}</th>
-              <th>${t('monitoring.triggerDistribution')}</th>
-              <th>${t('monitoring.defectsBySeverity')}</th>
-              <th>${t('monitoring.recentEvents')}</th>
-              <th>${t('monitoring.health')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${detectors.map(d => {
-              const highSev = (d.bySeverity?.high ?? 0) + (d.bySeverity?.critical ?? 0)
-              const health = highSev > 5 ? 'critical' : highSev > 0 ? 'warning' : 'ok'
-              const healthColor = { ok: '#00dc82', warning: '#ffaa00', critical: '#ff4444' }[health]
-              return `
-                <tr>
-                  <td style="font-weight:500">${d.name}</td>
-                  <td>${d.totalTriggers}</td>
-                  <td>${Object.entries(d.bySeverity ?? {}).map(([s, c]) =>
-                    `<span class="severity-badge severity-${s}">${s}: ${c}</span>`
-                  ).join(' ')}</td>
-                  <td class="text-muted text-sm">${d.lastTrigger ? relativeTime(d.lastTrigger) : '-'}</td>
-                  <td><span style="color:${healthColor};font-weight:500">${health.toUpperCase()}</span></td>
-                </tr>
-              `
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div class="chart-container">
-        <div class="chart-header"><span class="chart-title">${t('monitoring.triggerDistribution')}</span></div>
-        <div class="chart-area" id="mon-det-chart"></div>
-      </div>
-    `
+    const rows = detectors.map(d => {
+      const highSev = (d.bySeverity?.high ?? 0) + (d.bySeverity?.critical ?? 0)
+      const health = highSev > 5 ? 'critical' : highSev > 0 ? 'warning' : 'ok'
+      const healthColor = { ok: '#00dc82', warning: '#ffaa00', critical: '#ff4444' }[health]
+      const severityBadges = Object.entries(d.bySeverity ?? {}).map(([s, c]) =>
+        el('span', { className: `severity-badge severity-${safeClassToken(s)}`, text: `${runtimeLabel('severity', s)}: ${c}` })
+      )
+      return el('tr', {}, [
+        el('td', { text: d.name, style: { fontWeight: '500' } }),
+        el('td', { text: d.totalTriggers }),
+        el('td', {}, severityBadges),
+        el('td', { className: 'text-muted text-sm', text: d.lastTrigger ? relativeTime(d.lastTrigger) : '-' }),
+        el('td', {}, [
+          el('span', { text: runtimeLabel('health', health), style: { color: healthColor, fontWeight: '500' } }),
+        ]),
+      ])
+    })
+
+    container.replaceChildren(
+      el('div', { className: 'panel mb-24' }, [
+        el('div', { className: 'panel-title', text: t('monitoring.detectorPerformance') }),
+        dataTable([
+          t('monitoring.detectors'),
+          t('monitoring.triggerDistribution'),
+          t('monitoring.defectsBySeverity'),
+          t('monitoring.recentEvents'),
+          t('monitoring.health'),
+        ], rows),
+      ]),
+      chartContainer(t('monitoring.triggerDistribution'), 'mon-det-chart')
+    )
 
     // Detector trigger chart
     const el = $('#mon-det-chart')
@@ -263,7 +244,7 @@
         xAxis: { type: 'value', axisLabel: { color: '#a1a1a1' }, splitLine: { lineStyle: { color: '#2a2a2a' } } },
         yAxis: { type: 'category', data: detectors.map(d => d.name), axisLabel: { color: '#a1a1a1', fontSize: 11 } },
         series: ['low', 'medium', 'high', 'critical'].map(sev => ({
-          name: sev,
+          name: runtimeLabel('severity', sev),
           type: 'bar',
           stack: 'total',
           data: detectors.map(d => d.bySeverity?.[sev] ?? 0),
@@ -279,37 +260,37 @@
   function renderDefects(container, state) {
     const defects = state?.autoDefectStats?.recentDefects ?? []
     const byRootCause = state?.autoDefectStats?.byRootCause ?? {}
-    const bySeverity = state?.autoDefectStats?.bySeverity ?? {}
+    const summaryCards = Object.entries(byRootCause).slice(0, 6).map(([cause, count]) =>
+      metricCard(cause, count)
+    )
+    const defectBody = defects.length === 0
+      ? el('div', { className: 'text-muted text-sm', text: t('monitoring.noAutoDefects') })
+      : dataTable([
+        t('monitoring.defects'),
+        t('monitoring.defectsByRootCause'),
+        t('monitoring.defectsBySeverity'),
+        t('monitoring.detectors'),
+        t('monitoring.recentEvents'),
+      ], defects.map(d => el('tr', {}, [
+        el('td', { text: d.title, style: { fontWeight: '500' } }),
+        el('td', { className: 'text-muted', text: d.rootCause }),
+        el('td', {}, [
+          el('span', { className: `severity-badge severity-${safeClassToken(d.severity)}`, text: runtimeLabel('severity', d.severity) }),
+        ]),
+        el('td', { className: 'text-muted', text: d.detector }),
+        el('td', { className: 'text-muted text-sm', text: relativeTime(d.createdAt) }),
+      ])))
 
-    container.innerHTML = `
-      <div class="grid-3 mb-24">
-        ${Object.entries(byRootCause).slice(0, 6).map(([cause, count]) => `
-          <div class="metric-card">
-            <div class="metric-label">${cause}</div>
-            <div class="metric-value">${count}</div>
-          </div>
-        `).join('')}
-      </div>
-      <div class="panel">
-        <div class="panel-title">${t('monitoring.recentAutoDefects')} <span class="count">(${defects.length})</span></div>
-        ${defects.length === 0 ? `<div class="text-muted text-sm">${t('monitoring.noAutoDefects')}</div>` : `
-          <table class="data-table">
-            <thead><tr><th>${t('monitoring.defects')}</th><th>${t('monitoring.defectsByRootCause')}</th><th>${t('monitoring.defectsBySeverity')}</th><th>${t('monitoring.detectors')}</th><th>${t('monitoring.recentEvents')}</th></tr></thead>
-            <tbody>
-              ${defects.map(d => `
-                <tr>
-                  <td style="font-weight:500">${d.title}</td>
-                  <td class="text-muted">${d.rootCause}</td>
-                  <td><span class="severity-badge severity-${d.severity}">${d.severity}</span></td>
-                  <td class="text-muted">${d.detector}</td>
-                  <td class="text-muted text-sm">${relativeTime(d.createdAt)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `}
-      </div>
-    `
+    container.replaceChildren(
+      el('div', { className: 'grid-3 mb-24' }, summaryCards),
+      el('div', { className: 'panel' }, [
+        el('div', { className: 'panel-title' }, [
+          document.createTextNode(t('monitoring.recentAutoDefects') + ' '),
+          el('span', { className: 'count', text: `(${defects.length})` }),
+        ]),
+        defectBody,
+      ])
+    )
   }
 
   // ── Commands ───────────────────────────────────────────────────────
@@ -317,7 +298,7 @@
   function renderCommands(container, metrics) {
     const cmd = metrics?.commandRuns
     if (!cmd) {
-      container.innerHTML = `<div class="empty-state"><p>${t('monitoring.noCommandData')}</p></div>`
+      container.replaceChildren(emptyState(t('monitoring.noCommandData')))
       return
     }
 
@@ -325,36 +306,18 @@
       ? ((cmd.savedEstimatedTokens / cmd.rawEstimatedTokens) * 100).toFixed(1)
       : '0'
 
-    container.innerHTML = `
-      <div class="metrics-row mb-24">
-        <div class="metric-card">
-          <div class="metric-label">${t('monitoring.totalRuns')}</div>
-          <div class="metric-value">${formatNumber(cmd.total)}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">${t('monitoring.passed')}</div>
-          <div class="metric-value accent">${formatNumber(cmd.passed)}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">${t('monitoring.failed')}</div>
-          <div class="metric-value">${formatNumber(cmd.failed)}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">${t('monitoring.tokenSavings')}</div>
-          <div class="metric-value accent">${efficiency}%</div>
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('monitoring.tokenBreakdown')}</span></div>
-          <div class="chart-area" id="mon-token-breakdown"></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('monitoring.passFailRatio')}</span></div>
-          <div class="chart-area" id="mon-passfail"></div>
-        </div>
-      </div>
-    `
+    container.replaceChildren(
+      el('div', { className: 'metrics-row mb-24' }, [
+        metricCard(t('monitoring.totalRuns'), formatNumber(cmd.total)),
+        metricCard(t('monitoring.passed'), formatNumber(cmd.passed), 'accent'),
+        metricCard(t('monitoring.failed'), formatNumber(cmd.failed)),
+        metricCard(t('monitoring.tokenSavings'), `${efficiency}%`, 'accent'),
+      ]),
+      el('div', { className: 'grid-2' }, [
+        chartContainer(t('monitoring.tokenBreakdown'), 'mon-token-breakdown'),
+        chartContainer(t('monitoring.passFailRatio'), 'mon-passfail'),
+      ])
+    )
 
     // Token breakdown
     const tokenEl = $('#mon-token-breakdown')

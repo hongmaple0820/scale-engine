@@ -66,10 +66,11 @@ export function commandEvidence(command: string, exitCode: unknown, summary: unk
   }
 }
 
-export type PreflightProfile = 'quick' | 'full' | 'ci'
+export type PreflightProfile = 'quick' | 'full' | 'ci' | 'fast-lane'
 
 export function normalizePreflightProfile(value: unknown): PreflightProfile {
   const normalized = String(value ?? 'quick').trim().toLowerCase()
+  if (normalized === 'fast-lane' || normalized === 'fastlane') return 'fast-lane'
   if (normalized === 'full' || normalized === 'ci') return normalized
   return 'quick'
 }

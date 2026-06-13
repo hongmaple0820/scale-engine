@@ -2,27 +2,36 @@
  * Dashboard Server 2.0 — Unified Hono server with Node.js adapter
  * SPA architecture, SSE real-time, ECharts visualization
  */
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
-import { serveStatic } from 'hono/bun'
 import { streamSSE } from 'hono/streaming'
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { join, dirname, extname } from 'node:path'
+import { basename, join, dirname, extname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { ServerType } from '@hono/node-server'
 import type { EventBus } from '../core/eventBus.js'
 import type { Gate } from '../artifact/types.js'
 import type { IArtifactStore } from '../artifact/store.js'
 import type { IFSM } from '../artifact/fsm.js'
 import type { IEvolutionEvaluator, EvolutionMetrics } from '../evolution/EvolutionEvaluator.js'
 import type { DetectorStatisticsTracker } from '../guardrails/DetectorEnhanced.js'
+import { MemoryBrain, type MemoryNode, type MemoryReviewAction } from '../memory/MemoryBrain.js'
+import {
+  inspectMemoryProviders,
+  recallMemoryProviders,
+  type MemoryProviderRecallReport,
+  type MemoryProviderStatusReport,
+} from '../memory/MemoryProviders.js'
 import { dumpCodeGraphData, type TopologyGraph } from '../codegraph/CodeIntelligence.js'
 import { classifyLayers } from '../topology/LayerClassifier.js'
 import { mapDomains } from '../topology/DomainMapper.js'
 import { generateTour } from '../topology/TourGenerator.js'
-import { aggregateGovernanceMetrics, type AggregatedGovernanceMetrics } from './MetricsAggregator.js'
+import { aggregateGovernanceMetrics } from './MetricsAggregator.js'
 import { logger } from '../core/logger.js'
+import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const MEMORY_REVIEW_ACTIONS = ['approve', 'reject', 'stale', 'restore'] as const
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -82,6 +91,73 @@ export interface RecentEvent {
   data?: Record<string, unknown>
 }
 
+export interface DashboardProjectSummary {
+  id: string
+  name: string
+  projectDir: string
+  scaleDir: string
+  url?: string
+  current?: boolean
+}
+
+export interface DashboardKnowledgeReport {
+  project: DashboardProjectSummary
+  local: {
+    available: boolean
+    total: number
+    byStatus: Record<string, number>
+    nodes: MemoryNode[]
+  }
+  providers?: MemoryProviderStatusReport
+  recall?: MemoryProviderRecallReport
+  warnings: string[]
+}
+
+export interface DashboardProjectsSummaryReport {
+  generatedAt: number
+  sinceDays: number
+  currentProjectId: string
+  totals: {
+    projects: number
+    readyProjects: number
+    warningProjects: number
+    missingProjects: number
+    documents: number
+    localMemoryNodes: number
+    activeMemoryNodes: number
+    commandRuns: number
+    failedCommandRuns: number
+    gateFailures: number
+  }
+  projects: DashboardProjectOverview[]
+  warnings: string[]
+}
+
+export interface DashboardProjectOverview {
+  project: DashboardProjectSummary
+  health: 'ready' | 'warning' | 'missing'
+  scaleDirExists: boolean
+  documents: {
+    total: number
+    byType: Record<string, number>
+  }
+  knowledge: {
+    available: boolean
+    total: number
+    active: number
+  }
+  metrics: {
+    available: boolean
+    commandRuns: number
+    failedCommandRuns: number
+    commandPassRate: number
+    gateFailures: number
+    recentTasks: number
+    recentFirstPassRate: number
+  }
+  warnings: string[]
+}
+
 export interface DashboardOptions {
   port?: number
   host?: string
@@ -92,6 +168,10 @@ export interface DashboardOptions {
   bus?: EventBus
   projectDir?: string
   scaleDir?: string
+  projectName?: string
+  projectUrl?: string
+  currentProjectId?: string
+  projects?: DashboardProjectSummary[]
 }
 
 // ── Dashboard Server ─────────────────────────────────────────────────────
@@ -107,7 +187,9 @@ export class DashboardServer {
   private host: string
   private projectDir: string
   private scaleDir: string
-  private server: ReturnType<typeof import('@hono/node-server').serve> | null = null
+  private currentProject: DashboardProjectSummary
+  private projects: DashboardProjectSummary[]
+  private server: ServerType | null = null
 
   constructor(options: DashboardOptions = {}) {
     this.app = new Hono()
@@ -118,8 +200,17 @@ export class DashboardServer {
     this.detectorTracker = options.detectorTracker ?? null
     this.port = options.port ?? 3210
     this.host = options.host ?? '0.0.0.0'
-    this.projectDir = options.projectDir ?? process.cwd()
-    this.scaleDir = options.scaleDir ?? join(this.projectDir, '.scale')
+    this.projectDir = resolve(options.projectDir ?? process.cwd())
+    this.scaleDir = resolve(options.scaleDir ?? join(this.projectDir, '.scale'))
+    this.currentProject = normalizeProjectSummary({
+      id: options.currentProjectId,
+      name: options.projectName,
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+      url: options.projectUrl,
+      current: true,
+    })
+    this.projects = normalizeProjectList(options.projects, this.currentProject)
 
     this.setupMiddleware()
     this.setupSPA()
@@ -169,6 +260,11 @@ export class DashboardServer {
     // Root redirect to SPA
     this.app.get('/', (c) => c.redirect('/spa/'))
 
+    this.app.get('/favicon.ico', () => new Response(null, {
+      status: 204,
+      headers: { 'Cache-Control': 'public, max-age=86400' },
+    }))
+
     // Legacy views (backward compat)
     const distViews = join(__dirname, 'views')
     const srcViews = join(__dirname, '..', '..', 'src', 'dashboard', 'views')
@@ -201,6 +297,15 @@ export class DashboardServer {
   // ── API Routes ───────────────────────────────────────────────────────
 
   private setupAPI(): void {
+    // Project metadata for multi-project dashboard launchers
+    this.app.get('/api/project', (c) => c.json(this.currentProject))
+    this.app.get('/api/projects', (c) => c.json(this.projects))
+    this.app.get('/api/projects/summary', (c) => {
+      const sinceDays = parsePositiveInt(c.req.query('days'), 7)
+      const limit = parsePositiveInt(c.req.query('limit'), 100)
+      return c.json(this.getProjectsSummary(sinceDays, limit))
+    })
+
     // Full dashboard state
     this.app.get('/api/state', async (c) => c.json(await this.getDashboardState()))
 
@@ -257,6 +362,16 @@ export class DashboardServer {
     this.app.get('/api/documents/*', (c) => {
       const docPath = c.req.path.replace('/api/documents/', '')
       return this.serveDocument(docPath, c)
+    })
+
+    // Memory/knowledge view. Provider recall is explicit to keep page load cheap.
+    this.app.get('/api/knowledge', async (c) => {
+      const query = (c.req.query('query') ?? '').trim()
+      const limit = parsePositiveInt(c.req.query('limit'), 20)
+      const includeProviders = c.req.query('providers') !== 'false'
+      const runRecall = c.req.query('recall') === '1' || c.req.query('recall') === 'true'
+      const provider = c.req.query('provider')?.trim() || undefined
+      return c.json(await this.getKnowledgeReport({ query, limit, includeProviders, runRecall, provider }))
     })
 
     // Available FSM actions for artifact
@@ -399,9 +514,87 @@ export class DashboardServer {
         return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
       }
     })
+
+    this.app.post('/api/knowledge/local/:id/review', async (c) => {
+      const id = c.req.param('id')
+      const body: { action?: string; reason?: string } = await c.req.json<{ action?: string; reason?: string }>().catch(() => ({}))
+      const action = normalizeMemoryReviewAction(body.action)
+      if (!action) {
+        return c.json({
+          error: 'Invalid memory review action',
+          allowedActions: MEMORY_REVIEW_ACTIONS,
+        }, 400)
+      }
+
+      let brain: MemoryBrain | null = null
+      try {
+        brain = new MemoryBrain({ projectDir: this.projectDir, scaleDir: this.scaleDir })
+        const report = brain.review(id, action, {
+          reason: body.reason ?? `Dashboard memory review: ${action}`,
+          actor: 'dashboard',
+        })
+        if (!report.ok || !report.node) {
+          return c.json({
+            error: report.warnings[0] ?? 'Memory review transition blocked',
+            warnings: report.warnings,
+            action,
+            previousStatus: report.previousStatus,
+            node: report.node,
+          }, report.node ? 422 : 404)
+        }
+
+        const evidence = this.recordMemoryReviewEvidence({
+          action,
+          node: report.node,
+          previousStatus: report.previousStatus,
+          reason: body.reason,
+        })
+        return c.json({
+          success: true,
+          action,
+          previousStatus: report.previousStatus,
+          node: report.node,
+          warnings: report.warnings,
+          evidence,
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+      } finally {
+        brain?.close()
+      }
+    })
   }
 
   // ── Data Collection ──────────────────────────────────────────────────
+
+  private recordMemoryReviewEvidence(input: {
+    action: MemoryReviewAction
+    node: MemoryNode
+    previousStatus?: string
+    reason?: string
+  }): RuntimeEvidenceRecord {
+    const ledger = new RuntimeEvidenceLedger({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+    })
+    return ledger.record({
+      taskId: 'dashboard-memory-review',
+      kind: 'manual',
+      status: 'passed',
+      title: `Dashboard memory review: ${input.action} ${input.node.id}`,
+      summary: `Memory node ${input.node.id} transitioned from ${input.previousStatus ?? 'unknown'} to ${input.node.status}.`,
+      artifacts: ['.scale/memory/brain.sqlite', ...input.node.evidencePaths],
+      metadata: {
+        action: input.action,
+        nodeId: input.node.id,
+        previousStatus: input.previousStatus,
+        nextStatus: input.node.status,
+        reason: input.reason,
+        source: 'dashboard',
+        resolutionKey: `memory-review:${input.node.id}`,
+      },
+    })
+  }
 
   async getDashboardState(): Promise<DashboardState> {
     const [artifacts, evolutionMetrics, detectorStats, autoDefectStats, recentEvents] = await Promise.all([
@@ -497,7 +690,120 @@ export class DashboardServer {
     return classifyLayers(raw)
   }
 
+  private getProjectsSummary(sinceDays: number, limit: number): DashboardProjectsSummaryReport {
+    const projects = this.projects.slice(0, limit).map(project => this.getProjectOverview(project, sinceDays))
+    const warnings = projects.flatMap(project => project.warnings.map(warning => `${project.project.name}: ${warning}`))
+    return {
+      generatedAt: Date.now(),
+      sinceDays,
+      currentProjectId: this.currentProject.id,
+      totals: {
+        projects: projects.length,
+        readyProjects: projects.filter(project => project.health === 'ready').length,
+        warningProjects: projects.filter(project => project.health === 'warning').length,
+        missingProjects: projects.filter(project => project.health === 'missing').length,
+        documents: sum(projects, project => project.documents.total),
+        localMemoryNodes: sum(projects, project => project.knowledge.total),
+        activeMemoryNodes: sum(projects, project => project.knowledge.active),
+        commandRuns: sum(projects, project => project.metrics.commandRuns),
+        failedCommandRuns: sum(projects, project => project.metrics.failedCommandRuns),
+        gateFailures: sum(projects, project => project.metrics.gateFailures),
+      },
+      projects,
+      warnings,
+    }
+  }
+
+  private getProjectOverview(project: DashboardProjectSummary, sinceDays: number): DashboardProjectOverview {
+    const warnings: string[] = []
+    const scaleDirExists = existsSync(project.scaleDir)
+    if (!scaleDirExists) warnings.push('.scale directory is missing')
+    const documents = this.listDocumentsFor(project.projectDir, project.scaleDir)
+    const knowledge = this.getLocalKnowledgeSummary(project, warnings)
+    const metrics = this.getGovernanceMetricSummary(project, sinceDays, warnings)
+    const health: DashboardProjectOverview['health'] = !scaleDirExists
+      ? 'missing'
+      : warnings.length > 0
+        ? 'warning'
+        : 'ready'
+
+    return {
+      project,
+      health,
+      scaleDirExists,
+      documents: {
+        total: documents.length,
+        byType: countBy(documents, document => document.type),
+      },
+      knowledge,
+      metrics,
+      warnings,
+    }
+  }
+
+  private getGovernanceMetricSummary(
+    project: DashboardProjectSummary,
+    sinceDays: number,
+    warnings: string[],
+  ): DashboardProjectOverview['metrics'] {
+    try {
+      const metrics = aggregateGovernanceMetrics({
+        projectDir: project.projectDir,
+        scaleDir: project.scaleDir,
+        sinceDays,
+      })
+      const commandRuns = metrics.commandRuns.total
+      return {
+        available: true,
+        commandRuns,
+        failedCommandRuns: metrics.commandRuns.failed,
+        commandPassRate: commandRuns > 0 ? metrics.commandRuns.passed / commandRuns : 0,
+        gateFailures: metrics.gateFailures.failed,
+        recentTasks: metrics.taskMetrics.recentTasks,
+        recentFirstPassRate: metrics.taskMetrics.recentFirstPassRate,
+      }
+    } catch (error) {
+      warnings.push(`governance metrics failed: ${error instanceof Error ? error.message : String(error)}`)
+      return {
+        available: false,
+        commandRuns: 0,
+        failedCommandRuns: 0,
+        commandPassRate: 0,
+        gateFailures: 0,
+        recentTasks: 0,
+        recentFirstPassRate: 0,
+      }
+    }
+  }
+
+  private getLocalKnowledgeSummary(
+    project: DashboardProjectSummary,
+    warnings: string[],
+  ): DashboardProjectOverview['knowledge'] {
+    const dbPath = join(project.scaleDir, 'memory', 'brain.sqlite')
+    if (!existsSync(dbPath)) return { available: false, total: 0, active: 0 }
+    let brain: MemoryBrain | null = null
+    try {
+      brain = new MemoryBrain({ projectDir: project.projectDir, scaleDir: project.scaleDir })
+      const nodes = brain.list()
+      return {
+        available: true,
+        total: nodes.length,
+        active: nodes.filter(node => node.status === 'active').length,
+      }
+    } catch (error) {
+      warnings.push(`local memory brain failed: ${error instanceof Error ? error.message : String(error)}`)
+      return { available: false, total: 0, active: 0 }
+    } finally {
+      brain?.close()
+    }
+  }
+
   private listDocuments(): Array<{ name: string; path: string; type: string; size: number }> {
+    return this.listDocumentsFor(this.projectDir, this.scaleDir)
+  }
+
+  private listDocumentsFor(projectDir: string, scaleDir: string): Array<{ name: string; path: string; type: string; size: number }> {
     const docs: Array<{ name: string; path: string; type: string; size: number }> = []
     const scanDir = (dir: string, prefix: string) => {
       if (!existsSync(dir)) return
@@ -513,13 +819,13 @@ export class DashboardServer {
       }
     }
     // Scan common doc locations
-    scanDir(join(this.scaleDir, 'docs'), '.scale/docs')
-    scanDir(join(this.scaleDir, 'artifacts'), '.scale/artifacts')
-    scanDir(join(this.projectDir, 'docs'), 'docs')
+    scanDir(join(scaleDir, 'docs'), '.scale/docs')
+    scanDir(join(scaleDir, 'artifacts'), '.scale/artifacts')
+    scanDir(join(projectDir, 'docs'), 'docs')
     return docs
   }
 
-  private serveDocument(docPath: string, c: any): Response {
+  private serveDocument(docPath: string, c: Context): Response {
     // docPath already includes prefix (e.g., 'docs/foo.md' or '.scale/docs/foo.md')
     // Try direct resolution from project root and scale root
     const searchDirs = [
@@ -535,6 +841,72 @@ export class DashboardServer {
       }
     }
     return c.json({ error: 'Document not found' }, 404)
+  }
+
+  private async getKnowledgeReport(options: {
+    query: string
+    limit: number
+    includeProviders: boolean
+    runRecall: boolean
+    provider?: string
+  }): Promise<DashboardKnowledgeReport> {
+    const warnings: string[] = []
+    const local = this.getLocalKnowledge(options.query, options.limit, warnings)
+    let providers: MemoryProviderStatusReport | undefined
+    let recall: MemoryProviderRecallReport | undefined
+
+    if (options.includeProviders) {
+      try {
+        providers = inspectMemoryProviders({ projectDir: this.projectDir, scaleDir: this.scaleDir })
+      } catch (error) {
+        warnings.push(`memory provider status failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+
+    if (options.runRecall && options.query.length > 0) {
+      try {
+        recall = await recallMemoryProviders({
+          projectDir: this.projectDir,
+          scaleDir: this.scaleDir,
+          query: options.query,
+          limit: options.limit,
+          includeCandidates: true,
+          provider: options.provider,
+        })
+      } catch (error) {
+        warnings.push(`memory provider recall failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+
+    return { project: this.currentProject, local, providers, recall, warnings }
+  }
+
+  private getLocalKnowledge(
+    query: string,
+    limit: number,
+    warnings: string[],
+  ): DashboardKnowledgeReport['local'] {
+    const dbPath = join(this.scaleDir, 'memory', 'brain.sqlite')
+    if (!existsSync(dbPath)) return { available: false, total: 0, byStatus: {}, nodes: [] }
+    let brain: MemoryBrain | null = null
+    try {
+      brain = new MemoryBrain({ projectDir: this.projectDir, scaleDir: this.scaleDir })
+      const allNodes = brain.list()
+      const nodes = query
+        ? brain.query(query, { limit }).nodes
+        : allNodes.slice(0, limit)
+      return {
+        available: true,
+        total: allNodes.length,
+        byStatus: countBy(allNodes, node => node.status),
+        nodes,
+      }
+    } catch (error) {
+      warnings.push(`local memory brain failed: ${error instanceof Error ? error.message : String(error)}`)
+      return { available: false, total: 0, byStatus: {}, nodes: [] }
+    } finally {
+      brain?.close()
+    }
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────
@@ -571,4 +943,73 @@ export class DashboardServer {
   getApp(): Hono {
     return this.app
   }
+}
+
+function normalizeProjectSummary(input: Partial<DashboardProjectSummary> & {
+  projectDir: string
+  scaleDir: string
+}): DashboardProjectSummary {
+  const projectDir = resolve(input.projectDir)
+  const scaleDir = resolve(input.scaleDir)
+  const name = input.name?.trim() || basename(projectDir) || 'project'
+  return {
+    id: input.id?.trim() || safeProjectId(name),
+    name,
+    projectDir,
+    scaleDir,
+    url: input.url,
+    current: input.current,
+  }
+}
+
+function normalizeProjectList(
+  projects: DashboardProjectSummary[] | undefined,
+  currentProject: DashboardProjectSummary,
+): DashboardProjectSummary[] {
+  const input = projects && projects.length > 0 ? projects : [currentProject]
+  const seen = new Set<string>()
+  const normalized: DashboardProjectSummary[] = []
+  for (const project of input) {
+    const item = normalizeProjectSummary({
+      ...project,
+      current: project.id === currentProject.id || project.projectDir === currentProject.projectDir,
+    })
+    let id = item.id
+    let suffix = 2
+    while (seen.has(id)) id = `${item.id}-${suffix++}`
+    seen.add(id)
+    normalized.push({ ...item, id })
+  }
+  if (!normalized.some(project => project.current)) {
+    normalized.unshift(currentProject)
+  }
+  return normalized.map(project => ({ ...project, current: project.projectDir === currentProject.projectDir }))
+}
+
+function safeProjectId(name: string): string {
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return id || 'project'
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function normalizeMemoryReviewAction(value: string | undefined): MemoryReviewAction | null {
+  if (!value) return null
+  return (MEMORY_REVIEW_ACTIONS as readonly string[]).includes(value) ? value as MemoryReviewAction : null
+}
+
+function countBy<T>(items: T[], selector: (item: T) => string): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const item of items) {
+    const key = selector(item)
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return counts
+}
+
+function sum<T>(items: T[], selector: (item: T) => number): number {
+  return items.reduce((total, item) => total + selector(item), 0)
 }

@@ -512,6 +512,7 @@ describe('AI OS runtime planner', () => {
       'skill-routing',
       'evaluator-intelligence',
       'tool-strategy',
+      'agent-loop-readiness',
       'adaptive-workflow',
       'evolution-shadow',
       'benchmark-intelligence',
@@ -530,6 +531,11 @@ describe('AI OS runtime planner', () => {
     expect(status.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.fallbackCoverage).toBe(1)
+    expect(status.intelligence.summary.agentLoopQuality).toEqual(expect.objectContaining({
+      status: 'ready',
+      score: 100,
+      readySignals: 6,
+    }))
     expect(status.intelligence.signals).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'memory-recall',
@@ -546,6 +552,10 @@ describe('AI OS runtime planner', () => {
       }),
       expect.objectContaining({
         id: 'tool-strategy',
+        status: 'ready',
+      }),
+      expect.objectContaining({
+        id: 'agent-loop-readiness',
         status: 'ready',
       }),
       expect.objectContaining({
@@ -592,9 +602,14 @@ describe('AI OS runtime planner', () => {
           expect.stringContaining('skill:security-review'),
         ]),
       }),
+      expect.objectContaining({
+        id: 'agent-loop-readiness',
+        status: 'warning',
+      }),
     ]))
     expect(status.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
+    expect(status.intelligence.summary.agentLoopQuality.status).toBe('warning')
   }, 120_000)
 
   it('warns when context compilation omits evidence-bearing sections', async () => {

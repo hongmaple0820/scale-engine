@@ -1,4 +1,4 @@
-name: SCALE Gate Check
+name: Published Package Gate Check
 
 on:
   pull_request:
@@ -6,8 +6,11 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
-  scale-gates:
+  published-package-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -24,10 +27,10 @@ jobs:
       - name: Install source dependencies
         run: npm ci
 
-      - name: Install SCALE Engine
+      - name: Install published SCALE Engine
         run: npm install -g @hongmaple0820/scale-engine
 
-      - name: Run Preflight Gates
+      - name: Run published package preflight gates
         id: gates
         run: |
           scale preflight --json --profile ci --preflight-profile ci 2>&1 | tee scale-gates.json

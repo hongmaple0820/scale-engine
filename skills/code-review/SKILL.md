@@ -3,9 +3,9 @@ name: code-review
 version: 1.0.0
 description: Code quality review checklist
 triggers:
-  - review
-  - check
-  - quality
+  - "review"
+  - "check"
+  - "quality"
 agents:
   - reviewer
 ---

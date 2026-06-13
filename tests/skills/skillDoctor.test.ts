@@ -74,6 +74,8 @@ describe('SkillDoctor', () => {
       const report = inspectRequiredWorkflowSkills(['web-access', 'ui-ux-pro-max', 'cua'], {
         projectDir,
         homeDir,
+        commandExists: () => false,
+        resolveCommandPath: () => null,
       })
 
       expect(report.unknown).toEqual([])
@@ -81,6 +83,102 @@ describe('SkillDoctor', () => {
       expect(report.missing).toEqual(['cua'])
       expect(report.skills.find(skill => skill.id === 'web-access')?.source).toBe('https://github.com/eze-is/web-access')
       expect(report.skills.find(skill => skill.id === 'ui-ux-pro-max')?.source).toBe('https://github.com/nextlevelbuilder/ui-ux-pro-max-skill')
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('checks cli-command workflow skills via PATH instead of requiring SKILL.md files', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))
+    try {
+      const report = inspectWorkflowSkills({
+        projectDir,
+        homeDir,
+        commandExists: command => command === 'codex' || command === 'agent-browser',
+        resolveCommandPath: command => command === 'codex' || command === 'agent-browser' ? `C:\\tools\\${command}.cmd` : null,
+      })
+
+      expect(report.skills.find(skill => skill.id === 'codex-cli')).toMatchObject({
+        executionType: 'cli-command',
+        installed: true,
+        detectedPath: 'C:\\tools\\codex.cmd',
+      })
+      expect(report.skills.find(skill => skill.id === 'agent-browser')).toMatchObject({
+        executionType: 'cli-command',
+        installed: true,
+        detectedPath: 'C:\\tools\\agent-browser.cmd',
+      })
+      expect(report.skills.find(skill => skill.id === 'gemini-cli')).toMatchObject({
+        executionType: 'cli-command',
+        installed: false,
+        missingReason: 'Command not found on PATH: gemini',
+      })
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('checks mcp-tool workflow skills through explicit MCP availability flags', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))
+    try {
+      const report = inspectWorkflowSkills({
+        projectDir,
+        homeDir,
+        env: { SCALE_MCP_CHROME_DEVTOOLS: 'true' },
+        commandExists: () => false,
+        resolveCommandPath: () => null,
+      })
+
+      expect(report.skills.find(skill => skill.id === 'mcp-chrome-devtools')).toMatchObject({
+        executionType: 'mcp-tool',
+        checkedPaths: ['env:SCALE_MCP_CHROME_DEVTOOLS'],
+        detectedPath: 'env:SCALE_MCP_CHROME_DEVTOOLS',
+        installed: true,
+      })
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('honors explicit recommended skill waivers without marking the skill installed', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))
+    const scaleDir = join(projectDir, '.scale')
+    try {
+      mkdirSync(scaleDir, { recursive: true })
+      writeFileSync(join(scaleDir, 'skills.json'), JSON.stringify({
+        version: 1,
+        policy: {
+          waivedRecommendedSkills: [
+            {
+              id: 'mcp-chrome-devtools',
+              reason: 'Chrome DevTools MCP is provided by the host agent profile in interactive runs.',
+              expiresAt: '2026-12-31',
+            },
+          ],
+        },
+      }, null, 2), 'utf-8')
+
+      const report = inspectWorkflowSkills({
+        projectDir,
+        homeDir,
+        env: { SCALE_MCP_CHROME_DEVTOOLS: undefined },
+        commandExists: () => false,
+        resolveCommandPath: () => null,
+      })
+
+      expect(report.missingByReadiness.recommended).not.toContain('mcp-chrome-devtools')
+      expect(report.waivedByReadiness.recommended).toContain('mcp-chrome-devtools')
+      expect(report.skills.find(skill => skill.id === 'mcp-chrome-devtools')).toMatchObject({
+        installed: false,
+        status: 'waived',
+        waiverExpiresAt: '2026-12-31',
+      })
     } finally {
       rmSync(homeDir, { recursive: true, force: true })
       rmSync(projectDir, { recursive: true, force: true })

@@ -210,6 +210,24 @@ export class PolicyCompiler {
           message: '',
         }
         currentRule.conditions!.push(cond)
+        continue
+      }
+      if (inConditions && currentRule.conditions?.length) {
+        const condition = currentRule.conditions[currentRule.conditions.length - 1]
+        if (trimmed.startsWith('pattern:')) {
+          condition.pattern = trimmed.split(':').slice(1).join(':').trim()
+          continue
+        }
+        if (trimmed.startsWith('message:')) {
+          condition.message = trimmed.split(':').slice(1).join(':').trim()
+          continue
+        }
+        if (trimmed.startsWith('value:')) {
+          const rawValue = trimmed.split(':').slice(1).join(':').trim()
+          const numberValue = Number(rawValue)
+          condition.value = Number.isFinite(numberValue) && rawValue !== '' ? numberValue : rawValue
+          continue
+        }
       }
     }
 
@@ -385,7 +403,9 @@ function check(input) {
             } else {
               return { blocked: true, reason: 'No gate state found. Run: scale gate-quality before commit' };
             }
-          } catch (e) { /* allow if state file can't be read */ }
+          } catch (e) {
+            process.stderr.write('[SCALE SHIELD WARN] Gate state check skipped: ' + (e && e.message ? e.message : String(e)) + '\\n');
+          }
         }
         break;
       }
@@ -409,7 +429,9 @@ function check(input) {
             if (re.test(command)) {
               return { blocked: true, reason: cond.message || 'Custom rule matched' };
             }
-          } catch (e) { /* invalid regex */ }
+          } catch (e) {
+            process.stderr.write('[SCALE SHIELD WARN] Invalid custom rule pattern ignored: ' + (e && e.message ? e.message : String(e)) + '\\n');
+          }
         }
         break;
       }
@@ -519,7 +541,9 @@ try {
             process.exit(2);
           }
         }
-      } catch (e) { /* allow on error */ }
+      } catch (e) {
+        process.stderr.write('[SCALE SHIELD WARN] Gate state check skipped: ' + (e && e.message ? e.message : String(e)) + '\\n');
+      }
     }
   }
 
@@ -537,7 +561,9 @@ try {
       toolName,
       blocked: false,
     }));
-  } catch (e) { /* state write is best-effort */ }
+  } catch (e) {
+    process.stderr.write('[SCALE SHIELD WARN] Hook state write skipped: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  }
 
   process.exit(0);
 } catch (e) {
@@ -556,19 +582,20 @@ try {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
       if (!settings.hooks) settings.hooks = {}
 
-      // Register PreToolUse hook if not already present
-      if (!settings.hooks.PreToolUse) settings.hooks.PreToolUse = []
-      const preToolHooks: unknown[] = settings.hooks.PreToolUse
+      // Register PreToolUse hook if not already present; keep repeated compiles idempotent.
+      if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = []
+      const deduped = dedupeShieldPreToolHooks(settings.hooks.PreToolUse)
+      settings.hooks.PreToolUse = deduped.hooks
 
-      const hasShieldHook = preToolHooks.some(
-        (h: any) => h?.scriptPath?.includes('shield-pre-tool'),
-      )
-      if (!hasShieldHook) {
-        preToolHooks.push({
+      if (!deduped.found) {
+        settings.hooks.PreToolUse.push({
           type: 'command',
           command: `node .claude/hooks/shield-pre-tool.js`,
           timeout: 5000,
         })
+        deduped.changed = true
+      }
+      if (deduped.changed) {
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
         logger.info('Shield hook registered in Claude Code settings')
       }
@@ -598,13 +625,18 @@ try {
     try {
       const config = JSON.parse(readFileSync(settingsPath, 'utf-8'))
       if (!config.hooks) config.hooks = {}
-      if (!config.hooks.PreToolUse) config.hooks.PreToolUse = []
-      if (!config.hooks.PreToolUse.some((h: any) => h?.command?.includes('shield-pre-tool'))) {
+      if (!Array.isArray(config.hooks.PreToolUse)) config.hooks.PreToolUse = []
+      const deduped = dedupeShieldPreToolHooks(config.hooks.PreToolUse)
+      config.hooks.PreToolUse = deduped.hooks
+      if (!deduped.found) {
         config.hooks.PreToolUse.push({
           type: 'command',
           command: `node .claude/hooks/shield-pre-tool.js`,
           timeout: 5000,
         })
+        deduped.changed = true
+      }
+      if (deduped.changed) {
         writeFileSync(settingsPath, JSON.stringify(config, null, 2))
         logger.info({ harness: _harness }, 'Shield hooks config patched')
       }
@@ -612,4 +644,36 @@ try {
       logger.warn({ err, harness: _harness }, 'Failed to patch harness settings')
     }
   }
+}
+
+function dedupeShieldPreToolHooks(hooks: unknown[]): { hooks: unknown[]; found: boolean; changed: boolean } {
+  const deduped: unknown[] = []
+  let found = false
+  let changed = false
+
+  for (const hook of hooks) {
+    if (!hookReferencesShieldPreTool(hook)) {
+      deduped.push(hook)
+      continue
+    }
+
+    if (found) {
+      changed = true
+      continue
+    }
+
+    found = true
+    deduped.push(hook)
+  }
+
+  return { hooks: deduped, found, changed }
+}
+
+function hookReferencesShieldPreTool(hook: unknown): boolean {
+  if (!hook || typeof hook !== 'object') return false
+  const record = hook as Record<string, unknown>
+  return ['command', 'scriptPath'].some(field => {
+    const value = record[field]
+    return typeof value === 'string' && value.includes('shield-pre-tool')
+  })
 }

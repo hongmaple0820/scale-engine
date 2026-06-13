@@ -1,6 +1,7 @@
 import type { SkillDefinition } from './SkillRegistry.js'
 
 export type SkillTrustLevel = 'official' | 'ecosystem'
+export type WorkflowSkillReadinessTier = 'required' | 'recommended' | 'optional'
 
 export interface WorkflowSkillCatalogEntry {
   id: string
@@ -9,6 +10,7 @@ export interface WorkflowSkillCatalogEntry {
   source: string
   installCommand: string
   trust: SkillTrustLevel
+  readiness?: WorkflowSkillReadinessTier
   definition: SkillDefinition
 }
 
@@ -20,6 +22,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/anthropics/skills/tree/main/skills/frontend-design',
     installCommand: 'npx skills add anthropics/skills --skill frontend-design',
     trust: 'official',
+    readiness: 'recommended',
     definition: {
       id: 'frontend-design',
       name: 'Frontend Design',
@@ -42,6 +45,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/anthropics/skills/tree/main/skills/webapp-testing',
     installCommand: 'npx skills add anthropics/skills --skill webapp-testing',
     trust: 'official',
+    readiness: 'required',
     definition: {
       id: 'webapp-testing',
       name: 'Webapp Testing',
@@ -65,6 +69,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/google-gemini/gemini-cli/tree/main/.gemini/skills/code-reviewer',
     installCommand: 'npx skills add https://github.com/google-gemini/gemini-cli --skill code-reviewer',
     trust: 'official',
+    readiness: 'required',
     definition: {
       id: 'code-reviewer',
       name: 'Code Reviewer',
@@ -88,6 +93,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/facebook/react/tree/main/.claude/skills/fix',
     installCommand: 'npx skills add https://github.com/facebook/react --skill fix',
     trust: 'official',
+    readiness: 'recommended',
     definition: {
       id: 'fix',
       name: 'Fix',
@@ -110,6 +116,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/google-gemini/gemini-cli/tree/main/.gemini/skills/pr-creator',
     installCommand: 'npx skills add https://github.com/google-gemini/gemini-cli --skill pr-creator',
     trust: 'official',
+    readiness: 'recommended',
     definition: {
       id: 'pr-creator',
       name: 'PR Creator',
@@ -132,6 +139,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/vercel/next.js/tree/canary/.claude/skills/update-docs',
     installCommand: 'npx skills add https://github.com/vercel/next.js --skill update-docs',
     trust: 'official',
+    readiness: 'recommended',
     definition: {
       id: 'update-docs',
       name: 'Update Docs',
@@ -154,6 +162,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/vercel-labs/skills/tree/main/skills/find-skills',
     installCommand: 'npx skills add https://github.com/vercel-labs/skills --skill find-skills',
     trust: 'ecosystem',
+    readiness: 'recommended',
     definition: {
       id: 'find-skills',
       name: 'Find Skills',
@@ -176,6 +185,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/awesome_agent_skills/fullstack-developer',
     installCommand: 'npx skills add https://github.com/Shubhamsaboo/awesome-llm-apps --skill fullstack-developer',
     trust: 'ecosystem',
+    readiness: 'optional',
     definition: {
       id: 'fullstack-developer',
       name: 'Fullstack Developer',
