@@ -40,6 +40,9 @@ export interface VerificationProfileProtocol {
       artifactGate: 'off' | 'warn' | 'block'
       engineeringStandardsGate: 'off' | 'warn' | 'block'
       productSmokeGate: 'off' | 'warn' | 'block'
+      ecosystemReadinessGate?: 'off' | 'warn' | 'block'
+      ecosystemReadinessPacks?: string[]
+      ecosystemReadinessSkillScope?: 'required' | 'recommended' | 'all'
     }
   }>
 }
@@ -93,6 +96,12 @@ export function generateVerificationSchema(): object {
                       artifactGate: { type: 'string', enum: ['off', 'warn', 'block'] },
                       engineeringStandardsGate: { type: 'string', enum: ['off', 'warn', 'block'] },
                       productSmokeGate: { type: 'string', enum: ['off', 'warn', 'block'] },
+                      ecosystemReadinessGate: { type: 'string', enum: ['off', 'warn', 'block'] },
+                      ecosystemReadinessPacks: {
+                        type: 'array',
+                        items: { type: 'string', enum: ['ui', 'memory', 'knowledge', 'external-cli', 'full'] },
+                      },
+                      ecosystemReadinessSkillScope: { type: 'string', enum: ['required', 'recommended', 'all'] },
                     },
                   },
                 },

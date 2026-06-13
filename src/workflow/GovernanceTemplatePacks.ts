@@ -1,6 +1,7 @@
 import type { GovernanceMode } from './GovernanceTemplates.js'
 import type { VerificationService } from './VerificationProfile.js'
 import { workspaceTopologyTemplate } from './WorkspaceTopology.js'
+import { defaultWorkflowEvalSuite } from '../eval/WorkflowEval.js'
 
 export type GovernancePackId =
   | 'standard'
@@ -260,32 +261,7 @@ Invoke-Scale -ScaleArgs $scaleArgs
 }
 
 function scaleEngineWorkflowBaselineEvalJson(): string {
-  return `${JSON.stringify({
-    version: '1.0',
-    id: 'workflow-baseline',
-    name: 'SCALE workflow baseline',
-    cases: [
-      {
-        id: 'governance-command-smoke',
-        type: 'bugfix',
-        title: 'Command evidence smoke',
-        task: 'Verify that a local command can produce concrete eval evidence.',
-        phase: 'verify',
-        successCriteria: [
-          'command exits 0',
-          'output contains scale-eval-ok',
-        ],
-        attempts: [
-          {
-            id: 'attempt-1',
-            command: 'node -e "console.log(\'scale-eval-ok\')"',
-            expectedExitCode: 0,
-            outputContains: 'scale-eval-ok',
-          },
-        ],
-      },
-    ],
-  }, null, 2)}\n`
+  return `${JSON.stringify(defaultWorkflowEvalSuite(), null, 2)}\n`
 }
 
 function scaleEngineWorkflowPlanShellScript(): string {

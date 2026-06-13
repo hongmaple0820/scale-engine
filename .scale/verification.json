@@ -6,7 +6,7 @@
       "commands": {
         "build": "npm run build",
         "lint": "npm run lint",
-        "test": "npx vitest run --reporter=dot --testTimeout=30000"
+        "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 900000 --testTimeout=120000"
       },
       "services": [
         "scale-engine"
@@ -20,11 +20,32 @@
         "scale-engine"
       ]
     },
+    "quick": {
+      "commands": {
+        "build": "npm run build",
+        "lint": "npm run lint",
+        "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts --testTimeout=120000"
+      },
+      "services": [
+        "scale-engine"
+      ]
+    },
     "fastLane": {
       "commands": {
         "build": "npm run build",
         "lint": "npm run lint",
-        "test": "npx vitest run --reporter=dot --testTimeout=30000"
+        "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts tests/workflow/gateSystem.test.ts tests/api/runtimeCli.test.ts --testTimeout=120000"
+      },
+      "services": [
+        "scale-engine"
+      ]
+    },
+    "ci": {
+      "commands": {
+        "build": "npm run build",
+        "lint": "npm run lint",
+        "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts tests/workflow/gateSystem.test.ts tests/api/runtimeCli.test.ts --testTimeout=120000",
+        "coverage": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.include=src/workflow/GateCatalog.ts --coverage.include=src/workflow/VerificationProfile.ts --testTimeout=120000"
       },
       "services": [
         "scale-engine"
@@ -68,6 +89,11 @@
       "CRITICAL"
     ],
     "engineeringStandardsGate": "block",
-    "productSmokeGate": "warn"
+    "productSmokeGate": "warn",
+    "ecosystemReadinessGate": "block",
+    "ecosystemReadinessPacks": [
+      "full"
+    ],
+    "ecosystemReadinessSkillScope": "required"
   }
 }

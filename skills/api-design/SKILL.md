@@ -3,9 +3,9 @@ name: api-design
 version: 1.0.0
 description: RESTful API conventions
 triggers:
-  - api
-  - endpoint
-  - rest
+  - "api"
+  - "endpoint"
+  - "rest"
 agents:
   - planner
   - implementer

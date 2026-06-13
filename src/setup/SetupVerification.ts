@@ -1,5 +1,6 @@
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { bootstrapDependencies, type DependencyBootstrapPackId, type DependencyBootstrapReport } from '../bootstrap/DependencyBootstrap.js'
 import { inspectCodeIntelligence, type CodeIntelligenceStatusReport } from '../codegraph/CodeIntelligence.js'
 import { inspectEnvironment, type EnvironmentCommandCheck, type EnvironmentDoctorReport } from '../env/EnvironmentDoctor.js'
@@ -54,9 +55,15 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
     includeIds: options.includeIds,
     apply: false,
   })
+  const includesMemory = dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')
+  const includesKnowledge = dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('knowledge')
   const environment = inspectEnvironment()
-  const memoryProviders = inspectMemoryProviders({ projectDir, scaleDir })
-  const codeIntelligence = inspectCodeIntelligence({ projectDir, scaleDir })
+  const memoryProviders = includesMemory
+    ? inspectMemoryProviders({ projectDir, scaleDir })
+    : skippedMemoryProvidersReport(projectDir, dependencyBootstrap.scaleDir)
+  const codeIntelligence = includesKnowledge
+    ? inspectCodeIntelligence({ projectDir, scaleDir })
+    : skippedCodeIntelligenceReport(projectDir, dependencyBootstrap.scaleDir)
   const toolIds = dependencyBootstrap.items.map(item => item.id)
   const toolCapabilities = inspectToolCapabilities({
     projectDir,
@@ -129,12 +136,10 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
     }
   }
 
-  const includesMemory = dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')
   if (includesMemory && memoryProviders.availableProviderCount === 0) {
     blockingIssues.push('No memory provider is currently available')
   }
 
-  const includesKnowledge = dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('knowledge')
   if (includesKnowledge && codeIntelligence.availableProviderCount === 0 && !codeIntelligence.fallback.available) {
     blockingIssues.push('No code intelligence provider or fallback is available')
   }
@@ -235,4 +240,50 @@ function resolveNonBlockingDependencyIds(
   const fallback = memoryProviders.providers.find(provider => provider.kind === 'scale-local' && provider.available)
   if (gbrain && !gbrain.available && fallback) ids.add('gbrain')
   return ids
+}
+
+function skippedMemoryProvidersReport(projectDir: string, scaleDir: string): MemoryProviderStatusReport {
+  const configPath = join(resolveScaleRoot(projectDir, scaleDir), 'memory-providers.json')
+  return {
+    projectDir,
+    scaleDir,
+    configPath,
+    configExists: existsSync(configPath),
+    routing: {
+      mode: 'external-first',
+      defaultOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+      allowExternalWrite: false,
+      requireEvidence: true,
+      maxResultsPerProvider: 5,
+    },
+    providers: [],
+    availableProviderCount: 0,
+    warnings: [],
+  }
+}
+
+function skippedCodeIntelligenceReport(projectDir: string, scaleDir: string): CodeIntelligenceStatusReport {
+  const configPath = join(resolveScaleRoot(projectDir, scaleDir), 'code-intelligence.json')
+  const projectIndexPath = join(projectDir, '.codegraph')
+  return {
+    projectDir,
+    scaleDir,
+    configPath,
+    configExists: existsSync(configPath),
+    projectIndexPath,
+    projectIndexExists: existsSync(projectIndexPath),
+    providers: [],
+    fallback: {
+      enabled: false,
+      tools: [],
+      available: false,
+      reason: 'code intelligence check skipped because the knowledge pack is not selected',
+    },
+    availableProviderCount: 0,
+    recommendations: [],
+  }
+}
+
+function resolveScaleRoot(projectDir: string, scaleDir: string): string {
+  return isAbsolute(scaleDir) ? scaleDir : resolve(projectDir, scaleDir)
 }

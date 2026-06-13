@@ -1,3 +1,22 @@
+## 0.50.0 - 2026-06-14
+
+### Features
+- Add Agent Loop readiness measurement to workflow effectiveness and AI OS status, covering tool execution, recovery, guardrails, budgets, delegation, and termination evidence.
+- Add ecosystem/readiness and deployment evidence surfaces for release evaluation, including append-only deployment ledgers.
+- Add governed dashboard support for multi-project launch, auto-port probing, document previews, knowledge browsing, provider recall, token/cost visibility, and artifact/prototype discovery.
+- Add dashboard knowledge review actions for local Memory Brain nodes with strict approve/reject/stale/restore transitions and runtime evidence recording.
+- Keep memory provider strategy gbrain-only while preserving read-only recall and exportable dashboard packets.
+
+### CI and Workflow
+- Harden CI/source workflow checks and release evidence gates for workflow effectiveness, ecosystem readiness, and deployment metrics.
+- Add segmented Vitest runner support for long-running test suites and release gates.
+- Expand workflow tests for Agent Loop readiness, ecosystem readiness, deployment ledgers, dashboard APIs, memory providers, and Cortex candidate review flows.
+
+### Documentation
+- Update AI engineering OS positioning, memory fabric, Cortex, governance dashboard, CLI reference, workflow templates, and metrics documentation for the new measured signals.
+
+---
+
 ## 0.49.0 - 2026-06-12
 
 ### Features

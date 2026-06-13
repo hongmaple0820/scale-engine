@@ -17,6 +17,22 @@ interface ClaudeSettings {
   }
 }
 
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === '' || value === 'true' || value === '1'
+}
+
+function isExplicitFalseFlag(value: unknown): boolean {
+  return value === false || value === 'false' || value === '0'
+}
+
+export function shouldPatchShieldSettings(args: Record<string, unknown>): boolean {
+  return !(
+    isTruthyFlag(args['no-patch'])
+    || isTruthyFlag(args.noPatch)
+    || isExplicitFalseFlag(args.patch)
+  )
+}
+
 // ---------------------------------------------------------------------------
 // scale shield compile
 // ---------------------------------------------------------------------------
@@ -71,7 +87,7 @@ export const shieldCompileCommand = defineCommand({
       console.log(`  [${hook.hookType}] ${hook.fileName}`)
     }
 
-    if (!args['no-patch']) {
+    if (shouldPatchShieldSettings(args)) {
       compiler.writeSettingsPatches(output)
       console.log('\n  Settings patched:')
       console.log(`    ✅ .claude/settings.json`)

@@ -432,6 +432,7 @@ Default policy:
 - \`.scale/verification.json > policy.engineeringStandardsGate\` controls whether preflight and task verification treat standards as \`off\`, \`warn\`, or \`block\`.
 - \`.scale/product-smoke.json\` defines real product-path probes. Use it to prove a routed user/business flow, not only build, unit tests, or \`/health\`.
 - \`.scale/verification.json > policy.productSmokeGate\` controls whether missing or failed product smoke evidence warns or blocks M/L/CRITICAL delivery.
+- \`.scale/verification.json > policy.ecosystemReadinessGate\` controls whether CI preflight treats missing governed tools or workflow skills as \`off\`, \`warn\`, or \`block\`; \`policy.ecosystemReadinessSkillScope\` selects \`required\`, \`recommended\`, or \`all\` skill tiers for blocking.
 - Full standards scans are for release readiness, scheduled remediation, and architecture cleanup. Changed-file scans are the default for day-to-day feature and bug branches.
 - Use \`scale standards baseline --write\` only during an explicit rollout or remediation planning task. It writes the machine-readable baseline and a \`standards-legacy-debt.md\` classification report for staged cleanup.
 
@@ -1173,6 +1174,9 @@ function verificationMatrixTemplate(
       artifactGateLevels: ['M', 'L', 'CRITICAL'],
       engineeringStandardsGate: mode === 'minimal' ? 'warn' : 'block',
       productSmokeGate: mode === 'critical' ? 'block' : 'warn',
+      ecosystemReadinessGate: mode === 'minimal' ? 'warn' : 'block',
+      ecosystemReadinessPacks: ['full'],
+      ecosystemReadinessSkillScope: 'required',
     },
   }, null, 2) + '\n'
 }
@@ -1360,6 +1364,9 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -1382,7 +1389,7 @@ jobs:
           fi
 
       - name: Run SCALE preflight
-        run: npx @hongmaple0820/scale-engine@latest preflight --service all --preflight-profile ci
+        run: npx @hongmaple0820/scale-engine@latest preflight --service all --profile ci --preflight-profile ci
 `
 }
 

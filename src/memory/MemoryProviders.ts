@@ -15,6 +15,7 @@ export interface MemoryProviderConfig {
   enabled: boolean
   priority: number
   endpoint?: string
+  homeDir?: string
   statusPath?: string
   searchPath?: string
   apiKeyEnv?: string
@@ -125,6 +126,9 @@ export interface GbrainCliHealth {
   reason: string
   status?: string
   healthScore?: number
+  issues?: string[]
+  recoveryHint?: string
+  nextCommands?: string[]
 }
 
 export function defaultMemoryProvidersConfig(): MemoryProvidersConfig {
@@ -268,7 +272,7 @@ export function inspectMemoryProviders(options: {
   const projectDir = resolve(options.projectDir ?? process.cwd())
   const loaded = loadMemoryProvidersConfig(projectDir, options.scaleDir)
   const statuses = loaded.config.providers
-    .map(provider => providerStatus(provider, loaded.config.routing))
+    .map(provider => providerStatus(provider, loaded.config.routing, projectDir))
     .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
   return {
     projectDir,
@@ -369,7 +373,7 @@ export async function recallMemoryProviders(options: {
     try {
       const recalled = provider.kind === 'scale-local'
         ? recallLocal(projectDir, options.scaleDir, provider, options, limit)
-        : await recallExternal(provider, options, limit)
+        : await recallExternal(provider, options, limit, projectDir)
       if (recalled.length > 0) {
         selectedProviders.push(provider.id)
         items.push(...recalled)
@@ -451,9 +455,10 @@ async function recallExternal(
   provider: MemoryProviderConfig,
   input: MemoryProviderRecallInput,
   limit: number,
+  projectDir: string,
 ): Promise<MemoryProviderRecallItem[]> {
   if (provider.kind === 'gbrain' && commandExists('gbrain')) {
-    return recallGbrainCli(input, limit)
+    return recallGbrainCli(provider, input, limit, projectDir)
   }
   if (provider.kind === 'memos') {
     return recallMemos(provider, input, limit)
@@ -577,7 +582,7 @@ function nodeToRecall(provider: string, node: MemoryNode): MemoryProviderRecallI
   }
 }
 
-function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderRoutingConfig): MemoryProviderStatus {
+function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderRoutingConfig, projectDir: string): MemoryProviderStatus {
   if (!provider.enabled) {
     return {
       ...providerStatusBase(provider, routing),
@@ -593,7 +598,7 @@ function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderR
     }
   }
   if (provider.kind === 'gbrain' && commandExists('gbrain')) {
-    const health = inspectGbrainCliHealth()
+    const health = inspectGbrainCliHealth({ projectDir, env: providerGbrainEnv(provider, projectDir) })
     if (health.available) {
       return {
         ...providerStatusBase(provider, routing),
@@ -641,24 +646,52 @@ function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderR
   }
 }
 
-export function inspectGbrainCliHealth(): GbrainCliHealth {
+export function inspectGbrainCliHealth(options: { projectDir?: string; env?: NodeJS.ProcessEnv } = {}): GbrainCliHealth {
   const result = runGbrainCommandSync(['doctor', '--json'], {
     timeout: 10_000,
+    cwd: options.projectDir,
+    env: options.env,
   })
   const output = `${result.stdout}\n${result.stderr}`.trim()
   const parsed = parseGbrainDoctorReport(output)
   if (parsed && gbrainCoreRecallReady(parsed)) {
     return gbrainCoreReadyHealth(parsed)
   }
+  if (parsed) {
+    const status = typeof parsed.status === 'string' ? parsed.status : undefined
+    const healthScore = typeof parsed.health_score === 'number' ? parsed.health_score : undefined
+    const issues = gbrainCoreRecallIssues(parsed)
+    const issueDetails = gbrainCoreRecallIssueDetails(parsed, issues)
+    return {
+      available: false,
+      degraded: false,
+      reason: issueDetails.length > 0
+        ? `gbrain doctor reported core recall issue(s): ${issueDetails.join(', ')}`
+        : `gbrain doctor did not prove core recall readiness: ${status ?? 'unknown status'}`,
+      status,
+      healthScore,
+      issues,
+      recoveryHint: gbrainRecoveryHint(issues),
+      nextCommands: gbrainRecoveryCommands(issues),
+    }
+  }
   if (result.exitCode === 0) {
     return { available: true, degraded: false, reason: 'gbrain doctor passed; graph-backed recall is available' }
   }
+  const noBrainConfigured = /no brain configured/i.test(output)
   return {
     available: false,
     degraded: false,
-    reason: /no brain configured/i.test(output)
+    reason: noBrainConfigured
       ? 'gbrain CLI is installed but no brain is configured; run `gbrain init --pglite` before autonomous recall'
       : `gbrain CLI is installed but doctor failed: ${firstLine(output)}`,
+    issues: noBrainConfigured ? ['no-brain-configured'] : ['doctor-failed'],
+    recoveryHint: noBrainConfigured
+      ? 'Initialize a local PGLite brain or configure a Postgres-backed gbrain before relying on cross-session recall.'
+      : 'Run gbrain doctor --json and repair the reported database or provider issue before relying on cross-session recall.',
+    nextCommands: noBrainConfigured
+      ? ['gbrain init --pglite --no-embedding', 'gbrain doctor --json', 'scale memory provider status --json']
+      : ['gbrain doctor --json', 'scale memory provider status --json'],
   }
 }
 
@@ -681,7 +714,7 @@ function gbrainCoreReadyHealth(report: GbrainDoctorReport): GbrainCliHealth {
   }
   return {
     available: true,
-    degraded: false,
+    degraded: true,
     reason: `gbrain core recall is available; optional doctor warnings: ${optionalIssues.slice(0, 3).join(', ')}`,
     status,
     healthScore,
@@ -698,7 +731,7 @@ function inspectAgentmemoryHealth(endpoint?: string): AgentmemoryHealth {
   try {
     // Quick TCP check: try to connect to the agentmemory server
     const { request } = require('node:http')
-    const req = request(`${url}/health`, { method: 'GET', timeout: 2000 }, (res: { statusCode: number }) => {
+    const req = request(`${url}/health`, { method: 'GET', timeout: 2000 }, () => {
       // just checking connectivity
     })
     req.on('error', () => {})
@@ -836,16 +869,72 @@ function extractFirstJsonObject(output: string): string | null {
 }
 
 function gbrainCoreRecallReady(report: GbrainDoctorReport): boolean {
-  const connection = gbrainDoctorCheckStatus(report, 'connection')
-  const schema = gbrainDoctorCheckStatus(report, 'schema_version')
-  const brainScore = gbrainDoctorCheckStatus(report, 'brain_score')
-  return connection === 'ok' && (schema === 'ok' || brainScore === 'ok')
+  const checks = gbrainDoctorChecks(report)
+  const connection = checks.find(check => check.name === 'connection')
+  if (connection) {
+    if (connection.status !== 'ok') return false
+
+    const legacyRecallChecks = checks.filter(check => check.name === 'schema_version' || check.name === 'brain_score')
+    if (legacyRecallChecks.length > 0) return legacyRecallChecks.some(check => check.status === 'ok')
+
+    return true
+  }
+
+  const status = typeof report.status === 'string' ? report.status.toLowerCase() : undefined
+  return status === 'healthy' || status === 'ok'
 }
 
 const GBRAIN_CORE_RECALL_CHECKS = new Set(['connection', 'schema_version', 'brain_score'])
 
-function gbrainDoctorCheckStatus(report: GbrainDoctorReport, name: string): string | undefined {
-  return gbrainDoctorChecks(report).find(check => check.name === name)?.status
+function gbrainCoreRecallIssues(report: GbrainDoctorReport): string[] {
+  const checks = gbrainDoctorChecks(report)
+  const byName = new Map(checks.map(check => [check.name, check.status]))
+  const issues: string[] = []
+  const connection = byName.get('connection')
+  if (connection && connection !== 'ok') issues.push('connection')
+  const schema = byName.get('schema_version')
+  const brainScore = byName.get('brain_score')
+  if ((schema || brainScore) && schema !== 'ok' && brainScore !== 'ok') {
+    if (schema && schema !== 'ok') issues.push('schema_version')
+    if (brainScore && brainScore !== 'ok') issues.push('brain_score')
+  }
+  return issues
+}
+
+function gbrainCoreRecallIssueDetails(report: GbrainDoctorReport, issues: string[]): string[] {
+  const checks = gbrainDoctorChecks(report)
+  return issues.map(issue => {
+    const message = checks.find(check => check.name === issue)?.message
+    return message ? `${issue} (${compactText(message)})` : issue
+  })
+}
+
+function gbrainRecoveryHint(issues: string[]): string | undefined {
+  if (issues.includes('connection')) {
+    return 'Configured gbrain DB is unreachable. If this is a local PGLite brain, back up the database directory before reinitializing; otherwise configure a reachable Postgres URL.'
+  }
+  if (issues.includes('schema_version') || issues.includes('brain_score')) {
+    return 'gbrain connected but did not prove recall readiness; run doctor/migrations and recheck memory provider status.'
+  }
+  return undefined
+}
+
+function gbrainRecoveryCommands(issues: string[]): string[] | undefined {
+  if (issues.includes('connection')) {
+    return [
+      'gbrain doctor --json',
+      'gbrain init --url <postgresql://...> --non-interactive',
+      'scale memory provider status --json',
+    ]
+  }
+  if (issues.includes('schema_version') || issues.includes('brain_score')) {
+    return [
+      'gbrain doctor --json',
+      'gbrain init --migrate-only',
+      'scale memory provider status --json',
+    ]
+  }
+  return undefined
 }
 
 function gbrainDoctorChecks(report: GbrainDoctorReport): GbrainDoctorCheck[] {
@@ -875,7 +964,9 @@ function providerWarnings(statuses: MemoryProviderStatus[], config: MemoryProvid
   if (!config.routing.allowExternalWrite && statuses.some(status => status.writeMode === 'enabled' && status.kind !== 'scale-local')) {
     warnings.push('External memory write is configured on a provider while routing.allowExternalWrite is false.')
   }
-  if (!statuses.some(status => status.kind === 'scale-local' && status.available)) {
+  const expectsScaleLocalFallback = config.providers.some(provider => provider.kind === 'scale-local') ||
+    config.routing.defaultOrder.includes('scale-local')
+  if (expectsScaleLocalFallback && !statuses.some(status => status.kind === 'scale-local' && status.available)) {
     warnings.push('scale-local fallback is unavailable; autonomous recall may fail closed.')
   }
   for (const status of statuses) {
@@ -887,26 +978,46 @@ function providerWarnings(statuses: MemoryProviderStatus[], config: MemoryProvid
 }
 
 function recallGbrainCli(
+  provider: MemoryProviderConfig,
   input: MemoryProviderRecallInput,
   limit: number,
+  projectDir: string,
 ): MemoryProviderRecallItem[] {
-  const result = runGbrainCli(['query', input.query], 8_000)
-  const parsed = parseGbrainResults(result.stdout)
+  const result = runGbrainCli(['query', input.query], 8_000, provider, projectDir)
+  let parsed = parseGbrainResults(result.stdout)
   if (parsed.length === 0 && result.exitCode !== 0 && !result.timedOut) {
     throw new Error(firstLine(result.stderr) || `gbrain query failed with exit code ${result.exitCode}`)
+  }
+  if (parsed.length === 0 && result.exitCode === 0) {
+    const fallback = runGbrainCli(['search', input.query], 8_000, provider, projectDir, { outputMode: 'native' })
+    parsed = parseGbrainResults(fallback.stdout)
+    if (parsed.length === 0 && fallback.exitCode !== 0 && !fallback.timedOut) {
+      throw new Error(firstLine(fallback.stderr) || `gbrain search failed with exit code ${fallback.exitCode}`)
+    }
   }
   return parsed
     .slice(0, limit)
     .map((item, index) => externalToRecall('gbrain', item, index))
 }
 
-function runGbrainCli(args: string[], timeout: number): { stdout: string; stderr: string; exitCode: number; timedOut: boolean } {
+function runGbrainCli(
+  args: string[],
+  timeout: number,
+  provider: MemoryProviderConfig,
+  projectDir: string,
+  options: { outputMode?: 'json' | 'native' } = {},
+): { stdout: string; stderr: string; exitCode: number; timedOut: boolean } {
+  const providerEnv = providerGbrainEnv(provider, projectDir) ?? process.env
+  const outputMode = options.outputMode ?? 'json'
+  const env = {
+    ...providerEnv,
+    ...(outputMode === 'json'
+      ? { GBRAIN_OUTPUT_MODE: process.env.GBRAIN_OUTPUT_MODE ?? 'json' }
+      : {}),
+  }
   const result = runGbrainCommandSync(args, {
     timeout,
-    env: {
-      ...process.env,
-      GBRAIN_OUTPUT_MODE: process.env.GBRAIN_OUTPUT_MODE ?? 'json',
-    },
+    env,
   })
   return {
     stdout: result.stdout,
@@ -934,6 +1045,7 @@ function parseGbrainTextResults(stdout: string): Array<Record<string, unknown>> 
   for (const rawLine of lines) {
     const line = rawLine.trim()
     if (!line) continue
+    if (/^\[last-retrieved\]\s+write-back failed/i.test(line)) continue
     const ranked = line.match(/^(\d+)\.\s+(.*)$/)
     if (ranked) {
       if (current) records.push(current)
@@ -967,6 +1079,11 @@ function firstLine(value: string): string {
   return value.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? 'unknown error'
 }
 
+function compactText(value: string, maxLength = 200): string {
+  const compact = value.replace(/\s+/g, ' ').trim()
+  return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength - 1)}…`
+}
+
 function estimateTokens(text: string): number {
   // Rough estimate: ~4 chars per token for English text
   return Math.ceil(text.length / 4)
@@ -989,15 +1106,28 @@ function normalizeProviders(input: unknown, defaults: MemoryProviderConfig[]): M
       kind: normalizeKind(item.kind, base?.kind),
       enabled: item.enabled !== false && Boolean(item.enabled ?? base?.enabled ?? false),
       priority: positiveInt(item.priority, base?.priority ?? 0),
+      homeDir: typeof item.homeDir === 'string' ? item.homeDir : base?.homeDir,
       capabilities: arrayOfStrings(item.capabilities) as MemoryProviderCapability[],
       safetyLevel: normalizeSafety(item.safetyLevel, base?.safetyLevel),
       writeMode: normalizeWriteMode(item.writeMode, base?.writeMode),
     } as MemoryProviderConfig
   }).filter(provider => provider.id)
-  for (const defaultProvider of defaults) {
-    if (!providers.some(provider => provider.id === defaultProvider.id)) providers.push(defaultProvider)
-  }
   return providers
+}
+
+function providerGbrainEnv(provider: MemoryProviderConfig, projectDir: string): NodeJS.ProcessEnv | undefined {
+  const configuredHome = provider.homeDir?.trim()
+  if (!configuredHome) return undefined
+  const homeDir = resolveProviderPath(configuredHome, projectDir)
+  return {
+    ...process.env,
+    GBRAIN_HOME: homeDir,
+    GBRAIN_AUDIT_DIR: process.env.GBRAIN_AUDIT_DIR ?? join(homeDir, 'audit'),
+  }
+}
+
+function resolveProviderPath(value: string, projectDir: string): string {
+  return isAbsolute(value) ? value : resolve(projectDir, value)
 }
 
 function normalizeKind(value: unknown, fallback: MemoryProviderKind = 'generic-http'): MemoryProviderKind {

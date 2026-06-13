@@ -322,6 +322,7 @@ function findGate(stage: GateStage): GateCatalogEntry | undefined {
 function extensionStatuses(policy: VerificationPolicy): GateExtensionStatus[] {
   const standardsMode = policy.engineeringStandardsGate ?? 'warn'
   const productSmokeMode = policy.productSmokeGate ?? 'warn'
+  const ecosystemMode = policy.ecosystemReadinessGate ?? 'warn'
   return [
     {
       id: 'engineering-standards',
@@ -338,6 +339,14 @@ function extensionStatuses(policy: VerificationPolicy): GateExtensionStatus[] {
       active: productSmokeMode !== 'off',
       blocking: productSmokeMode === 'block',
       description: 'Controls whether configured product smoke evidence is advisory or blocking.',
+    },
+    {
+      id: 'ecosystem-readiness',
+      name: 'Ecosystem installation readiness',
+      mode: ecosystemMode,
+      active: ecosystemMode !== 'off',
+      blocking: ecosystemMode === 'block',
+      description: 'Runs setup verification plus workflow skill doctor checks for installed tool and skill capability readiness.',
     },
     {
       id: 'tool-evidence',

@@ -32,6 +32,14 @@ export interface InstinctStoreOptions {
   createDirs?: boolean
 }
 
+export interface InjectionInstinctOptions {
+  minConfidence?: number
+  allowModerateFallback?: boolean
+  fallbackMinConfidence?: number
+  fallbackMinObservations?: number
+  fallbackLimit?: number
+}
+
 // ---------------------------------------------------------------------------
 // InstinctStore
 // ---------------------------------------------------------------------------
@@ -182,15 +190,34 @@ export class InstinctStore {
   }
 
   /**
-   * Get high-confidence instincts for SessionStart injection (0.7+).
+   * Get instincts for SessionStart injection.
+   *
+   * Default callers only receive strong instincts (0.7+). SessionStart may opt
+   * into a conservative reviewed-moderate fallback when no strong instinct is
+   * available, so runtime learning can still be measured without injecting
+   * tentative or under-observed patterns.
    */
-  getInjectionInstincts(projectId?: string): Instinct[] {
+  getInjectionInstincts(projectId?: string, options: InjectionInstinctOptions = {}): Instinct[] {
+    const minConfidence = options.minConfidence ?? 0.7
     const scopedProject = projectId?.trim()
-    return this.query({ minConfidence: 0.7 }).filter(instinct =>
+    const inScope = (instinct: Instinct) =>
       instinct.scope === 'global' ||
       !instinct.projectId ||
-      Boolean(scopedProject && instinct.projectId === scopedProject),
-    )
+      Boolean(scopedProject && instinct.projectId === scopedProject)
+
+    const strong = this.query({ minConfidence }).filter(inScope)
+    if (strong.length > 0 || !options.allowModerateFallback) return strong
+
+    const fallbackMinConfidence = options.fallbackMinConfidence ?? 0.5
+    const fallbackMinObservations = options.fallbackMinObservations ?? 3
+    const fallbackLimit = options.fallbackLimit ?? 3
+    return this.query({ minConfidence: fallbackMinConfidence })
+      .filter(inScope)
+      .filter(instinct =>
+        instinct.confidence < minConfidence &&
+        instinct.observations >= fallbackMinObservations,
+      )
+      .slice(0, fallbackLimit)
   }
 
   /**
@@ -473,7 +500,7 @@ export class InstinctStore {
       const body = fmMatch[2] ?? ''
 
       const getYamlVal = (key: string): string => {
-        const m = frontmatter.match(new RegExp(`^${key}:\\s*(.+?)$`, 'm'))
+        const m = frontmatter.match(new RegExp(`^${key}:[^\\S\\r\\n]*([^\\r\\n]*)$`, 'm'))
         return m ? m[1].trim().replace(/^"(.*)"$/, '$1') : ''
       }
 

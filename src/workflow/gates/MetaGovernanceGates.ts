@@ -19,9 +19,252 @@ function textEvidence(items: GateEvidence[]): string {
   return items.map(item => `${item.label}: ${item.detail}`).join('\n')
 }
 
+function existingPaths(paths: string[]): string[] {
+  return paths.filter(path => existsSync(path))
+}
+
+function directoryHasFiles(path: string): boolean {
+  try {
+    return existsSync(path) && readdirSync(path).length > 0
+  } catch {
+    return false
+  }
+}
+
+function listFiles(dir: string, recursive = false): string[] {
+  if (!existsSync(dir)) return []
+  try {
+    const files: string[] = []
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (recursive) files.push(...listFiles(path, true))
+      } else if (entry.isFile()) {
+        files.push(path)
+      }
+    }
+    return files
+  } catch {
+    return []
+  }
+}
+
+function readJsonObject(path: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function countJsonlRecords(path: string, predicate: (record: Record<string, unknown>) => boolean): number {
+  if (!existsSync(path)) return 0
+  try {
+    return readFileSync(path, 'utf-8')
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .reduce((count, line) => {
+        try {
+          const parsed = JSON.parse(line) as unknown
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && predicate(parsed as Record<string, unknown>)) {
+            return count + 1
+          }
+        } catch {
+          return count
+        }
+        return count
+      }, 0)
+  } catch {
+    return 0
+  }
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function hasOpenStatus(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  return (value as { status?: unknown }).status === 'open'
+}
+
+function evaluateCurrentKnowledgeUtilization(scaleDir: string): GateResult | null {
+  const evidenceItems: GateEvidence[] = []
+  let passed = true
+  const knowledgeStores = existingPaths([
+    join(scaleDir, 'knowledge.db'),
+    join(scaleDir, 'memory', 'brain.sqlite'),
+    join(scaleDir, 'memory', 'brain-manifest.json'),
+  ])
+  if (knowledgeStores.length === 0) {
+    evidenceItems.push(createEvidence({ kind: 'manual', label: 'Knowledge Base', passed: false, detail: 'No knowledge or memory store found.' }))
+    passed = false
+  } else {
+    evidenceItems.push(createEvidence({
+      kind: 'manual',
+      label: 'Knowledge Base',
+      passed: true,
+      detail: `Knowledge store(s): ${knowledgeStores.join(', ')}`,
+    }))
+  }
+
+  const artifactsDir = join(scaleDir, 'artifacts')
+  let legacyLessons = 0
+  let legacyDefects = 0
+  for (const path of listFiles(artifactsDir).filter(file => file.endsWith('.json'))) {
+    const content = readJsonObject(path)
+    if (content?.type === 'Lesson') legacyLessons++
+    if (content?.type === 'Defect') legacyDefects++
+  }
+  const instinctFiles = listFiles(join(scaleDir, 'instincts'), true)
+    .filter(path => !path.endsWith('.audit.jsonl') && /\.(ya?ml|json)$/i.test(path))
+  const appliedInstincts = countJsonlRecords(join(scaleDir, 'instincts', '.audit.jsonl'), record => record.op === 'apply')
+  const learningSignals = legacyLessons + instinctFiles.length + appliedInstincts
+  if (learningSignals === 0) {
+    evidenceItems.push(createEvidence({ kind: 'manual', label: 'Lesson Extraction', passed: false, detail: 'No Lesson artifacts, instincts, or applied learning audit records found.' }))
+    passed = false
+  } else {
+    evidenceItems.push(createEvidence({
+      kind: 'manual',
+      label: 'Lesson Extraction',
+      passed: true,
+      detail: `${learningSignals} learning signal(s): legacyLessons=${legacyLessons}, instincts=${instinctFiles.length}, appliedInstincts=${appliedInstincts}`,
+    }))
+  }
+
+  if (legacyDefects > 0) {
+    const hasLearning = learningSignals > 0
+    evidenceItems.push(createEvidence({
+      kind: 'manual',
+      label: 'Defect-Lesson Ratio',
+      passed: hasLearning,
+      detail: hasLearning
+        ? `${legacyDefects} Defect artifact(s) have learning signal coverage.`
+        : `${legacyDefects} Defect artifact(s) without Lesson or learning signal coverage.`,
+    }))
+    if (!hasLearning) passed = false
+  }
+
+  return {
+    gate: 'G9',
+    status: passed ? 'PASSED' : 'FAILED',
+    passed,
+    evidence: textEvidence(evidenceItems),
+    evidenceItems,
+    blockers: passed ? [] : ['知识库未有效使用，经验未沉淀'],
+    durationMs: 0,
+  }
+}
+
 // ============================================================================
 // G9: Knowledge Utilization — 知识库是否被有效使用
 // ============================================================================
+interface WorkflowPhaseEvidence {
+  passed: boolean
+  detail: string
+}
+
+function evaluateCurrentWorkflowThoroughness(scaleDir: string): GateResult | null {
+  const evidenceItems: GateEvidence[] = []
+  let passed = true
+  const state = readJsonObject(join(scaleDir, 'state', 'current.json')) ?? {}
+  const artifactsDirValue = typeof state.artifactsDir === 'string' ? state.artifactsDir : undefined
+  const taskArtifactsDir = artifactsDirValue ? join(scaleDir, '..', artifactsDirValue) : undefined
+  const completedGates = stringArray(state.completedGates)
+  const filesModified = stringArray(state.filesModified)
+  const phaseEvidence: Record<string, WorkflowPhaseEvidence> = {
+    explore: hasAny([
+      join(scaleDir, 'phases', '.phase-explore'),
+      join(scaleDir, 'state', 'explore.json'),
+      taskArtifactsDir ? join(taskArtifactsDir, 'explore.md') : '',
+    ]),
+    plan: hasAny([
+      join(scaleDir, 'phases', '.phase-plan'),
+      taskArtifactsDir ? join(taskArtifactsDir, 'plan.md') : '',
+    ], [
+      listFiles(join(scaleDir, 'plans')).filter(file => file.endsWith('.md')).length,
+      listFiles(join(scaleDir, 'state')).filter(file => /plan-.*\.json$/.test(file)).length,
+      typeof state.lastPlanId === 'string' ? 1 : 0,
+    ]),
+    verify: hasAny([
+      join(scaleDir, 'phases', '.phase-verify'),
+      taskArtifactsDir ? join(taskArtifactsDir, 'verification.md') : '',
+    ], [
+      listFiles(join(scaleDir, 'evidence')).filter(file => file.endsWith('.json')).length,
+      completedGates.length,
+    ]),
+    review: hasAny([
+      join(scaleDir, 'phases', '.phase-review'),
+      taskArtifactsDir ? join(taskArtifactsDir, 'review.md') : '',
+    ], [
+      listFiles(join(scaleDir, 'reviews')).filter(file => file.endsWith('.json')).length,
+    ]),
+  }
+
+  for (const [phase, evidence] of Object.entries(phaseEvidence)) {
+    evidenceItems.push(createEvidence({
+      kind: 'manual',
+      label: `Phase: ${phase}`,
+      passed: evidence.passed,
+      detail: evidence.detail,
+    }))
+    if (!evidence.passed) passed = false
+  }
+
+  const artifactCoverage: Record<string, boolean> = {
+    Need: Boolean(taskArtifactsDir && existsSync(join(taskArtifactsDir, 'mini-prd.md'))),
+    Spec: listFiles(join(scaleDir, 'specs')).some(file => file.endsWith('.md')) || typeof state.lastSpecId === 'string',
+    Plan: listFiles(join(scaleDir, 'plans')).some(file => file.endsWith('.md')) || typeof state.lastPlanId === 'string',
+    Task: typeof state.lastTaskId === 'string' || listFiles(join(scaleDir, 'metrics')).some(file => file.endsWith('tasks.jsonl')),
+    Change: filesModified.length > 0,
+    Evidence: listFiles(join(scaleDir, 'evidence')).some(file => file.endsWith('.json')),
+  }
+  const missingTypes = Object.entries(artifactCoverage)
+    .filter(([, present]) => !present)
+    .map(([type]) => type)
+  if (missingTypes.length > 0) {
+    evidenceItems.push(createEvidence({
+      kind: 'manual',
+      label: 'Artifact Coverage',
+      passed: false,
+      detail: `Missing artifact evidence types: ${missingTypes.join(', ')}`,
+    }))
+    passed = false
+  } else {
+    evidenceItems.push(createEvidence({
+      kind: 'manual',
+      label: 'Artifact Coverage',
+      passed: true,
+      detail: 'Need, Spec, Plan, Task, Change, and Evidence are covered by current workflow evidence.',
+    }))
+  }
+
+  return {
+    gate: 'G12',
+    status: passed ? 'PASSED' : 'FAILED',
+    passed,
+    evidence: textEvidence(evidenceItems),
+    evidenceItems,
+    blockers: passed ? [] : ['工作流执行不完整'],
+    durationMs: 0,
+  }
+}
+
+function hasAny(paths: string[], counts: number[] = []): WorkflowPhaseEvidence {
+  const existing = existingPaths(paths.filter(Boolean))
+  const count = counts.reduce((sum, value) => sum + value, 0)
+  if (existing.length > 0 || count > 0) {
+    return {
+      passed: true,
+      detail: [...existing, ...(count > 0 ? [`${count} counted evidence item(s)`] : [])].join(', '),
+    }
+  }
+  return { passed: false, detail: 'No current workflow evidence found.' }
+}
+
 export class KnowledgeUtilizationGate implements IGate {
   stage = 'G9' as GateStage
   name = 'Knowledge Utilization'
@@ -33,6 +276,8 @@ export class KnowledgeUtilizationGate implements IGate {
   async execute(): Promise<GateResult> {
     const evidenceItems: GateEvidence[] = []
     let passed = true
+    const currentEvidenceResult = evaluateCurrentKnowledgeUtilization(this.scaleDir)
+    if (currentEvidenceResult) return currentEvidenceResult
 
     // 检查1: 知识库是否存在
     const kbPath = join(this.scaleDir, 'knowledge.db')
@@ -184,11 +429,28 @@ export class GuardrailEffectivenessGate implements IGate {
     const evidenceItems: GateEvidence[] = []
     let passed = true
 
-    // 检查1: 检测器是否配置
-    const settingsPath = join(this.scaleDir, 'settings.json')
-    if (!existsSync(settingsPath)) {
-      evidenceItems.push(createEvidence({ kind: 'manual', label: 'Detector Config', passed: false, detail: '未找到 settings.json' }))
+    // Check 1: guardrail configuration is installed on one of the supported surfaces.
+    const configPaths = existingPaths([
+      join(this.scaleDir, 'settings.json'),
+      join(this.scaleDir, 'policy.yaml'),
+      join(this.scaleDir, 'config.yaml'),
+      join(this.scaleDir, '..', '.claude', 'settings.json'),
+    ])
+    const hookDirs = [
+      join(this.scaleDir, 'hooks'),
+      join(this.scaleDir, '..', '.claude', 'hooks'),
+      join(this.scaleDir, '..', 'scripts', 'hooks'),
+    ].filter(directoryHasFiles)
+    if (configPaths.length === 0 && hookDirs.length === 0) {
+      evidenceItems.push(createEvidence({ kind: 'manual', label: 'Detector Config', passed: false, detail: 'No guardrail config or hook directory found' }))
       passed = false
+    } else {
+      evidenceItems.push(createEvidence({
+        kind: 'manual',
+        label: 'Detector Config',
+        passed: true,
+        detail: [...configPaths, ...hookDirs].join(', '),
+      }))
     }
 
     // 检查2: 是否有检测器触发记录
@@ -272,6 +534,8 @@ export class WorkflowThoroughnessGate implements IGate {
   async execute(): Promise<GateResult> {
     const evidenceItems: GateEvidence[] = []
     let passed = true
+    const currentEvidenceResult = evaluateCurrentWorkflowThoroughness(this.scaleDir)
+    if (currentEvidenceResult) return currentEvidenceResult
 
     // 检查1: 各阶段是否有产出物
     const phases = ['explore', 'plan', 'verify', 'review']
@@ -391,7 +655,8 @@ export class MultiAgentCoordinationGate implements IGate {
         const state = JSON.parse(readFileSync(coordinatorPath, 'utf-8'))
         const activeSessions = state.activeSessions?.length ?? 0
         const overlaps = state.overlaps?.length ?? 0
-        const openConflicts = (state.conflicts ?? []).filter((c: any) => c.status === 'open').length
+        const conflicts = Array.isArray(state.conflicts) ? state.conflicts : []
+        const openConflicts = conflicts.filter(hasOpenStatus).length
 
         evidenceItems.push(createEvidence({
           kind: 'file',

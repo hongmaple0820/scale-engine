@@ -6,6 +6,13 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../core/logger.js'
 import type { Instinct } from './InstinctExtractor.js'
+import {
+  loadInstinctRuntimeEvidence,
+  type InstinctRuntimeEvidence,
+  type InstinctRuntimeEvidenceSummary,
+} from './InstinctRuntimeEvidence.js'
+import { dedupeCortexObservations, loadGateEvidenceObservations } from './GateEvidenceObservations.js'
+import { loadAutoFixEventObservations } from './AutoFixEventObservations.js'
 
 export interface GovernanceMetrics {
   // Gate metrics
@@ -23,6 +30,7 @@ export interface GovernanceMetrics {
     totalApplied: number
     hitRate: number
     byConfidence: Record<string, { count: number; hitRate: number }>
+    runtimeEvidence?: InstinctRuntimeEvidenceSummary
   }
   // Cost metrics
   cost: {
@@ -48,6 +56,16 @@ export interface GovernanceMetrics {
   period: { start: string; end: string }
 }
 
+interface GovernanceObservation {
+  timestamp: string
+  sessionId?: string
+  gateName?: string
+  gateStatus?: string
+  durationMs?: number
+  tokensUsed?: number
+  estimatedCostUsd?: number
+}
+
 // ---------------------------------------------------------------------------
 // GovernanceMetricsCalculator
 // ---------------------------------------------------------------------------
@@ -70,7 +88,7 @@ export class GovernanceMetricsCalculator {
     const gateMetrics = this.computeGateMetrics(observations)
 
     // Instincts
-    const instinctMetrics = this.computeInstinctMetrics(instincts)
+    const instinctMetrics = this.computeInstinctMetrics(instincts, loadInstinctRuntimeEvidence(this.scaleDir, lookbackDays))
 
     // Cost
     const cost = this.computeCostMetrics(observations, instinctMetrics)
@@ -143,35 +161,52 @@ export class GovernanceMetricsCalculator {
   // Internal
   // -----------------------------------------------------------------------
 
-  private loadObservations(lookbackDays: number): any[] {
+  private loadObservations(lookbackDays: number): GovernanceObservation[] {
     return this.loadObservationsRange(0, lookbackDays)
   }
 
-  private loadObservationsRange(startDaysAgo: number, endDaysAgo: number): any[] {
+  private loadObservationsRange(startDaysAgo: number, endDaysAgo: number): GovernanceObservation[] {
     const obsDir = join(this.scaleDir, 'observations')
-    if (!existsSync(obsDir)) return []
-
     const start = Date.now() - endDaysAgo * 86400000
     const end = Date.now() - startDaysAgo * 86400000
 
-    const results: any[] = []
-    try {
-      for (const file of readdirSync(obsDir)) {
-        if (!file.endsWith('.jsonl')) continue
-        const lines = readFileSync(join(obsDir, file), 'utf-8').split('\n').filter(Boolean)
-        for (const line of lines) {
-          try {
-            const obs = JSON.parse(line)
-            const ts = new Date(obs.timestamp).getTime()
-            if (ts >= start && ts < end) results.push(obs)
-          } catch { /* skip */ }
+    const results: GovernanceObservation[] = []
+    if (existsSync(obsDir)) {
+      try {
+        for (const file of readdirSync(obsDir)) {
+          if (!file.endsWith('.jsonl')) continue
+          const lines = readFileSync(join(obsDir, file), 'utf-8').split('\n').filter(Boolean)
+          for (const [index, line] of lines.entries()) {
+            try {
+              const obs = parseGovernanceObservation(JSON.parse(line))
+              if (!obs) {
+                logger.debug({ file, lineNumber: index + 1 }, 'Skipped malformed observation line')
+                continue
+              }
+              const ts = new Date(obs.timestamp).getTime()
+              if (Number.isFinite(ts) && ts >= start && ts < end) results.push(obs)
+            } catch (err) {
+              logger.debug({ err, file, lineNumber: index + 1 }, 'Skipped malformed observation line')
+            }
+          }
         }
-      }
-    } catch (err) { logger.warn({ err }, 'Failed to load observations') }
-    return results
+      } catch (err) { logger.warn({ err }, 'Failed to load observations') }
+    }
+
+    for (const obs of loadGateEvidenceObservations(this.scaleDir)) {
+      const ts = new Date(obs.timestamp).getTime()
+      if (Number.isFinite(ts) && ts >= start && ts < end) results.push(obs)
+    }
+
+    for (const obs of loadAutoFixEventObservations(this.scaleDir)) {
+      const ts = new Date(obs.timestamp).getTime()
+      if (Number.isFinite(ts) && ts >= start && ts < end) results.push(obs)
+    }
+
+    return dedupeCortexObservations(results)
   }
 
-  private computeGateMetrics(observations: any[]): GovernanceMetrics['gates'] {
+  private computeGateMetrics(observations: GovernanceObservation[]): GovernanceMetrics['gates'] {
     const byGate: Record<string, { runs: number; passed: number; avgTokens: number }> = {}
     let totalRuns = 0
     let totalPassed = 0
@@ -204,28 +239,71 @@ export class GovernanceMetricsCalculator {
     }
   }
 
-  private computeInstinctMetrics(instincts: Instinct[]): GovernanceMetrics['instincts'] {
+  private computeInstinctMetrics(
+    instincts: Instinct[],
+    runtimeEvidence: InstinctRuntimeEvidence,
+  ): GovernanceMetrics['instincts'] {
     const byConfidence: Record<string, { count: number; hitRate: number }> = {
       'near-certain (0.9)': { count: 0, hitRate: 0 },
       'strong (0.7)': { count: 0, hitRate: 0 },
       'moderate (0.5)': { count: 0, hitRate: 0 },
       'tentative (0.3)': { count: 0, hitRate: 0 },
     }
+    const runtimeBuckets: Record<string, { denominator: number; successes: number }> = {}
 
     for (const i of instincts) {
       const bucket = i.confidence >= 0.9 ? 'near-certain (0.9)' :
         i.confidence >= 0.7 ? 'strong (0.7)' :
         i.confidence >= 0.5 ? 'moderate (0.5)' : 'tentative (0.3)'
       byConfidence[bucket].count++
-      byConfidence[bucket].hitRate += i.hitRate
+      if (!runtimeBuckets[bucket]) runtimeBuckets[bucket] = { denominator: 0, successes: 0 }
+      if (runtimeEvidence.summary.source === 'session-and-audit') {
+        runtimeBuckets[bucket].denominator += Math.max(
+          runtimeEvidence.injectionEventsById.get(i.id) ?? 0,
+          runtimeEvidence.applicationEventsById.get(i.id) ?? 0,
+        )
+        runtimeBuckets[bucket].successes += runtimeEvidence.successfulApplicationsById.get(i.id) ?? 0
+      } else if (runtimeEvidence.summary.source === 'session') {
+        runtimeBuckets[bucket].denominator += runtimeEvidence.injectionEventsById.get(i.id) ?? 0
+        runtimeBuckets[bucket].successes += runtimeEvidence.successfulApplicationsById.get(i.id) ?? 0
+      } else if (runtimeEvidence.summary.source === 'audit') {
+        runtimeBuckets[bucket].denominator += runtimeEvidence.applicationEventsById.get(i.id) ?? 0
+        runtimeBuckets[bucket].successes += runtimeEvidence.successfulApplicationsById.get(i.id) ?? 0
+      } else {
+        byConfidence[bucket].hitRate += i.hitRate
+      }
     }
 
-    for (const bucket of Object.values(byConfidence)) {
-      bucket.hitRate = bucket.count > 0 ? bucket.hitRate / bucket.count : 0
+    for (const [bucketName, bucket] of Object.entries(byConfidence)) {
+      const runtimeBucket = runtimeBuckets[bucketName]
+      if (runtimeEvidence.summary.source === 'session' || runtimeEvidence.summary.source === 'session-and-audit' || runtimeEvidence.summary.source === 'audit') {
+        bucket.hitRate = runtimeBucket && runtimeBucket.denominator > 0
+          ? clampRatio(runtimeBucket.successes / runtimeBucket.denominator)
+          : 0
+      } else {
+        bucket.hitRate = bucket.count > 0 ? bucket.hitRate / bucket.count : 0
+      }
+    }
+
+    if (runtimeEvidence.summary.source !== 'none' && runtimeEvidence.summary.source !== 'legacy') {
+      const denominator = runtimeEvidence.summary.source === 'audit'
+        ? runtimeEvidence.summary.applicationEvents
+        : runtimeEvidence.summary.source === 'session-and-audit'
+          ? Math.max(runtimeEvidence.summary.injectionEvents, runtimeEvidence.summary.applicationEvents)
+          : runtimeEvidence.summary.injectionEvents
+      return {
+        totalExtracted: instincts.length,
+        totalInjected: denominator,
+        totalApplied: runtimeEvidence.summary.successfulApplications,
+        hitRate: denominator > 0 ? clampRatio(runtimeEvidence.summary.successfulApplications / denominator) : 0,
+        byConfidence,
+        runtimeEvidence: runtimeEvidence.summary,
+      }
     }
 
     const totalApplied = instincts.reduce((sum, i) => sum + i.appliedCount, 0)
     const totalObs = instincts.reduce((sum, i) => sum + i.observations, 0)
+    const hasLegacyCounters = instincts.some(i => i.appliedCount > 0 || i.hitRate > 0)
 
     return {
       totalExtracted: instincts.length,
@@ -233,11 +311,17 @@ export class GovernanceMetricsCalculator {
       totalApplied,
       hitRate: totalObs > 0 ? totalApplied / totalObs : 0,
       byConfidence,
+      runtimeEvidence: {
+        source: hasLegacyCounters ? 'legacy' : 'none',
+        injectionEvents: 0,
+        applicationEvents: 0,
+        successfulApplications: 0,
+      },
     }
   }
 
   private computeCostMetrics(
-    observations: any[],
+    observations: GovernanceObservation[],
     _instinctMetrics: GovernanceMetrics['instincts'],
   ): GovernanceMetrics['cost'] {
     const totalTokens = observations.reduce((sum, o) => sum + (o.tokensUsed ?? 0), 0)
@@ -252,7 +336,7 @@ export class GovernanceMetricsCalculator {
     }
   }
 
-  private computeAutoFixMetrics(observations: any[]): GovernanceMetrics['autoFix'] {
+  private computeAutoFixMetrics(observations: GovernanceObservation[]): GovernanceMetrics['autoFix'] {
     const autoFixObs = observations.filter(o => o.gateName?.includes('auto-fix'))
     const successes = autoFixObs.filter(o => o.gateStatus === 'PASS').length
     const totalAttempts = autoFixObs.length
@@ -266,8 +350,8 @@ export class GovernanceMetricsCalculator {
   }
 
   private computeTrends(
-    current: any[],
-    previous: any[],
+    current: GovernanceObservation[],
+    previous: GovernanceObservation[],
     instinctMetrics: GovernanceMetrics['instincts'],
   ): GovernanceMetrics['trends'] {
     const currentPassRate = current.length > 0
@@ -305,4 +389,30 @@ export class GovernanceMetricsCalculator {
 
     return Math.min(100, Math.max(0, score))
   }
+}
+
+function parseGovernanceObservation(value: unknown): GovernanceObservation | null {
+  if (!isRecord(value) || typeof value.timestamp !== 'string') return null
+  return {
+    timestamp: value.timestamp,
+    sessionId: typeof value.sessionId === 'string' ? value.sessionId : undefined,
+    gateName: typeof value.gateName === 'string' ? value.gateName : undefined,
+    gateStatus: typeof value.gateStatus === 'string' ? value.gateStatus : undefined,
+    durationMs: finiteNumber(value.durationMs),
+    tokensUsed: finiteNumber(value.tokensUsed),
+    estimatedCostUsd: finiteNumber(value.estimatedCostUsd),
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(1, value))
 }

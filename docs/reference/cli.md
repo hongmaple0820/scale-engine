@@ -111,6 +111,7 @@ Evidence-driven continuous evolution with instinct extraction.
 | Command | Description |
 |---------|-------------|
 | `scale workflow list` | List workflow presets |
+| `scale workflow effectiveness [--memory-query <query>] [--skip-memory-recall]` | Measure workflow effectiveness, including read-only memory provider recall quality |
 | `scale evidence list` | List evidence records |
 | `scale evidence show` | Show evidence details |
 | `scale token record` | Record token usage |

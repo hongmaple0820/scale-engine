@@ -54,7 +54,7 @@
       "attempts": [
         {
           "id": "attempt-1",
-          "command": "node -e \"const s='test(1)'; const r=new RegExp(s.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')); console.log(r.test('test(1)'))\"",
+          "command": "node -e \"const s='test(1)'; const escaped=[...s].map(c=>'.*+?^${}()|[]'.includes(c)?String.fromCharCode(92)+c:c).join(''); const r=new RegExp(escaped); console.log(r.test(s))\"",
           "expectedExitCode": 0,
           "outputContains": "true"
         }
@@ -149,7 +149,7 @@
       "attempts": [
         {
           "id": "attempt-1",
-          "command": "node -e \"const fs=require('fs'); const f='/tmp/test-atomic.jsonl'; fs.writeFileSync(f,''); for(let i=0;i<5;i++){fs.appendFileSync(f,JSON.stringify({i})+'\\n')} console.log(fs.readFileSync(f,'utf-8').trim().split('\\n').length)\"",
+          "command": "node -e \"const fs=require('fs'),os=require('os'),path=require('path'); const f=path.join(os.tmpdir(),'scale-eval-test-atomic.jsonl'); fs.writeFileSync(f,''); for(let i=0;i<5;i++){fs.appendFileSync(f,JSON.stringify({i})+String.fromCharCode(10))} console.log(fs.readFileSync(f,'utf-8').trim().split(String.fromCharCode(10)).length)\"",
           "expectedExitCode": 0,
           "outputContains": "5"
         }
@@ -187,7 +187,7 @@
       "attempts": [
         {
           "id": "attempt-1",
-          "command": "node -e \"const s='\\uFEFF{\\\"ok\\\":true}'; console.log(JSON.parse(s.replace(/^\\uFEFF/,{})).ok)\"",
+          "command": "node -e \"const bom=String.fromCharCode(65279); const s=bom+JSON.stringify({ok:true}); console.log(JSON.parse(s.replace(bom,'')).ok)\"",
           "expectedExitCode": 0,
           "outputContains": "true"
         }
@@ -207,9 +207,9 @@
       "attempts": [
         {
           "id": "attempt-1",
-          "command": "node -e \"const id='spec-001'; console.log(id.match(/^[a-z]+-\\d+$/)?'valid':'invalid')\"",
+          "command": "node -e \"const id='spec-001'; console.log(/^[a-z]+-[0-9]+$/.test(id)?'valid-id':'bad-id')\"",
           "expectedExitCode": 0,
-          "outputContains": "valid"
+          "outputEquals": "valid-id"
         }
       ]
     },
@@ -287,7 +287,7 @@
       "attempts": [
         {
           "id": "attempt-1",
-          "command": "node -e \"const a='line1\\nline2'; const b='line1\\nline3'; const d=a.split('\\n').map((l,i)=>b.split('\\n')[i]===l?' '+l:'-'+l); console.log(d.join('\\n'))\"",
+          "command": "node -e \"const a=['line1','line2']; const b=['line1','line3']; const d=a.map((l,i)=>b[i]===l?' '+l:'-'+l); console.log(d.join(String.fromCharCode(10)))\"",
           "expectedExitCode": 0,
           "outputContains": "-line2"
         }

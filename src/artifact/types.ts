@@ -270,6 +270,11 @@ export interface TaskPayload {
   toolEvidenceGatePassed?: boolean
   reviewEvidenceIds?: string[]
   reviewedAt?: Timestamp
+  shipPassed?: boolean
+  shippedAt?: Timestamp
+  shipMode?: 'commit' | 'no-commit' | 'commit-skipped'
+  shipCommitHash?: string
+  shipDeploymentRecordId?: string
   /** Agent Brief — 标准化的 Agent 可执行工单（借鉴 mattpocock/skills） */
   agentBrief?: AgentBrief
 }
@@ -1062,4 +1067,3 @@ export interface IssueInput {
   filesInvolved?: string[]
   dependsOn?: ArtifactId[]
 }
-

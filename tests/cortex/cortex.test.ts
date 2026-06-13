@@ -7,6 +7,8 @@ import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 import { SessionInjector } from '../../src/cortex/SessionInjector.js'
 import { validateInstinct } from '../../src/cortex/InstinctValidation.js'
 import { EVIDENCE_DISCIPLINE_PROMPT } from '../../src/agents/evidenceDiscipline.js'
+import { GovernanceMetricsCalculator } from '../../src/cortex/GovernanceMetrics.js'
+import { reviewInstinctCandidates } from '../../src/cortex/InstinctCandidateReview.js'
 
 const dirs: string[] = []
 
@@ -56,6 +58,55 @@ function makeInstinct(overrides: Partial<Instinct> = {}): Instinct {
   }
 }
 
+function writeGateEvidence(dir: string, overrides: Record<string, unknown> = {}): void {
+  const evidenceDir = join(dir, 'evidence')
+  mkdirSync(evidenceDir, { recursive: true })
+
+  const id = typeof overrides.id === 'string' ? overrides.id : `GATE-G5-${Date.now()}-test`
+  const record = {
+    id,
+    gate: 'G5',
+    status: 'FAILED',
+    passed: false,
+    evidence: 'Typecheck failed',
+    evidenceItems: [{
+      id: `${id}-item`,
+      kind: 'command',
+      label: 'Typecheck command',
+      passed: false,
+      path: 'src/foo.ts',
+      detail: 'tsc exited with code 2',
+      exitCode: 2,
+      durationMs: 1200,
+      rawEstimatedTokens: 250,
+      estimatedCostUsd: 0.01,
+    }],
+    blockers: ['Typecheck failed: tsc exited with code 2'],
+    durationMs: 1200,
+    createdAt: Date.now(),
+    ...overrides,
+  }
+
+  writeFileSync(join(evidenceDir, `${id}.json`), JSON.stringify(record, null, 2))
+}
+
+function writeCortexSessionEvent(dir: string, instinctIds: string[], timestamp = new Date().toISOString()): void {
+  const sessionsDir = join(dir, 'events', 'sessions')
+  mkdirSync(sessionsDir, { recursive: true })
+  writeFileSync(join(sessionsDir, 'SESSION-CORTEX.jsonl'), `${JSON.stringify({
+    type: 'session.started',
+    sessionId: 'SESSION-CORTEX',
+    createdAt: timestamp,
+    data: {
+      metadata: {
+        cortex: {
+          instinctsApplied: instinctIds,
+        },
+      },
+    },
+  })}\n`, 'utf-8')
+}
+
 describe('InstinctExtractor', () => {
   it('loads observations from JSONL files', () => {
     const dir = makeDir('cortex-obs-')
@@ -78,6 +129,48 @@ describe('InstinctExtractor', () => {
     const dir = makeDir('cortex-no-obs-')
     const extractor = new InstinctExtractor(dir)
     expect(extractor.loadObservations()).toEqual([])
+  })
+
+  it('loads gate evidence files as observations', () => {
+    const dir = makeDir('cortex-gate-evidence-')
+    writeGateEvidence(dir, {
+      id: 'GATE-G4-1781290000000-test',
+      gate: 'G4',
+      createdAt: 1781290000000,
+    })
+
+    const extractor = new InstinctExtractor(dir)
+    const loaded = extractor.loadObservations()
+
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0]).toMatchObject({
+      sessionId: 'GATE-G4-1781290000000-test',
+      gateName: 'G4',
+      gateStatus: 'FAIL',
+      filePaths: ['src/foo.ts'],
+      tokensUsed: 250,
+      modelUsed: 'gate-evidence',
+    })
+    expect(loaded[0].errorPattern).toContain('G4: Typecheck failed')
+  })
+
+  it('detects patterns from failed gate evidence without observations JSONL', () => {
+    const dir = makeDir('cortex-gate-pattern-')
+    writeGateEvidence(dir, {
+      id: 'GATE-G5-1781290000001-a',
+      createdAt: 1781290000001,
+    })
+    writeGateEvidence(dir, {
+      id: 'GATE-G5-1781290000002-b',
+      createdAt: 1781290000002,
+    })
+
+    const extractor = new InstinctExtractor(dir)
+    const patterns = extractor.detectPatterns(extractor.loadObservations())
+
+    expect(patterns).toHaveLength(1)
+    expect(patterns[0].count).toBe(2)
+    expect(patterns[0].pattern).toContain('G5: Typecheck failed')
   })
 
   it('skips malformed JSONL lines', () => {
@@ -159,6 +252,206 @@ describe('InstinctExtractor', () => {
     const today = new Date().toISOString().slice(0, 10)
     const file = join(dir, 'observations', `${today}.jsonl`)
     expect(existsSync(file)).toBe(true)
+  })
+})
+
+describe('GovernanceMetricsCalculator', () => {
+  it('skips malformed observation lines without dropping valid metrics', () => {
+    const dir = makeDir('cortex-metrics-malformed-')
+    const obsDir = join(dir, 'observations')
+    mkdirSync(obsDir, { recursive: true })
+
+    const obs = makeObservation({ gateName: 'G7', gateStatus: 'PASS' })
+    writeFileSync(join(obsDir, '2026-05-27.jsonl'), 'not-json\n' + JSON.stringify(obs) + '\n')
+
+    const calculator = new GovernanceMetricsCalculator(dir)
+    const metrics = calculator.compute([], 30)
+
+    expect(metrics.gates.totalRuns).toBe(1)
+    expect(metrics.gates.passRate).toBe(1)
+    expect(metrics.gates.byGate.G7.runs).toBe(1)
+  })
+
+  it('computes gate metrics from gate evidence files', () => {
+    const dir = makeDir('cortex-metrics-gate-evidence-')
+    const now = Date.now() - 1000
+    writeGateEvidence(dir, {
+      id: `GATE-G4-${now}-pass`,
+      gate: 'G4',
+      status: 'PASSED',
+      passed: true,
+      blockers: [],
+      durationMs: 100,
+      createdAt: now,
+      evidenceItems: [{
+        id: 'pass-item',
+        kind: 'command',
+        label: 'Lint command',
+        passed: true,
+        path: 'src/foo.ts',
+        durationMs: 100,
+        rawEstimatedTokens: 200,
+        estimatedCostUsd: 0.02,
+      }],
+    })
+    writeGateEvidence(dir, {
+      id: `GATE-G5-${now + 1}-fail`,
+      gate: 'G5',
+      durationMs: 300,
+      createdAt: now + 1,
+      evidenceItems: [{
+        id: 'fail-item',
+        kind: 'command',
+        label: 'Test command',
+        passed: false,
+        path: 'src/bar.ts',
+        detail: 'vitest failed',
+        exitCode: 1,
+        durationMs: 300,
+        rawEstimatedTokens: 100,
+        estimatedCostUsd: 0.01,
+      }],
+    })
+
+    const calculator = new GovernanceMetricsCalculator(dir)
+    const metrics = calculator.compute([], 30)
+
+    expect(metrics.gates.totalRuns).toBe(2)
+    expect(metrics.gates.passRate).toBe(0.5)
+    expect(metrics.gates.avgDurationMs).toBe(200)
+    expect(metrics.gates.byGate.G4.runs).toBe(1)
+    expect(metrics.gates.byGate.G4.passed).toBe(1)
+    expect(metrics.gates.byGate.G5.runs).toBe(1)
+    expect(metrics.cost.totalTokens).toBe(300)
+    expect(metrics.cost.totalCost).toBeCloseTo(0.03)
+  })
+
+  it('computes auto-fix metrics from persisted auto-fix attempt events', () => {
+    const dir = makeDir('cortex-metrics-autofix-events-')
+    const eventsDir = join(dir, 'events')
+    mkdirSync(eventsDir, { recursive: true })
+    const now = Date.now()
+    const events = [
+      {
+        id: 'EVT-autofix-pass',
+        type: 'autofix.attempt',
+        timestamp: now,
+        sessionId: 'auto-fix-test',
+        payload: { category: 'lint', success: true, durationMs: 100 },
+      },
+      {
+        id: 'EVT-autofix-fail',
+        type: 'autofix.attempt',
+        timestamp: now + 1,
+        sessionId: 'auto-fix-test',
+        payload: { category: 'test', success: false, durationMs: 200 },
+      },
+    ]
+    writeFileSync(join(eventsDir, new Date(now).toISOString().slice(0, 10) + '.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n', 'utf-8')
+
+    const calculator = new GovernanceMetricsCalculator(dir)
+    const metrics = calculator.compute([], 30)
+
+    expect(metrics.autoFix).toMatchObject({
+      totalAttempts: 2,
+      successRate: 0.5,
+      avgAttemptsPerFix: 2,
+      totalTimeSavedMinutes: 5,
+    })
+    expect(metrics.gates.byGate['auto-fix:lint']).toMatchObject({ runs: 1, passed: 1 })
+    expect(metrics.gates.byGate['auto-fix:test']).toMatchObject({ runs: 1, passed: 0 })
+  })
+
+  it('computes instinct hit rate from runtime session injection and application audit evidence', () => {
+    const dir = makeDir('cortex-runtime-instinct-metrics-')
+    const store = new InstinctStore(join(dir, 'instincts'))
+    const succeededId = store.save(makeInstinct({
+      id: 'instinct-runtime-success',
+      trigger: 'runtime success',
+      confidence: 0.9,
+      observations: 4,
+      appliedCount: 0,
+      hitRate: 0,
+    }))
+    const failedId = store.save(makeInstinct({
+      id: 'instinct-runtime-failed',
+      trigger: 'runtime failed',
+      confidence: 0.7,
+      observations: 4,
+      appliedCount: 0,
+      hitRate: 0,
+    }))
+
+    writeCortexSessionEvent(dir, [succeededId, failedId])
+    store.recordApplication(succeededId, true)
+    store.recordApplication(failedId, false)
+
+    const metrics = new GovernanceMetricsCalculator(dir).compute(store.loadAll(), 30)
+
+    expect(metrics.instincts.runtimeEvidence).toEqual({
+      source: 'session-and-audit',
+      injectionEvents: 2,
+      applicationEvents: 2,
+      successfulApplications: 1,
+    })
+    expect(metrics.instincts.totalInjected).toBe(2)
+    expect(metrics.instincts.totalApplied).toBe(1)
+    expect(metrics.instincts.hitRate).toBe(0.5)
+    expect(metrics.instincts.byConfidence['near-certain (0.9)'].hitRate).toBe(1)
+    expect(metrics.instincts.byConfidence['strong (0.7)'].hitRate).toBe(0)
+  })
+})
+
+describe('InstinctCandidateReview', () => {
+  it('accepts unresolved high-confidence failure patterns', () => {
+    const extractor = new InstinctExtractor(makeDir('cortex-review-accepted-'))
+    const observations = Array.from({ length: 5 }, (_, index) => makeObservation({
+      timestamp: new Date(Date.UTC(2026, 5, 12, 10, index)).toISOString(),
+      gateName: 'G5',
+      errorPattern: 'G5: Tests failed',
+      rootCause: 'Tests failed',
+      filePaths: ['src/foo.ts'],
+    }))
+
+    const patterns = extractor.detectPatterns(observations)
+    const instincts = extractor.extract(patterns)
+    const reviews = reviewInstinctCandidates(instincts, patterns, observations)
+
+    expect(instincts[0].confidence).toBe(0.7)
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0].status).toBe('accepted')
+    expect(reviews[0].reasons[0]).toContain('no later passing gate')
+  })
+
+  it('marks candidates stale when later passing gate evidence covers the same path', () => {
+    const extractor = new InstinctExtractor(makeDir('cortex-review-stale-'))
+    const failures = Array.from({ length: 5 }, (_, index) => makeObservation({
+      timestamp: new Date(Date.UTC(2026, 5, 12, 10, index)).toISOString(),
+      gateName: 'G7',
+      errorPattern: 'G7: CRITICAL secret.assignment in src/index.ts:1',
+      rootCause: 'CRITICAL secret.assignment in src/index.ts:1',
+      filePaths: ['src/index.ts'],
+    }))
+    const observations = [
+      ...failures,
+      makeObservation({
+        timestamp: new Date(Date.UTC(2026, 5, 12, 11, 0)).toISOString(),
+        gateName: 'G7',
+        gateStatus: 'PASS',
+        errorPattern: undefined,
+        rootCause: undefined,
+        filePaths: ['src'],
+      }),
+    ]
+
+    const patterns = extractor.detectPatterns(observations)
+    const instincts = extractor.extract(patterns)
+    const reviews = reviewInstinctCandidates(instincts, patterns, observations)
+
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0].status).toBe('stale')
+    expect(reviews[0].reasons[0]).toContain('later passing G7 gate')
+    expect(reviews[0].laterPassingGateAt).toBe('2026-06-12T11:00:00.000Z')
   })
 })
 
@@ -276,6 +569,25 @@ describe('InstinctStore', () => {
     expect(injection.every(i => i.confidence >= 0.7)).toBe(true)
   })
 
+  it('parses blank project_id without consuming the next yaml key', () => {
+    const dir = makeDir('cortex-blank-project-id-')
+    const store = new InstinctStore(dir)
+
+    const savedId = store.save(makeInstinct({
+      trigger: 'blank project id',
+      scope: 'project',
+      projectId: undefined,
+      confidence: 0.5,
+      observations: 3,
+    }))
+
+    const loaded = store.findById(savedId)
+
+    expect(loaded?.projectId).toBeUndefined()
+    expect(loaded?.observations).toBe(3)
+    expect(store.getInjectionInstincts(undefined, { allowModerateFallback: true }).map(i => i.id)).toEqual([savedId])
+  })
+
   it('records application and updates hit rate', () => {
     const dir = makeDir('cortex-hitrate-')
     const store = new InstinctStore(dir)
@@ -368,6 +680,34 @@ describe('SessionInjector', () => {
     expect(injection.instinctCount).toBe(1)
     expect(injection.content).toContain('NEAR-CERTAIN') // 0.9 maps to NEAR-CERTAIN
     expect(injection.content).toContain('Always lint first')
+    expect(injection.metadata.instinctsApplied).toEqual([savedId])
+  })
+
+  it('uses reviewed moderate fallback when no strong instinct is available', () => {
+    const dir = makeDir('cortex-moderate-fallback-')
+    const store = new InstinctStore(dir)
+
+    const savedId = store.save(makeInstinct({
+      trigger: 'workflow incomplete',
+      confidence: 0.5,
+      observations: 3,
+      action: '## Action\nRecord workflow evidence before claiming completion',
+    }))
+    store.save(makeInstinct({
+      trigger: 'under-observed',
+      confidence: 0.5,
+      observations: 2,
+      action: '## Action\nDo not inject yet',
+    }))
+
+    expect(store.getInjectionInstincts()).toEqual([])
+
+    const injection = new SessionInjector(store).build()
+
+    expect(injection.instinctCount).toBe(1)
+    expect(injection.content).toContain('reviewed moderate-confidence')
+    expect(injection.content).toContain('MODERATE')
+    expect(injection.content).toContain('Record workflow evidence before claiming completion')
     expect(injection.metadata.instinctsApplied).toEqual([savedId])
   })
 

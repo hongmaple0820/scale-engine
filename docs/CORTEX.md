@@ -117,12 +117,21 @@ Instinct writes are append-only audited in `.scale/instincts/.audit.jsonl`.
 ```bash
 scale cortex audit
 scale cortex audit --id <instinct-id> --json
+scale cortex apply <instinct-id> --success --json
+scale cortex apply <instinct-id> --failed --json
 scale cortex restore <audit-id>
 ```
 
 Invalid instincts are rejected before persistence. New writes deduplicate within
 the same `scope + project_id + trigger`, so project-scoped instincts cannot
 overwrite global instincts or another project's instinct with the same trigger.
+
+`scale cortex apply` is the runtime outcome recorder for Cortex learning. Use
+exactly one of `--success` or `--failed`; the command writes an append-only
+`apply` audit entry under `.scale/instincts/.audit.jsonl`. `scale workflow
+effectiveness` treats instinct hit rate as measured only when session-start
+Cortex metadata provides the injection denominator and apply audit entries
+provide the outcome numerator.
 
 ## 反射引擎 (ReflexionEngine)
 

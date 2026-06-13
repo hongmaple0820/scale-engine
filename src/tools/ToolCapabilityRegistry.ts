@@ -219,9 +219,7 @@ export function inspectToolCapabilities(options: ToolCapabilityRegistryOptions =
   const projectDir = resolve(options.projectDir ?? process.cwd())
   const homeDir = options.homeDir ?? homedir()
   const env = options.env ?? process.env
-  const selected = new Set(options.toolIds ?? TOOL_CAPABILITY_CATALOG.map(tool => tool.id))
-  const tools = TOOL_CAPABILITY_CATALOG
-    .filter(tool => selected.has(tool.id))
+  const tools = resolveCatalogSelection(options.toolIds)
     .map(tool => inspectToolCapability(tool, {
       projectDir,
       homeDir,
@@ -240,6 +238,32 @@ export function inspectToolCapabilities(options: ToolCapabilityRegistryOptions =
     },
     tools,
   }
+}
+
+function resolveCatalogSelection(toolIds: string[] | undefined): ToolCatalogEntry[] {
+  if (!toolIds) return TOOL_CAPABILITY_CATALOG
+  const catalogById = new Map(TOOL_CAPABILITY_CATALOG.map(tool => [tool.id, tool]))
+  return [...new Set(toolIds)].map(toolId => catalogById.get(toolId) ?? fallbackSkillTool(toolId))
+}
+
+function fallbackSkillTool(toolId: string): ToolCatalogEntry {
+  return {
+    id: toolId,
+    name: titleFromId(toolId),
+    category: 'skill',
+    skillId: toolId,
+    requiredFor: [],
+    source: 'project skill routing policy',
+    installHint: `Install or configure skill ${toolId} in a supported skill directory.`,
+  }
+}
+
+function titleFromId(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ') || value
 }
 
 interface InspectToolCapabilityDeps {

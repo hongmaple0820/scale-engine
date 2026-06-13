@@ -45,6 +45,7 @@ import {
 import { RuntimeEvidenceLedger } from './RuntimeEvidenceLedger.js'
 import { loadRelevantLearnings, type LearningEntry } from '../evolution/SessionLearnings.js'
 import { collectSessionPreamble, type SessionPreamble } from '../workflow/SessionPreamble.js'
+import { assessAgentLoopReadiness, type AgentLoopReadinessReport } from '../workflow/AgentLoopReadiness.js'
 
 export interface AiOsRuntimeInput {
   projectDir?: string
@@ -508,6 +509,7 @@ export type AiOsIntelligenceSignalId =
   | 'tool-strategy'
   | 'adaptive-workflow'
   | 'evolution-shadow'
+  | 'agent-loop-readiness'
   | 'benchmark-intelligence'
 
 export interface AiOsIntelligenceSignal {
@@ -530,6 +532,7 @@ export interface AiOsIntelligenceReport {
     contextQuality: AiOsContextQualitySummary
     evaluatorQuality: AiOsEvaluatorQualitySummary
     toolStrategyQuality: AiOsToolStrategyQualitySummary
+    agentLoopQuality: AiOsAgentLoopQualitySummary
     evolutionQuality: AiOsEvolutionQualitySummary
     estimatedTokenSavings: number
     skillSteps: number
@@ -568,6 +571,18 @@ export interface AiOsToolStrategyQualitySummary {
   highRiskSteps: number
   estimatedCostUnits: number
   fallbackCoverage: number
+}
+
+export interface AiOsAgentLoopQualitySummary {
+  status: AgentLoopReadinessReport['status']
+  score: number
+  readySignals: number
+  warningSignals: number
+  missingSignals: number
+  loopRecoveryRate: number | null
+  guardrailCoverage: number | null
+  budgetControlled: boolean | null
+  terminationEvidence: boolean | null
 }
 
 export interface AiOsEvolutionQualitySummary {
@@ -1170,6 +1185,12 @@ function buildAiOsIntelligenceReport(input: {
   const contextQuality = summarizeContextQuality(input.runReports)
   const evaluatorQuality = summarizeEvaluatorQuality(input.runReports, input.benchmark)
   const toolStrategyQuality = summarizeToolStrategyQuality(input.runReports, input.benchmark)
+  const agentLoop = assessAgentLoopReadiness({
+    projectDir: input.projectDir,
+    scaleDir: input.scaleDir,
+    runReports: input.runReports,
+  })
+  const agentLoopQuality = summarizeAgentLoopQuality(agentLoop)
   const evolutionQuality = summarizeEvolutionQuality(input.runReports, input.benchmark)
   const contextSignalStatus: AiOsClosedLoopStatus = contextQuality.compressionRisk === 'high'
     ? 'warning'
@@ -1201,6 +1222,9 @@ function buildAiOsIntelligenceReport(input: {
     ),
     ...(input.benchmark ? [`${input.benchmarkReport}:evolution-proposals=${input.benchmark.summary.totalEvolutionProposals}`] : []),
   ]
+  const agentLoopEvidence = agentLoop.summary.evidence.length > 0
+    ? agentLoop.summary.evidence
+    : [resolveScaleRoot(input.projectDir, input.scaleDir)]
   const benchmarkEvidence = input.benchmark ? [
     `${input.benchmarkReport}:scenarios=${input.benchmark.summary.scenarios}`,
     `${input.benchmarkReport}:memory=${input.benchmark.summary.totalMemoryItems}`,
@@ -1274,6 +1298,15 @@ function buildAiOsIntelligenceReport(input: {
         : ['Create a task that triggers skill routing so the AI OS can build a tool strategy graph.'],
     },
     {
+      id: 'agent-loop-readiness',
+      status: agentLoop.status === 'ready' ? 'ready' : 'warning',
+      summary: `Agent Loop readiness ${agentLoop.status}; ${agentLoop.summary.readySignals}/6 signal(s) ready; score ${agentLoop.score}/100.`,
+      evidence: agentLoopEvidence,
+      recommendations: agentLoop.summary.recommendations.length > 0
+        ? agentLoop.summary.recommendations
+        : ['Keep collecting execution, recovery, guardrail, budget, delegation, and termination evidence for every guarded run.'],
+    },
+    {
       id: 'adaptive-workflow',
       status: input.runReports.some(r => r.plan.adaptiveWorkflow.profile) ? 'ready' : input.runReports.length > 0 || input.benchmark ? 'warning' : 'blocked',
       summary: summarizeAdaptiveWorkflowSignal(input.runReports, input.benchmark),
@@ -1322,6 +1355,7 @@ function buildAiOsIntelligenceReport(input: {
     contextQuality,
     evaluatorQuality,
     toolStrategyQuality,
+    agentLoopQuality,
     evolutionQuality,
     estimatedTokenSavings,
     skillSteps,
@@ -1338,12 +1372,13 @@ function summarizeContextQuality(runReports: AiOsRunReport[]): AiOsContextQualit
       ...item,
       category: section?.category,
       runReport: report.artifacts.runReport,
+      report,
     }
   }))
   const totalOmittedTokens = omitted.reduce((sum, item) => sum + item.estimatedTokens, 0)
   const highestOmittedTokens = omitted.reduce((max, item) => Math.max(max, item.estimatedTokens), 0)
   const evidenceLossWarnings = omitted
-    .filter(item => item.category === 'evidence' || item.id.includes('evidence'))
+    .filter(item => isHighRiskOmittedEvidence(item.report, item))
     .map(item => `${item.id} omitted from ${item.runReport} (${item.estimatedTokens} tokens; ${item.reason}).`)
   const compressionRisk: AiOsContextQualitySummary['compressionRisk'] = evidenceLossWarnings.length > 0
     ? 'high'
@@ -1355,6 +1390,25 @@ function summarizeContextQuality(runReports: AiOsRunReport[]): AiOsContextQualit
     highestOmittedTokens,
     compressionRisk,
   }
+}
+
+function isHighRiskOmittedEvidence(
+  report: AiOsRunReport,
+  item: AiOsRuntimePlan['context']['omitted'][number] & { category?: string },
+): boolean {
+  const evidenceBearing = item.category === 'evidence' || item.id.includes('evidence')
+  if (!evidenceBearing) return false
+  if (hasStructuredEvidenceReplacement(report, item.id)) return false
+  if (report.plan.task.level === 'CRITICAL') return true
+  return !report.dryRun
+}
+
+function hasStructuredEvidenceReplacement(report: AiOsRunReport, omittedId: string): boolean {
+  if (report.evidence.produced.includes(omittedId)) return true
+  if (omittedId === 'runtime-evidence' && report.verification.allPassed && report.verification.commands.length > 0) {
+    return true
+  }
+  return false
 }
 
 function summarizeEvaluatorQuality(
@@ -1419,6 +1473,20 @@ function summarizeToolStrategyQuality(
 function resolveRunToolStrategy(report: AiOsRunReport): AiOsToolStrategyPlan {
   const plan = report.plan as AiOsRuntimePlan & { toolStrategy?: AiOsToolStrategyPlan }
   return plan.toolStrategy ?? createToolStrategyPlan(report.plan.skillPlan)
+}
+
+function summarizeAgentLoopQuality(report: AgentLoopReadinessReport): AiOsAgentLoopQualitySummary {
+  return {
+    status: report.status,
+    score: report.score,
+    readySignals: report.summary.readySignals,
+    warningSignals: report.summary.warningSignals,
+    missingSignals: report.summary.missingSignals,
+    loopRecoveryRate: report.metrics.loopRecoveryRate.value,
+    guardrailCoverage: report.metrics.guardrailCoverage.value,
+    budgetControlled: report.metrics.budgetControlEvidence.value,
+    terminationEvidence: report.metrics.terminationEvidence.value,
+  }
 }
 
 function summarizeEvolutionQuality(
@@ -1859,8 +1927,12 @@ function buildVerificationRecommendations(
         })
       }
     }
-  } catch {
-    // Best effort only. Status should not fail just because verification config is invalid.
+  } catch (error) {
+    add({
+      command: 'scale verify --profile default',
+      source: 'fallback',
+      reason: `Verification profile could not be read for recommendations (${error instanceof Error ? error.message : String(error)}). Run the default verification profile before promotion.`,
+    })
   }
 
   if (recommendations.length > 0) return recommendations

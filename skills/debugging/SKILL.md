@@ -3,10 +3,10 @@ name: debugging
 version: 1.0.0
 description: Systematic debugging protocol
 triggers:
-  - debug
-  - fix
-  - error
-  - bug
+  - "debug"
+  - "fix"
+  - "error"
+  - "bug"
 agents:
   - debugger
 ---

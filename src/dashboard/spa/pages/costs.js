@@ -4,7 +4,8 @@
 ;(() => {
   'use strict'
 
-  const { fetchJSON, formatNumber, registerChart, getTheme, t, $, $$ } = window.Dashboard
+  const { fetchJSON, formatNumber, registerChart, getTheme, t, $, $$, dom } = window.Dashboard
+  const { chartContainer, dataTable, el, emptyState, metricCard, panel, renderText } = dom
 
   // Model pricing (USD per 1M tokens, approximate)
   const MODEL_PRICING = {
@@ -18,15 +19,15 @@
 
   async function renderCosts() {
     const app = $('#app')
-    app.innerHTML = `
-      <div class="metrics-row" id="cost-metrics"></div>
-      <div class="tabs" id="cost-tabs">
-        <div class="tab active" data-tab="overview">${t('costs.overview')}</div>
-        <div class="tab" data-tab="models">${t('costs.modelComparison')}</div>
-        <div class="tab" data-tab="optimization">${t('costs.optimization')}</div>
-      </div>
-      <div id="cost-content"></div>
-    `
+    app.replaceChildren(
+      el('div', { className: 'metrics-row', id: 'cost-metrics' }),
+      el('div', { className: 'tabs', id: 'cost-tabs' }, [
+        el('div', { className: 'tab active', text: t('costs.overview'), dataset: { tab: 'overview' } }),
+        el('div', { className: 'tab', text: t('costs.modelComparison'), dataset: { tab: 'models' } }),
+        el('div', { className: 'tab', text: t('costs.optimization'), dataset: { tab: 'optimization' } }),
+      ]),
+      el('div', { id: 'cost-content' })
+    )
 
     const metrics = await fetchJSON('/api/metrics')
     renderCostMetrics(metrics)
@@ -55,18 +56,14 @@
       : '0%'
     const estimatedCost = estimateCost(model)
 
-    container.innerHTML = [
+    const cards = [
       { label: t('costs.totalTokens'), value: formatNumber(totalTokens), cls: '' },
       { label: t('costs.rawEstTokens'), value: formatNumber(cmd?.rawEstimatedTokens ?? 0), cls: '' },
       { label: t('costs.tokensSaved'), value: formatNumber(savedTokens), cls: 'accent' },
       { label: t('costs.compressionRate'), value: efficiency, cls: 'accent' },
       { label: t('costs.estCost'), value: '$' + estimatedCost.toFixed(2), cls: '' },
-    ].map(c => `
-      <div class="metric-card">
-        <div class="metric-label">${c.label}</div>
-        <div class="metric-value ${c.cls}">${c.value}</div>
-      </div>
-    `).join('')
+    ]
+    container.replaceChildren(...cards.map(c => metricCard(c.label, c.value, c.cls)))
   }
 
   function renderCostTab(tab, metrics) {
@@ -83,28 +80,16 @@
   function renderOverview(container, metrics) {
     const cmd = metrics?.commandRuns
 
-    container.innerHTML = `
-      <div class="grid-2 mb-24">
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('costs.tokenUsage')}</span></div>
-          <div class="chart-area" id="cost-token-chart"></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('costs.compressionEfficiency')}</span></div>
-          <div class="chart-area" id="cost-gauge"></div>
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('costs.tokenWaterfall')}</span></div>
-          <div class="chart-area" id="cost-waterfall"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">${t('costs.costBreakdownByModel')}</div>
-          <div id="cost-model-table"></div>
-        </div>
-      </div>
-    `
+    container.replaceChildren(
+      el('div', { className: 'grid-2 mb-24' }, [
+        chartContainer(t('costs.tokenUsage'), 'cost-token-chart'),
+        chartContainer(t('costs.compressionEfficiency'), 'cost-gauge'),
+      ]),
+      el('div', { className: 'grid-2' }, [
+        chartContainer(t('costs.tokenWaterfall'), 'cost-waterfall'),
+        panel(t('costs.costBreakdownByModel'), 'cost-model-table'),
+      ])
+    )
 
     renderTokenChart(metrics)
     renderEfficiencyGauge(metrics)
@@ -116,7 +101,7 @@
     const el = $('#cost-token-chart')
     const cmd = metrics?.commandRuns
     if (!cmd || cmd.total === 0) {
-      el.innerHTML = `<div class="empty-state"><p>${t('costs.noTokenData')}</p></div>`
+      el.replaceChildren(emptyState(t('costs.noTokenData')))
       return
     }
 
@@ -158,7 +143,7 @@
     const el = $('#cost-gauge')
     const cmd = metrics?.commandRuns
     if (!cmd || cmd.rawEstimatedTokens === 0) {
-      el.innerHTML = `<div class="empty-state"><p>${t('common.noData')}</p></div>`
+      el.replaceChildren(emptyState(t('common.noData')))
       return
     }
 
@@ -193,7 +178,7 @@
     const cmd = metrics?.commandRuns
     const model = metrics?.modelUsage
     if (!cmd || !model) {
-      el.innerHTML = `<div class="empty-state"><p>${t('common.noData')}</p></div>`
+      el.replaceChildren(emptyState(t('common.noData')))
       return
     }
 
@@ -234,37 +219,27 @@
     const container = $('#cost-model-table')
     const model = metrics?.modelUsage
     if (!model?.models?.length) {
-      container.innerHTML = `<div class="text-muted text-sm">${t('costs.noModelUsage')}</div>`
+      renderText(container, t('costs.noModelUsage'))
       return
     }
 
-    container.innerHTML = `
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>${t('costs.model')}</th>
-            <th>${t('costs.inputTokens')}</th>
-            <th>${t('costs.outputTokens')}</th>
-            <th>${t('costs.requests')}</th>
-            <th>${t('costs.estCost')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${model.models.map(m => {
-            const cost = estimateModelCost(m.model, m.inputTokens, m.outputTokens)
-            return `
-              <tr>
-                <td style="font-weight:500">${m.model}</td>
-                <td>${formatNumber(m.inputTokens)}</td>
-                <td>${formatNumber(m.outputTokens)}</td>
-                <td>${m.requestCount}</td>
-                <td style="color:#00dc82">$${cost.toFixed(2)}</td>
-              </tr>
-            `
-          }).join('')}
-        </tbody>
-      </table>
-    `
+    const rows = model.models.map(m => {
+      const cost = estimateModelCost(m.model, m.inputTokens, m.outputTokens)
+      return el('tr', {}, [
+        el('td', { text: m.model, style: { fontWeight: '500' } }),
+        el('td', { text: formatNumber(m.inputTokens) }),
+        el('td', { text: formatNumber(m.outputTokens) }),
+        el('td', { text: m.requestCount }),
+        el('td', { text: '$' + cost.toFixed(2), style: { color: '#00dc82' } }),
+      ])
+    })
+    container.replaceChildren(dataTable([
+      t('costs.model'),
+      t('costs.inputTokens'),
+      t('costs.outputTokens'),
+      t('costs.requests'),
+      t('costs.estCost'),
+    ], rows))
   }
 
   // ── Model Comparison ───────────────────────────────────────────────
@@ -272,26 +247,17 @@
   function renderModelComparison(container, metrics) {
     const model = metrics?.modelUsage
     if (!model?.models?.length) {
-      container.innerHTML = `<div class="empty-state"><p>${t('costs.noModelData')}</p></div>`
+      container.replaceChildren(emptyState(t('costs.noModelData')))
       return
     }
 
-    container.innerHTML = `
-      <div class="grid-2 mb-24">
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('costs.modelUsageRadar')}</span></div>
-          <div class="chart-area" id="cost-radar"></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-header"><span class="chart-title">${t('costs.tokenDistByModel')}</span></div>
-          <div class="chart-area" id="cost-model-pie"></div>
-        </div>
-      </div>
-      <div class="chart-container">
-        <div class="chart-header"><span class="chart-title">${t('costs.costPerRequest')}</span></div>
-        <div class="chart-area" id="cost-per-req"></div>
-      </div>
-    `
+    container.replaceChildren(
+      el('div', { className: 'grid-2 mb-24' }, [
+        chartContainer(t('costs.modelUsageRadar'), 'cost-radar'),
+        chartContainer(t('costs.tokenDistByModel'), 'cost-model-pie'),
+      ]),
+      chartContainer(t('costs.costPerRequest'), 'cost-per-req')
+    )
 
     // Radar
     const radarEl = $('#cost-radar')
@@ -378,38 +344,55 @@
   // ── Optimization ───────────────────────────────────────────────────
 
   function renderOptimization(container, metrics) {
-    const cmd = metrics?.commandRuns
-    const model = metrics?.modelUsage
     const tips = generateOptimizationTips(metrics)
+    const score = getOptimizationScore(metrics)
+    const recommendationsTitle = el('div', { className: 'panel-title' }, [
+      document.createTextNode(t('costs.recommendations') + ' '),
+      el('span', { className: 'count', text: `(${tips.length})` }),
+    ])
+    const recommendationBody = tips.length === 0
+      ? el('div', { className: 'text-muted text-sm', text: t('costs.noOptTips') })
+      : el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, tips.map(tip => {
+        const details = [
+          el('div', { text: tip.title, style: { fontSize: '14px', fontWeight: '500', marginBottom: '4px' } }),
+          el('div', { text: tip.description, style: { fontSize: '13px', color: 'var(--text-1)' } }),
+        ]
+        if (tip.impact) {
+          details.push(el('div', {
+            text: t('costs.potentialSavings', { impact: tip.impact }),
+            style: { fontSize: '12px', color: 'var(--accent)', marginTop: '4px' },
+          }))
+        }
+        return el('div', {
+          style: {
+            display: 'flex',
+            gap: '12px',
+            padding: '12px',
+            background: 'var(--bg-2)',
+            borderRadius: 'var(--radius)',
+            borderLeft: `3px solid ${tip.color}`,
+          },
+        }, [
+          el('div', { text: tip.icon, style: { fontSize: '16px', flexShrink: '0' } }),
+          el('div', {}, details),
+        ])
+      }))
 
-    container.innerHTML = `
-      <div class="panel mb-24">
-        <div class="panel-title">${t('costs.optimizationScore')}</div>
-        <div style="display:flex;align-items:center;gap:24px;padding:12px 0">
-          <div style="font-size:48px;font-weight:700;color:${getScoreColor(getOptimizationScore(metrics))}">${getOptimizationScore(metrics)}</div>
-          <div>
-            <div style="font-size:14px;color:var(--text-1);margin-bottom:4px">${getScoreLabel(getOptimizationScore(metrics))}</div>
-          </div>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">${t('costs.recommendations')} <span class="count">(${tips.length})</span></div>
-        ${tips.length === 0 ? `<div class="text-muted text-sm">${t('costs.noOptTips')}</div>` : `
-          <div style="display:flex;flex-direction:column;gap:12px">
-            ${tips.map(tip => `
-              <div style="display:flex;gap:12px;padding:12px;background:var(--bg-2);border-radius:var(--radius);border-left:3px solid ${tip.color}">
-                <div style="font-size:16px;flex-shrink:0">${tip.icon}</div>
-                <div>
-                  <div style="font-size:14px;font-weight:500;margin-bottom:4px">${tip.title}</div>
-                  <div style="font-size:13px;color:var(--text-1)">${tip.description}</div>
-                  ${tip.impact ? `<div style="font-size:12px;color:var(--accent);margin-top:4px">${t('costs.potentialSavings', { impact: tip.impact })}</div>` : ''}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        `}
-      </div>
-    `
+    container.replaceChildren(
+      el('div', { className: 'panel mb-24' }, [
+        el('div', { className: 'panel-title', text: t('costs.optimizationScore') }),
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '24px', padding: '12px 0' } }, [
+          el('div', { text: score, style: { fontSize: '48px', fontWeight: '700', color: getScoreColor(score) } }),
+          el('div', {}, [
+            el('div', { text: getScoreLabel(score), style: { fontSize: '14px', color: 'var(--text-1)', marginBottom: '4px' } }),
+          ]),
+        ]),
+      ]),
+      el('div', { className: 'panel' }, [
+        recommendationsTitle,
+        recommendationBody,
+      ])
+    )
   }
 
   function generateOptimizationTips(metrics) {
@@ -424,7 +407,7 @@
     // Compression tips
     if (efficiency < 0.3) {
       tips.push({
-        icon: '&#128230;',
+        icon: '\uD83D\uDCE6',
         title: t('costs.tipLowCompression'),
         description: t('costs.tipLowCompressionDesc'),
         color: '#ff4444',
@@ -436,7 +419,7 @@
     for (const m of model.models ?? []) {
       if (m.model.includes('opus') && m.requestCount > 10) {
         tips.push({
-          icon: '&#128176;',
+          icon: '\uD83D\uDCB0',
           title: t('costs.tipDowngrade', { model: m.model }),
           description: t('costs.tipDowngradeDesc', { count: m.requestCount }),
           color: '#ffaa00',
@@ -450,7 +433,7 @@
       const failRate = cmd.failed / cmd.total
       if (failRate > 0.1) {
         tips.push({
-          icon: '&#9888;',
+          icon: '\u26A0',
           title: t('costs.tipHighFailRate'),
           description: t('costs.tipHighFailRateDesc', { rate: (failRate * 100).toFixed(0) }),
           color: '#ff4444',
@@ -462,7 +445,7 @@
     // Large output tokens
     if (model.totalOutputTokens > model.totalInputTokens * 2) {
       tips.push({
-        icon: '&#128221;',
+        icon: '\uD83D\uDCDD',
         title: t('costs.tipHighOutputRatio'),
         description: t('costs.tipHighOutputRatioDesc'),
         color: '#5588ff',
@@ -473,7 +456,7 @@
     // General tips
     if (tips.length === 0) {
       tips.push({
-        icon: '&#10003;',
+        icon: '\u2713',
         title: t('costs.tipLookingGood'),
         description: t('costs.tipLookingGoodDesc'),
         color: '#00dc82',

@@ -24,6 +24,8 @@ import { JudgePromptStore, LlmJudge } from '../review/LlmJudge.js'
 import { JsonLlmClient } from '../review/JsonLlmClient.js'
 import { FreshContextVerifier } from '../review/FreshContextVerifier.js'
 import { TaskMetricsStore, type MetricTaskLevel } from '../workflow/TaskMetricsStore.js'
+import { ReleaseDeploymentLedger, type DeploymentRecord } from '../workflow/ReleaseDeploymentLedger.js'
+import { recordRuntimeInstinctApplications } from '../cortex/InstinctApplicationRecorder.js'
 import { appendVerificationArtifact, checkTaskArtifactCompleteness, scaffoldTaskArtifacts, type TaskArtifactCheckResult, type TaskArtifactScaffoldResult } from '../workflow/TaskArtifactScaffolder.js'
 import { createWorkflowGuidance, renderWorkflowGuidance } from '../workflow/WorkflowGuidance.js'
 import { blockingWorkflowOpenTasks, removeWorkflowOpenTask } from '../workflow/WorkflowOpenTasks.js'
@@ -78,15 +80,20 @@ function validateReviewEvidence(ids: string[] | undefined): { ok: boolean; missi
   const reviewStore = new ReviewStore(SCALE_DIR)
   const missing: string[] = []
   const failed: string[] = []
+  const records: ReviewRecord[] = []
   for (const id of ids ?? []) {
     const record = reviewStore.getReview(id)
     if (!record) {
       missing.push(id)
     } else if (!record.passed) {
       failed.push(id)
+      records.push(record)
+    } else {
+      records.push(record)
     }
   }
-  return { ok: (ids?.length ?? 0) > 0 && missing.length === 0 && failed.length === 0, missing, failed }
+  const latest = records.sort((a, b) => b.createdAt - a.createdAt)[0]
+  return { ok: (ids?.length ?? 0) > 0 && missing.length === 0 && latest?.passed === true, missing, failed }
 }
 
 function getValidatedReviewRecords(ids: string[] | undefined): ReviewRecord[] {
@@ -416,6 +423,58 @@ async function recordVerificationMetric(options: {
   })
   metricsStore.writeMarkdownReport(PROJECT_DIR)
   return record
+}
+
+async function recordShipDeployment(options: {
+  taskId: string
+  taskTitle?: string
+  taskPayload: TaskPayload
+  commitHash: string
+  args: Record<string, unknown>
+}): Promise<DeploymentRecord> {
+  const version = optionalString(options.args['deploy-version']) ?? readPackageVersion(PROJECT_DIR)
+  const completedAt = optionalString(options.args['deployed-at'])
+  const commitTimestamp = await resolveCommitTimestamp(options.commitHash)
+  const notes = [
+    `task=${options.taskId}`,
+    options.taskTitle ? `title=${options.taskTitle}` : undefined,
+    options.taskPayload.verificationEvidenceIds?.length ? `verificationEvidence=${options.taskPayload.verificationEvidenceIds.join(',')}` : undefined,
+    options.taskPayload.reviewEvidenceIds?.length ? `reviewEvidence=${options.taskPayload.reviewEvidenceIds.join(',')}` : undefined,
+  ].filter((value): value is string => Boolean(value)).join('; ')
+
+  return new ReleaseDeploymentLedger(SCALE_DIR).record({
+    service: optionalString(options.args['deploy-service']) ?? 'scale-engine',
+    environment: optionalString(options.args['deploy-environment']) ?? 'production',
+    status: 'succeeded',
+    version,
+    commitSha: options.commitHash,
+    commitTimestamp,
+    completedAt,
+    source: 'ship',
+    notes,
+  })
+}
+
+function optionalString(value: unknown): string | undefined {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  return normalized ? normalized : undefined
+}
+
+function readPackageVersion(projectDir: string): string | undefined {
+  const pkgPath = join(projectDir, 'package.json')
+  if (!existsSync(pkgPath)) return undefined
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string }
+    return optionalString(pkg.version)
+  } catch {
+    return undefined
+  }
+}
+
+async function resolveCommitTimestamp(commitHash: string): Promise<string | undefined> {
+  const result = await runGit(['show', '-s', '--format=%cI', commitHash])
+  if (result.exitCode !== 0) return undefined
+  return optionalString(result.stdout)
 }
 
 // Helper: Generate spec markdown file
@@ -1436,7 +1495,10 @@ export const phaseVerify = defineCommand({
       !workflowOpenTasksBlocked
 
     let transitionResult = null
-    if (completionEligible) {
+    const alreadyCompleted = task.status === 'COMPLETED'
+    if (completionEligible && alreadyCompleted) {
+      if (!args.json) console.log('\n   FSM: already COMPLETED')
+    } else if (completionEligible) {
       const completeResult = await fsm.canTransition(args['task-id'], 'complete')
       if (!completeResult.allowed) {
         if (!args.json) {
@@ -1469,7 +1531,7 @@ export const phaseVerify = defineCommand({
       console.log('\n   Workflow open tasks blocked completion - finish required workflow commands first')
     }
 
-    const passed = completionEligible && (transitionResult?.success ?? false)
+    const passed = completionEligible && (alreadyCompleted || (transitionResult?.success ?? false))
     if (passed) {
       workflowState = workflowWriter.updateCurrentState({
         openTasks: removeWorkflowOpenTask(workflowState.openTasks, 'verification'),
@@ -1535,6 +1597,12 @@ export const phaseVerify = defineCommand({
       artifactCheck,
       finalGateStatus: metricGateStatus,
     })
+    const cortexInstinctApplications = recordRuntimeInstinctApplications({
+      projectDir: PROJECT_DIR,
+      scaleDir: SCALE_DIR,
+      phase: 'verify',
+      success: passed,
+    })
 
     // P0 (Decision C1): soft-map the Spec's verificationSurface against evidence.
     // Unmapped items are reported as warnings only — never blocking in P0.
@@ -1580,6 +1648,7 @@ export const phaseVerify = defineCommand({
         blocked: skillInstallationBlocked,
       },
       metric: metricRecord,
+      cortexInstinctApplications,
       verificationSurfaceCoverage: surfaceCoverage,
       boundaryEnforcement,
       constraintCoverage,
@@ -1594,6 +1663,9 @@ export const phaseVerify = defineCommand({
       for (const line of formatBoundaryWarnings(boundaryEnforcement)) console.log(`   ${line}`)
       for (const line of formatConstraintWarnings(constraintCoverage)) console.log(`   ${line}`)
       if (metricRecord) console.log(`   Metrics: ${metricRecord.taskId} ${metricRecord.finalGateStatus} (fix iterations: ${metricRecord.fixIterations})`)
+      if (cortexInstinctApplications.recorded.length > 0) {
+        console.log(`   Cortex instincts: ${cortexInstinctApplications.recorded.length} outcome(s) recorded`)
+      }
       if (artifactCheck && !artifactCheck.complete) {
         console.log(`   Artifact gaps: ${artifactCheck.missing.length} missing, ${artifactCheck.incomplete.length} incomplete`)
       }
@@ -1655,7 +1727,13 @@ function readUntrackedFileAsDiff(path: string): string {
   }
 }
 
-async function reviewGitChanges(taskPayload?: TaskPayload): Promise<{ changedFiles: ChangedFile[]; findings: ReviewFinding[]; diffs: Array<{ file: string; text: string }> }> {
+function normalizeMaxDiffFiles(value: unknown): number {
+  const parsed = Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return 200
+  return Math.min(parsed, 1000)
+}
+
+async function reviewGitChanges(taskPayload?: TaskPayload, maxDiffFiles = 200): Promise<{ changedFiles: ChangedFile[]; findings: ReviewFinding[]; diffs: Array<{ file: string; text: string }> }> {
   const status = await runGit(['status', '--short'])
   const untracked = await runGit(['ls-files', '--others', '--exclude-standard'])
   let statusOutput = mergeUntrackedFilesIntoStatus(status.stdout, untracked.stdout)
@@ -1679,7 +1757,7 @@ async function reviewGitChanges(taskPayload?: TaskPayload): Promise<{ changedFil
   const verificationEvidence = getVerificationEvidenceSummary(taskPayload?.verificationEvidenceIds)
   const changedFiles = analyzeReview({ statusOutput, diffs: [], taskPayload, verificationEvidence }).changedFiles
   const diffs: Array<{ file: string; text: string }> = []
-  for (const file of changedFiles.slice(0, 50)) {
+  for (const file of changedFiles.slice(0, maxDiffFiles)) {
     if (file.status === '??') {
       diffs.push({ file: file.path, text: readUntrackedFileAsDiff(file.path) })
     } else {
@@ -1961,6 +2039,7 @@ export const phaseReview = defineCommand({
     brand: { type: 'string', description: 'Brand theme for HTML output (vercel/stripe/notion/linear/github)' },
     judge: { type: 'boolean', default: true, description: 'Run the advisory LLM-as-Judge spec-conformance check (P1.4)' },
     mode: { type: 'string', default: 'ai-self', description: 'Review mode: ai-self (default) | fresh-subagent | hybrid (P2.2)' },
+    'max-diff-files': { type: 'string', default: '200', description: 'Maximum changed files whose diffs are scanned during deterministic review' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
@@ -1979,7 +2058,7 @@ export const phaseReview = defineCommand({
       taskPayload = task.payload as TaskPayload
     }
 
-    const review = await reviewGitChanges(taskPayload)
+    const review = await reviewGitChanges(taskPayload, normalizeMaxDiffFiles(args['max-diff-files']))
     const karpathyContext = deriveReviewKarpathyContext(review, taskPayload)
     const karpathyResult = workflowEngine.checkKarpathy(karpathyContext)
     const karpathyReport: ReviewKarpathyReport = {
@@ -2145,6 +2224,11 @@ export const phaseShip = defineCommand({
     message: { type: 'string', alias: 'm', description: 'Commit message' },
     'no-commit': { type: 'boolean', default: false, description: 'Skip git commit' },
     'skip-commit': { type: 'boolean', default: false, description: 'Skip git commit' },
+    'record-deployment': { type: 'boolean', default: false, description: 'Record a deployment event after a successful ship commit' },
+    'deploy-service': { type: 'string', default: 'scale-engine', description: 'Deployment service name' },
+    'deploy-environment': { type: 'string', default: 'production', description: 'Deployment environment name' },
+    'deploy-version': { type: 'string', description: 'Deployment version override' },
+    'deployed-at': { type: 'string', description: 'Deployment completion timestamp override' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
@@ -2229,10 +2313,12 @@ export const phaseShip = defineCommand({
     }
 
     // Git operations
+    const skipCommit = shouldSkipCommit(args['skip-commit'])
     let commitHash = null
     let stagedFiles: string[] = []
     let workspaceBoundary: WorkspaceShipBoundaryResult | null = null
-    if (!shouldSkipCommit(args['skip-commit'])) {
+    let deploymentRecord: DeploymentRecord | null = null
+    if (!skipCommit) {
       const commitMessage = args.message ?? `feat: ${task.title ?? args['task-id']}`
 
       try {
@@ -2263,7 +2349,11 @@ export const phaseShip = defineCommand({
             throw new Error(message)
           }
         } else {
-          commitHash = result.stdout.split('\n')[0] // First line contains hash
+          const head = await runGit(['rev-parse', 'HEAD'])
+          if (head.exitCode !== 0 || !head.stdout.trim()) {
+            throw new Error(head.stderr || 'git rev-parse HEAD failed after commit')
+          }
+          commitHash = head.stdout.trim()
         }
       } catch (e) {
         const error = e as Error
@@ -2276,7 +2366,10 @@ export const phaseShip = defineCommand({
     if (task.parents.length > 0) {
       const planId = task.parents[0]
       try {
-        await fsm.transition(planId, 'complete', { actor: { kind: 'system', component: 'phase-ship' } })
+        const plan = await store.get(planId)
+        if (plan?.status !== 'DONE') {
+          await fsm.transition(planId, 'complete', { actor: { kind: 'system', component: 'phase-ship' } })
+        }
       } catch (e) { console.error("Warning: Plan completion transition failed:", (e as Error).message) }
     }
 
@@ -2290,6 +2383,46 @@ export const phaseShip = defineCommand({
       ? computeSurfaceCoverage(shipSpec.payload.verificationSurface, shipSignals)
       : undefined
 
+    if (isTruthyFlag(args['record-deployment'])) {
+      if (!commitHash) {
+        process.stderr.write('\nDeployment recording requires a new ship commit. Re-run without --no-commit/--skip-commit, or record a real deployment explicitly with scale workflow deploy record.\n\n')
+        process.exit(1)
+      }
+      try {
+        deploymentRecord = await recordShipDeployment({
+          taskId: args['task-id'],
+          taskTitle: task.title,
+          taskPayload: payload,
+          commitHash,
+          args,
+        })
+      } catch (error) {
+        process.stderr.write(`\nDeployment record failed: ${(error as Error).message}\n`)
+        process.exit(1)
+      }
+    }
+    const cortexInstinctApplications = recordRuntimeInstinctApplications({
+      projectDir: PROJECT_DIR,
+      scaleDir: SCALE_DIR,
+      phase: 'ship',
+      success: true,
+    })
+    const shippedAt = Date.now()
+    const shipMode: NonNullable<TaskPayload['shipMode']> = skipCommit
+      ? 'no-commit'
+      : commitHash
+        ? 'commit'
+        : 'commit-skipped'
+    const shippedPayload: TaskPayload = {
+      ...payload,
+      shipPassed: true,
+      shippedAt,
+      shipMode,
+      shipCommitHash: commitHash ?? undefined,
+      shipDeploymentRecordId: deploymentRecord?.id,
+    }
+    await store.update(task.id, { payload: shippedPayload })
+
     // === WorkflowEngine Integration ===
     // Generate HonestDelivery report
     if (!args.json) {
@@ -2299,6 +2432,10 @@ export const phaseShip = defineCommand({
       console.log(`  - Task: ${args['task-id']}`)
       console.log(`  - Status: COMPLETED`)
       if (commitHash) console.log(`  - Commit: ${commitHash}`)
+      if (deploymentRecord) process.stdout.write(`  - Deployment evidence: ${deploymentRecord.id}\n`)
+      if (cortexInstinctApplications.recorded.length > 0) {
+        console.log(`  - Cortex instinct outcomes: ${cortexInstinctApplications.recorded.length}`)
+      }
       if (stagedFiles.length) console.log(`  - Files committed: ${stagedFiles.length}`)
       console.log('')
       console.log(`[VERIFIED]`)
@@ -2337,7 +2474,10 @@ export const phaseShip = defineCommand({
       reviewEvidenceIds: payload.reviewEvidenceIds ?? [],
       reviewValidation,
       commitHash,
+      deploymentRecord,
       stagedFiles,
+      shippedAt,
+      shipMode,
       workspaceBoundary: workspaceBoundary ? {
         topology: workspaceBoundary.report?.topology.topology ?? null,
         configured: workspaceBoundary.report?.topology.configured ?? false,
@@ -2346,6 +2486,7 @@ export const phaseShip = defineCommand({
         blockers: workspaceBoundary.blockers,
         warnings: workspaceBoundary.warnings,
       } : null,
+      cortexInstinctApplications,
       verificationSurfaceCoverage: shipSurfaceCoverage,
     }
 
@@ -2354,6 +2495,7 @@ export const phaseShip = defineCommand({
       console.log('\nSHIP Phase')
       console.log('\nTask COMPLETED: ' + args['task-id'])
       if (commitHash) console.log('   Commit: ' + commitHash)
+      if (deploymentRecord) process.stdout.write('   Deployment evidence: ' + deploymentRecord.id + '\n')
       console.log('\nDone. Feature shipped.\n')
     }
   },

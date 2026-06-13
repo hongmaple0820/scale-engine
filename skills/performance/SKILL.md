@@ -3,10 +3,10 @@ name: performance
 version: 1.0.0
 description: Optimization patterns
 triggers:
-  - performance
-  - optimize
-  - slow
-  - latency
+  - "performance"
+  - "optimize"
+  - "slow"
+  - "latency"
 agents:
   - debugger
   - implementer

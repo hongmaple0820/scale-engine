@@ -1,0 +1,83 @@
+{
+  "name": "scale-engine-skills",
+  "version": "1.0.0",
+  "conformance_version": "1.0.0",
+  "description": "Repository-local skills for governed scale-engine workflows.",
+  "skills": [
+    {
+      "name": "api-design",
+      "path": "api-design/SKILL.md",
+      "description": "RESTful API conventions"
+    },
+    {
+      "name": "code-review",
+      "path": "code-review/SKILL.md",
+      "description": "Code quality review checklist"
+    },
+    {
+      "name": "debugging",
+      "path": "debugging/SKILL.md",
+      "description": "Systematic debugging protocol"
+    },
+    {
+      "name": "documentation",
+      "path": "documentation/SKILL.md",
+      "description": "Documentation writing standards"
+    },
+    {
+      "name": "fix",
+      "path": "fix/SKILL.md",
+      "description": "Format, lint, and small repair workflow"
+    },
+    {
+      "name": "frontend-design",
+      "path": "frontend-design/SKILL.md",
+      "description": "Production frontend design workflow"
+    },
+    {
+      "name": "git-workflow",
+      "path": "git-workflow/SKILL.md",
+      "description": "Commit and PR standards"
+    },
+    {
+      "name": "performance",
+      "path": "performance/SKILL.md",
+      "description": "Optimization patterns"
+    },
+    {
+      "name": "planning",
+      "path": "planning/SKILL.md",
+      "description": "Architecture planning template"
+    },
+    {
+      "name": "pr-creator",
+      "path": "pr-creator/SKILL.md",
+      "description": "Template-aware pull request creation workflow"
+    },
+    {
+      "name": "refactoring",
+      "path": "refactoring/SKILL.md",
+      "description": "Safe refactoring steps"
+    },
+    {
+      "name": "release",
+      "path": "release/SKILL.md",
+      "description": "SCALE Engine release workflow"
+    },
+    {
+      "name": "security-audit",
+      "path": "security-audit/SKILL.md",
+      "description": "OWASP Top 10 security checklist"
+    },
+    {
+      "name": "tdd",
+      "path": "tdd/SKILL.md",
+      "description": "Test-driven development workflow"
+    },
+    {
+      "name": "update-docs",
+      "path": "update-docs/SKILL.md",
+      "description": "Documentation impact analysis and update workflow"
+    }
+  ]
+}

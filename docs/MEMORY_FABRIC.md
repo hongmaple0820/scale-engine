@@ -113,7 +113,7 @@ SCALE now treats strong memory systems as providers instead of rebuilding them i
 Default provider order:
 
 ```text
-gbrain -> agentmemory -> scale-local
+gbrain
 ```
 
 Commands:
@@ -131,10 +131,10 @@ Provider rules:
 
 - `gbrain` is the default external-first provider. SCALE treats CLI existence as insufficient: `scale memory provider status --json` requires a configured brain with working connection/schema checks before marking it available. Full `gbrain doctor --json` warnings that are unrelated to recall, such as local skill resolver issues, are reported as degraded health but do not block read-only recall. If the CLI exists but no brain is configured, the status remains unavailable and points to `gbrain init --pglite`.
 - The preferred remote production path is the official thin-client flow: run `gbrain serve --http` on the host, then configure the local CLI with `gbrain init --mcp-only` so SCALE can keep calling `gbrain query` through the thin client instead of inventing a separate ad-hoc REST contract.
-- `agentmemory` remains optional and can be added as a second provider when teams want cross-agent shared memory.
+- This repository's checked-in provider routing is intentionally gbrain-only. Additional providers are not part of the default workflow contract unless a project explicitly opts into a separate provider policy.
 - `memory provider use <id>` is the fast path for switching the default route without hand-editing `.scale/memory-providers.json`.
 - External providers are read-only by default. Writes require an explicit provider policy change.
-- `scale-local` remains the fallback provider through Memory Brain and only promotes reviewed, evidence-backed memory.
+- `scale-local` remains an explicit local Memory Brain mode for projects that choose it, but it is not the default route for this repository's provider policy.
 - `memory pack` automatically includes a `provider-memory` section when provider recall returns relevant active memories.
 - `ai-os plan` includes both the provider recall summary and the Memory Fabric context pack, so agents can route memory before planning without pretending external memory is always available.
 
@@ -144,12 +144,13 @@ Setup shortcut:
 
 ```bash
 scale setup --pack memory
-scale setup --pack memory --memory-provider scale-local --json
 scale setup --pack memory --memory-provider gbrain --memory-mode external-first --json
 scale memory provider status --json
 ```
 
 `setup --memory-provider` is the preferred UX for provider switching during onboarding. It writes the same routing file as `scale memory provider use`, returns `memoryProviderSwitch` in JSON, and keeps external writes disabled unless `--allow-external-write` is explicitly passed.
+
+For local gbrain usage, a provider can declare `homeDir` such as `.scale/memory/gbrain-home`. SCALE passes that path as `GBRAIN_HOME` and defaults `GBRAIN_AUDIT_DIR` to `<homeDir>/audit` for provider status and recall queries, keeping project recall independent from a broken or incompatible global gbrain database.
 
 Remote replay validation:
 

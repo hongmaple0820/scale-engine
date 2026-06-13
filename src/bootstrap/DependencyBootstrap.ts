@@ -16,6 +16,7 @@ export interface DependencyBootstrapHealth {
   status: 'ok' | 'warn' | 'failed'
   bootstrapStatus?: Extract<DependencyBootstrapStatus, 'needs-init' | 'version-drift' | 'manual-review'>
   reason: string
+  recoveryHint?: string
   nextCommands?: string[]
 }
 
@@ -877,8 +878,19 @@ function checkRtkHealth(context: BootstrapInstallContext): DependencyBootstrapHe
   return { status: 'ok', reason: 'rtk CLI and gain evidence are available.' }
 }
 
-function checkGbrainHealth(): DependencyBootstrapHealth {
-  const health = inspectGbrainCliHealth()
+function checkGbrainHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
+  const providerReport = inspectMemoryProviders({ projectDir: context.projectDir })
+  const provider = providerReport.providers.find(item => item.id === 'gbrain')
+  if (provider?.available) {
+    return {
+      status: /optional doctor warnings/i.test(provider.reason) ? 'warn' : 'ok',
+      reason: /optional doctor warnings/i.test(provider.reason)
+        ? `${provider.reason}; provider can still be used for read-only recall.`
+        : 'gbrain provider is available through configured memory routing.',
+    }
+  }
+
+  const health = inspectGbrainCliHealth({ projectDir: context.projectDir })
   if (health.available) {
     return {
       status: health.degraded ? 'warn' : 'ok',
@@ -893,7 +905,8 @@ function checkGbrainHealth(): DependencyBootstrapHealth {
     reason: /no brain configured/i.test(health.reason)
       ? 'gbrain CLI is installed but no brain is configured yet; cross-session recall will fail until initialized.'
       : health.reason,
-    nextCommands: ['gbrain init --pglite', 'gbrain doctor --json', 'scale memory provider status --json'],
+    recoveryHint: health.recoveryHint,
+    nextCommands: health.nextCommands ?? ['gbrain init --pglite --no-embedding', 'gbrain doctor --json', 'scale memory provider status --json'],
   }
 }
 

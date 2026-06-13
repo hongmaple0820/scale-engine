@@ -346,4 +346,104 @@ describe('verifySetup', () => {
       'Optional governed capabilities unavailable in this runtime: gbrain',
     ]))
   })
+
+  it('skips memory and code provider probes when their packs are not selected', async () => {
+    bootstrap.bootstrapDependencies.mockResolvedValue({
+      ok: true,
+      complete: true,
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      packIds: ['external-cli'],
+      includeIds: [],
+      apply: false,
+      runtimeChecks: [],
+      items: [
+        {
+          id: 'rtk',
+          name: 'RTK',
+          kind: 'cli',
+          packs: ['external-cli'],
+          source: 'https://github.com/rtk-ai/rtk',
+          installed: true,
+          status: 'installed',
+          installSupported: false,
+          detectedBy: 'PATH:rtk',
+          prerequisites: [],
+        },
+      ],
+      summary: {
+        total: 1,
+        installed: 1,
+        ready: 0,
+        manualReview: 0,
+        needsInit: 0,
+        versionDrift: 0,
+        installedNow: 0,
+        failed: 0,
+      },
+      postActions: [],
+      postChecks: [],
+      postCheckSummary: { total: 0, passed: 0, warned: 0, failed: 0 },
+      postCheckCommands: ['scale tool doctor --tools rtk --json'],
+      rollbackHints: [],
+      recommendations: [],
+    })
+
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: true,
+      status: 'healthy',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.13.1',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: {
+        defaultShell: 'powershell',
+        comspec: 'cmd.exe',
+        detected: [],
+      },
+      path: {
+        delimiter: ';',
+        entryCount: 1,
+        entriesPreview: ['C:\\tools'],
+      },
+      checks: [],
+      warnings: [],
+      recommendations: [],
+    })
+
+    toolCapabilities.inspectToolCapabilities.mockReturnValue({
+      ok: true,
+      summary: {
+        total: 1,
+        installed: 1,
+        missing: 0,
+      },
+      tools: [
+        {
+          id: 'rtk',
+          name: 'RTK',
+          category: 'cli',
+          checkedPaths: ['PATH:rtk'],
+          installed: true,
+          status: 'installed',
+        },
+      ],
+    })
+
+    const report = await verifySetup({ packIds: ['external-cli'] })
+
+    expect(memoryProviders.inspectMemoryProviders).not.toHaveBeenCalled()
+    expect(codeIntelligence.inspectCodeIntelligence).not.toHaveBeenCalled()
+    expect(report.ok).toBe(true)
+    expect(report.memoryProviders.providers).toEqual([])
+    expect(report.codeIntelligence.providers).toEqual([])
+    expect(report.summary.availableMemoryProviders).toBe(0)
+    expect(report.summary.availableCodeProviders).toBe(0)
+  })
 })

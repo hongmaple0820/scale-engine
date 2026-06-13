@@ -3,9 +3,9 @@ name: planning
 version: 1.0.0
 description: Architecture planning template
 triggers:
-  - plan
-  - design
-  - architecture
+  - "plan"
+  - "design"
+  - "architecture"
 agents:
   - planner
 ---

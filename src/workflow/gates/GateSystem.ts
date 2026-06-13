@@ -10,6 +10,9 @@ import { registerMetaGovernanceGates } from './MetaGovernanceGates.js'
 import { registerEnhancedGates } from './EnhancedGates.js'
 import { META_GOVERNANCE_GATE_STAGES, ENHANCED_GATE_STAGES } from '../GateCatalog.js'
 import { createHash } from 'node:crypto'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { RuntimeEvidenceLedger } from '../../runtime/RuntimeEvidenceLedger.js'
 import { compressCommandOutput, type CommandOutputCompressionResult } from '../../tools/CommandOutputCompressor.js'
 import { CommandRunLedger, type CommandRunEvidenceOptions } from '../../tools/CommandRunLedger.js'
@@ -44,7 +47,28 @@ export interface RunShellCommandOptions {
   compressOutput?: boolean
   compressionMaxChars?: number
   compressionMaxLines?: number
+  env?: NodeJS.ProcessEnv
   commandRunEvidence?: CommandRunEvidenceOptions
+}
+
+const DEFAULT_BUILD_TIMEOUT_MS = 120_000
+const DEFAULT_LINT_TIMEOUT_MS = 60_000
+const DEFAULT_TEST_TIMEOUT_MS = 900_000
+const DEFAULT_COVERAGE_TIMEOUT_MS = 300_000
+const DEFAULT_PRODUCT_SMOKE_TIMEOUT_MS = 180_000
+
+const GATE_TIMEOUT_ENV: Partial<Record<GateStage, string>> = {
+  G0: 'SCALE_GATE_BUILD_TIMEOUT_MS',
+  G4: 'SCALE_GATE_LINT_TIMEOUT_MS',
+  G5: 'SCALE_GATE_TEST_TIMEOUT_MS',
+  G6: 'SCALE_GATE_COVERAGE_TIMEOUT_MS',
+  G8: 'SCALE_GATE_SMOKE_TIMEOUT_MS',
+}
+
+export function resolveGateTimeoutMs(stage: GateStage, fallbackMs: number): number {
+  const value = process.env[GATE_TIMEOUT_ENV[stage] ?? ''] ?? process.env.SCALE_GATE_COMMAND_TIMEOUT_MS
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs
 }
 
 interface ProductSmokeReport {
@@ -81,6 +105,8 @@ export interface SecurityGateOptions {
   dependencyAudit?: boolean
   dependencyAuditMode?: DependencyAuditMode
   dependencyAuditChangedPackages?: string[]
+  changedFiles?: string[]
+  changedFilesProvider?: () => Promise<string[]> | string[]
 }
 
 function tail(value: string, maxLength = 1000): string {
@@ -99,7 +125,7 @@ export async function runShellCommand(
 ): Promise<CommandResult> {
   const start = Date.now()
   try {
-    const result = await runSafeCommand(command, { timeout, cwd })
+    const result = await runSafeCommand(command, { timeout, cwd, env: options.env })
     const end = Date.now()
     return finalizeCommandResult(command, {
       code: result.exitCode,
@@ -190,9 +216,9 @@ export class GateSystem {
 
   constructor(eventBus: IEventBus, commandConfig: VerificationCommandConfig = {}, artifactWriter?: WorkflowArtifactWriter) {
     this.eventBus = eventBus
-    this.evidenceStore = new EvidenceStore()
     this.rootDir = commandConfig.cwd ?? process.cwd()
-    this.scaleDir = commandConfig.runtimeEvidence?.scaleDir ?? '.scale'
+    this.scaleDir = commandConfig.scaleDir ?? commandConfig.runtimeEvidence?.scaleDir ?? '.scale'
+    this.evidenceStore = new EvidenceStore(this.scaleDir)
     this.commands = detectVerificationCommands(this.rootDir, commandConfig)
     this.artifactWriter = artifactWriter ?? new WorkflowArtifactWriter()
     this.registerDefaultGates()
@@ -288,7 +314,8 @@ export class GateSystem {
           })
           return result
         }
-      } catch {
+      } catch (err) {
+        logger.debug({ err, stage }, 'Gate cache lookup failed; executing gate directly')
         // Cache infrastructure failed — fall through to direct execution
       }
     }
@@ -346,7 +373,8 @@ export class GateSystem {
     try {
       const record = this.evidenceStore.saveGateResult(result)
       result.evidenceRecordId = record.id
-    } catch {
+    } catch (err) {
+      logger.debug({ err, gate: result.gate }, 'Gate evidence persistence failed')
       // Evidence persistence must not mask the gate decision itself.
     }
   }
@@ -430,7 +458,7 @@ export class GateSystem {
     }
     const command = commandByStage[stage]
     return JSON.stringify({
-      gateCacheSchema: 2,
+      gateCacheSchema: 3,
       rootDir: this.rootDir,
       scaleDir: this.scaleDir,
       stage,
@@ -454,6 +482,7 @@ export class GateSystem {
     this.registerGate(new SecurityGate({
       rootDir: this.rootDir,
       scaleDir: this.scaleDir,
+      changedFilesProvider: () => this.getChangedFiles(),
     }))
     this.registerGate(new ProductSmokeGate(this.commands.smoke, this.commands.runtimeEvidence))
   }
@@ -527,9 +556,16 @@ function gateCommandOptions(
   command: ResolvedVerificationCommand,
   runtimeEvidence?: VerificationRuntimeEvidenceConfig,
 ): RunShellCommandOptions {
-  if (!runtimeEvidence) return {}
-  return {
-    commandRunEvidence: {
+  const options: RunShellCommandOptions = {}
+  if (stage === 'G5') {
+    const isolatedScaleDir = mkdtempSync(join(tmpdir(), 'scale-g5-'))
+    options.env = {
+      SCALE_DIR: isolatedScaleDir,
+      SCALE_PROJECT_DIR: runtimeEvidence?.projectDir ?? command.cwd ?? process.cwd(),
+    }
+  }
+  if (runtimeEvidence) {
+    options.commandRunEvidence = {
       projectDir: runtimeEvidence.projectDir ?? command.cwd ?? process.cwd(),
       scaleDir: runtimeEvidence.scaleDir,
       taskId: runtimeEvidence.taskId,
@@ -537,8 +573,9 @@ function gateCommandOptions(
       profile: runtimeEvidence.profile,
       gate: stage,
       source: command.source,
-    },
+    }
   }
+  return options
 }
 
 export class ExplorationGate implements IGate {
@@ -674,7 +711,8 @@ export class ExplorationGate implements IGate {
       try {
         await fs.access(candidate)
         return candidate
-      } catch {
+      } catch (err) {
+        logger.debug({ err, candidate }, 'Knowledge file candidate not found')
         // Try the next platform-specific knowledge file.
       }
     }
@@ -687,7 +725,8 @@ export class ExplorationGate implements IGate {
       try {
         await fs.access(candidate)
         return true
-      } catch {
+      } catch (err) {
+        logger.debug({ err, candidate }, 'Knowledge graph artifact candidate not found')
         // Try the next graphify artifact candidate.
       }
     }
@@ -770,7 +809,8 @@ export class PlanningGate implements IGate {
       const specDir = '.scale/specs'
       const entries = await fs.readdir(specDir)
       return entries.some(entry => entry.endsWith('.md'))
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, 'Security scan skipped unreadable path')
       return false
     }
   }
@@ -928,7 +968,7 @@ export class BuildGate implements IGate {
     const blockers: string[] = []
     let commandResult: CommandResult | null = null
     try {
-      commandResult = await runShellCommand(this.command.command, 120000, this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
+      commandResult = await runShellCommand(this.command.command, resolveGateTimeoutMs(this.stage, DEFAULT_BUILD_TIMEOUT_MS), this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
       if (commandResult.code !== 0) {
         blockers.push(`Build failed: ${commandResult.stderr}`)
       }
@@ -970,7 +1010,7 @@ export class LintGate implements IGate {
     const blockers: string[] = []
     let commandResult: CommandResult | null = null
     try {
-      commandResult = await runShellCommand(this.command.command, 60000, this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
+      commandResult = await runShellCommand(this.command.command, resolveGateTimeoutMs(this.stage, DEFAULT_LINT_TIMEOUT_MS), this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
       if (commandResult.code !== 0) {
         blockers.push(`Lint failed: ${commandResult.stderr}`)
       }
@@ -1012,7 +1052,7 @@ export class TestGate implements IGate {
     const blockers: string[] = []
     let commandResult: CommandResult | null = null
     try {
-      commandResult = await runShellCommand(this.command.command, 120000, this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
+      commandResult = await runShellCommand(this.command.command, resolveGateTimeoutMs(this.stage, DEFAULT_TEST_TIMEOUT_MS), this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
       if (commandResult.code !== 0) {
         blockers.push(`Tests failed: ${commandResult.stderr}`)
       }
@@ -1055,7 +1095,7 @@ export class CoverageGate implements IGate {
     let detail = ''
     let commandResult: CommandResult | null = null
     try {
-      commandResult = await runShellCommand(this.command.command, 120000, this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
+      commandResult = await runShellCommand(this.command.command, resolveGateTimeoutMs(this.stage, DEFAULT_COVERAGE_TIMEOUT_MS), this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
       if (commandResult.code !== 0) {
         blockers.push(`Coverage command failed: ${commandResult.stderr}`)
       }
@@ -1125,6 +1165,8 @@ export class SecurityGate implements IGate {
   private dependencyAudit: boolean
   private dependencyAuditMode?: DependencyAuditMode
   private dependencyAuditChangedPackages?: string[]
+  private changedFiles?: string[]
+  private changedFilesProvider?: () => Promise<string[]> | string[]
 
   constructor(options: SecurityGateOptions = {}) {
     this.rootDir = options.rootDir ?? process.cwd()
@@ -1136,10 +1178,13 @@ export class SecurityGate implements IGate {
     this.dependencyAudit = options.dependencyAudit ?? true
     this.dependencyAuditMode = options.dependencyAuditMode
     this.dependencyAuditChangedPackages = options.dependencyAuditChangedPackages
+    this.changedFiles = options.changedFiles
+    this.changedFilesProvider = options.changedFilesProvider
   }
 
   async execute(): Promise<GateResult> {
-    const findings = await this.scan()
+    const changedFiles = await this.resolveChangedFiles()
+    const findings = await this.scan(changedFiles)
     const dependencyReport = this.dependencyAudit ? auditDependencies({
       projectDir: this.rootDir,
       scaleDir: this.scaleDir,
@@ -1147,11 +1192,13 @@ export class SecurityGate implements IGate {
       changedPackages: this.dependencyAuditChangedPackages,
     }) : null
     const blockers = findings
-      .filter(finding => finding.severity === 'CRITICAL' || (this.strict && finding.severity === 'HIGH'))
+      .filter(finding => this.blocksFinding(finding, changedFiles))
       .map(finding => `${finding.severity} ${finding.ruleId} in ${finding.file}:${finding.line} - ${finding.description}`)
     blockers.push(...(dependencyReport?.blockers ?? []))
     const passed = blockers.length === 0
     const summary = this.summarize(findings)
+    const changedHigh = findings.filter(finding =>
+      finding.severity === 'HIGH' && this.isChangedFinding(finding, changedFiles)).length
     const evidenceItems = [
       createEvidence({
         kind: 'scan',
@@ -1159,14 +1206,14 @@ export class SecurityGate implements IGate {
         passed,
         path: this.scanDirs.join(','),
         detail: findings.length > 0
-          ? `${findings.length} finding(s): critical=${summary.CRITICAL}, high=${summary.HIGH}, medium=${summary.MEDIUM}, low=${summary.LOW}, strict=${this.strict}`
+          ? `${findings.length} finding(s): critical=${summary.CRITICAL}, high=${summary.HIGH}, medium=${summary.MEDIUM}, low=${summary.LOW}, changedHigh=${changedHigh}, strict=${this.strict}`
           : 'no built-in security findings detected',
         source: 'built-in-security-scan',
       }),
       ...findings.slice(0, this.maxFindings).map(finding => createEvidence({
         kind: 'scan' as const,
         label: `Security finding ${finding.ruleId}`,
-        passed: finding.severity !== 'CRITICAL' && finding.severity !== 'HIGH',
+        passed: !this.blocksFinding(finding, changedFiles),
         path: finding.file,
         detail: `${finding.severity} line ${finding.line}: ${finding.description}; ${finding.evidence}`,
         source: 'built-in-security-scan',
@@ -1183,14 +1230,18 @@ export class SecurityGate implements IGate {
     } as GateResult
   }
 
-  private async scan(): Promise<SecurityScanFinding[]> {
+  private async scan(changedFiles: Set<string>): Promise<SecurityScanFinding[]> {
     const findings: SecurityScanFinding[] = []
     try {
-      const fs = await import('fs/promises')
-      const { join, relative } = await import('path')
-      const files: string[] = []
+      const fs = await import('node:fs/promises')
+      const { join, relative } = await import('node:path')
+      const files = new Set<string>()
+      for (const file of changedFiles) {
+        if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file)) continue
+        files.add(join(this.rootDir, file))
+      }
       for (const dir of this.scanDirs) {
-        files.push(...await this.walkDir(join(this.rootDir, dir)))
+        for (const file of await this.walkDir(join(this.rootDir, dir))) files.add(file)
       }
 
       for (const file of files) {
@@ -1202,10 +1253,36 @@ export class SecurityGate implements IGate {
         const displayPath = relative(this.rootDir, file).replace(/\\/g, '/')
         findings.push(...this.scanFile(displayPath, content).slice(0, this.maxFindings - findings.length))
       }
-    } catch {
+    } catch (err) {
+      logger.debug({ err, rootDir: this.rootDir, scanDirs: this.scanDirs }, 'Security scan skipped unreadable path')
       // A missing scan directory should not mask the rest of the verification run.
     }
     return findings
+  }
+
+  private async resolveChangedFiles(): Promise<Set<string>> {
+    const raw = this.changedFilesProvider
+      ? await this.changedFilesProvider()
+      : (this.changedFiles ?? [])
+    return new Set(raw.map(file => this.normalizeChangedFile(file)).filter(Boolean))
+  }
+
+  private normalizeChangedFile(file: string): string {
+    const normalized = file.replace(/\\/g, '/')
+    const root = this.rootDir.replace(/\\/g, '/').replace(/\/$/, '')
+    if (normalized === root) return ''
+    if (normalized.startsWith(`${root}/`)) return normalized.slice(root.length + 1)
+    return normalized.replace(/^\.\//, '')
+  }
+
+  private blocksFinding(finding: SecurityScanFinding, changedFiles: Set<string>): boolean {
+    if (finding.severity === 'CRITICAL') return true
+    if (finding.severity !== 'HIGH') return false
+    return this.strict || this.isChangedFinding(finding, changedFiles)
+  }
+
+  private isChangedFinding(finding: SecurityScanFinding, changedFiles: Set<string>): boolean {
+    return changedFiles.has(finding.file)
   }
 
   private scanFile(file: string, content: string): SecurityScanFinding[] {
@@ -1247,8 +1324,8 @@ export class SecurityGate implements IGate {
           results.push(fullPath)
         }
       }
-    } catch {
-      // Ignore unreadable directories.
+    } catch (err) {
+      logger.debug({ err, dir }, 'Security scan skipped unreadable directory')
     }
     return results
   }
@@ -1395,13 +1472,55 @@ export class SecurityGate implements IGate {
 
   private isRuleDefinition(file: string, line: string): boolean {
     const trimmed = line.trim()
-    return file.endsWith('GateSystem.ts') && (/^pattern:\s*\/.*\/[dgimsuy]*,?$/.test(trimmed) || /^id:\s*['"`][^'"`]+['"`],?$/.test(trimmed))
+    if (this.isSecurityRuleSource(file) && this.isSecurityRuleDefinitionLine(trimmed)) {
+      return true
+    }
+    return /\/.*(?:dangerouslySetInnerHTML|\\\.innerHTML|document\\\.write|password|api\[_-\]\?key|secret|token|shell:\s*true|@ts-ignore|catch).*\/[dgimsuy]*\.test\(\s*(?:line|trimmed)\s*\)/i.test(trimmed)
+  }
+
+  private isSecurityRuleSource(file: string): boolean {
+    return this.isGeneratedShieldHook(file) || [
+      'src/guardrails/advancedDetectors.ts',
+      'src/guardrails/ast/confirmers.ts',
+      'src/guardrails/OWASPDetector.ts',
+      'src/shield/PolicyCompiler.ts',
+      'src/shield/ProtectedPaths.ts',
+      'src/skills/SkillRepository.ts',
+      'src/cli/shieldCommands.ts',
+      'src/workflow/gates/GateSystem.ts',
+      'src/workflow/ReviewAnalyzer.ts',
+      'src/workflow/SecurityAudit.ts',
+    ].some(ruleSource => file.endsWith(ruleSource))
+  }
+
+  private isGeneratedShieldHook(file: string): boolean {
+    return /(^|\/)\.claude\/hooks\/shield-[^/]+\.js$/i.test(file)
+  }
+
+  private isSecurityRuleDefinitionLine(trimmed: string): boolean {
+    if (/^id:\s*['"`][^'"`]+['"`],?$/.test(trimmed)) return true
+    if (/^\{?\s*pattern:\s*\/.*\/[dgimsuy]*,?/.test(trimmed)) return true
+    if (/^patterns:\s*\[/.test(trimmed)) return true
+    if (/^\/.*\/[dgimsuy]*,?(?:\s*\/\/.*)?$/.test(trimmed)) return true
+    if (/^\{?\s*(?:re|pattern):\s*\/.*\/[dgimsuy]*/i.test(trimmed)) return true
+    if (/^(?:const|let|var)\s+\w*pattern\w*\s*=\s*\/.*\/[dgimsuy]*/i.test(trimmed)) return true
+    if (/^(?:const|let|var)\s+\w+\s*=\s*\[.*(?:rm\s+-rf|curl\s*\|\s*bash|wget\s*\|\s*bash|Invoke-Expression|chmod\s+777|git reset --hard|git push --force)/i.test(trimmed)) return true
+    if (/^['"`].*(?:rm\s+-rf|curl\s*\|\s*bash|wget\s*\|\s*bash|Invoke-Expression|chmod\s+777|git reset --hard|git push --force|DROP TABLE|DELETE without WHERE).*['"`],?$/i.test(trimmed)) return true
+    if (/^['"`][^'"`]+['"`](?:\s*,\s*['"`][^'"`]+['"`])*[,]?$/.test(trimmed) && /(?:rm\s+-rf|curl\s*\|\s*bash|wget\s*\|\s*bash|Invoke-Expression|chmod\s+777|git reset --hard|git push --force|DROP TABLE|DELETE without WHERE)/i.test(trimmed)) return true
+    if (/\bexpect:\s*['"`]block['"`]/.test(trimmed) && /\b(?:input|command|label):/.test(trimmed)) return true
+    if (/^(?:name|title|description|recommendation|remediation):\s*['"`].*(?:dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|curl pipe|shell:\s*true)/i.test(trimmed)) return true
+    return /^(?:if\s*\(|return\s+)?\/?.*(?:dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|curl|wget|Invoke-WebRequest|Invoke-Expression|rm\s+-rf|shell:\s*true).*\/[dgimsuy]*\.test\(/i.test(trimmed) ||
+      /^(?:\/\/|\/\*\*?|\*)\s*.*(?:dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|curl pipe|shell:\s*true)/i.test(trimmed)
   }
 
   private isSecurityTestFixture(file: string, line: string): boolean {
     if (!this.isTestPath(file)) return false
-    return /\b(?:text|content|diff|source)\b\s*[:=]/.test(line) &&
-      /['"`].*(?:password|api[_-]?key|secret|token|auth|credential|private[_-]?key|git add|shell: true|@ts-ignore|catch)/i.test(line)
+    const riskyFixtureText = /['"`].*(?:password|api[_-]?key|secret|token|auth|credential|private[_-]?key|git add|rm\s+-rf|curl\b.*\|.*(?:bash|sh)|Invoke-WebRequest\b.*\|\s*iex|shell: true|dangerouslySetInnerHTML|innerHTML|document\.write|eval\(|new Function|@ts-ignore|catch)/i.test(line)
+    if (!riskyFixtureText) return false
+    const fixtureField = /\b(?:text|content|diff|source|command|input|tool_input)\b\s*[:=]/.test(line)
+    const fixtureCodePath = /^\s*['"`][^'"`]+\.(?:ts|tsx|js|jsx|mjs|cjs)['"`]\s*:\s*['"`]/.test(line)
+    const fixtureLiteral = /^\s*['"`].*['"`]\s*,?$/.test(line)
+    return fixtureField || fixtureCodePath || fixtureLiteral
   }
 }
 
@@ -1447,7 +1566,7 @@ export class ProductSmokeGate implements IGate {
     const blockers: string[] = []
     let commandResult: CommandResult | null = null
     try {
-      commandResult = await runShellCommand(this.command.command, 180000, this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
+      commandResult = await runShellCommand(this.command.command, resolveGateTimeoutMs(this.stage, DEFAULT_PRODUCT_SMOKE_TIMEOUT_MS), this.command.cwd, gateCommandOptions(this.stage, this.command, this.runtimeEvidence))
       if (commandResult.code !== 0) {
         blockers.push(`Product smoke failed: ${commandResult.stderr || commandResult.stdout || `exit code ${commandResult.code}`}`)
       }

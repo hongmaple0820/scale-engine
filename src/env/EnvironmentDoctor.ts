@@ -672,14 +672,19 @@ function looksLikeJson(value: string): boolean {
 }
 
 function gbrainCoreRecallReady(report: GbrainDoctorReport): boolean {
-  const connection = gbrainDoctorCheckStatus(report, 'connection')
-  const schema = gbrainDoctorCheckStatus(report, 'schema_version')
-  const brainScore = gbrainDoctorCheckStatus(report, 'brain_score')
-  return connection === 'ok' && (schema === 'ok' || brainScore === 'ok')
-}
+  const checks = gbrainDoctorChecks(report)
+  const connection = checks.find(check => check.name === 'connection')
+  if (connection) {
+    if (connection.status !== 'ok') return false
 
-function gbrainDoctorCheckStatus(report: GbrainDoctorReport, name: string): string | undefined {
-  return gbrainDoctorChecks(report).find(check => check.name === name)?.status
+    const legacyRecallChecks = checks.filter(check => check.name === 'schema_version' || check.name === 'brain_score')
+    if (legacyRecallChecks.length > 0) return legacyRecallChecks.some(check => check.status === 'ok')
+
+    return true
+  }
+
+  const status = typeof report.status === 'string' ? report.status.toLowerCase() : undefined
+  return status === 'healthy' || status === 'ok'
 }
 
 function gbrainDoctorChecks(report: GbrainDoctorReport): GbrainDoctorCheck[] {

@@ -74,6 +74,64 @@ export function printReport(summary: string) {
     expect(report.findings.some(finding => finding.path === 'src/cli/report.ts' && finding.ruleId === 'ad-hoc-console-log')).toBe(false)
   })
 
+  it('does not flag log calls embedded in eval fixture strings as sensitive logs', () => {
+    const projectDir = makeProject()
+    write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+    write(projectDir, 'src/eval/WorkflowEval.ts', `
+export const fixture = {
+  command: 'node -e "const target=\\'etc/passwd\\'; console.log(target)"',
+}
+export function leak(req: { body: { token: string } }) {
+  console.log('token', req.body.token)
+}
+`)
+
+    const report = scanEngineeringStandards({ projectDir })
+
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'src/eval/WorkflowEval.ts', ruleId: 'sensitive-log' }),
+    ]))
+    expect(report.findings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'src/eval/WorkflowEval.ts', line: 3, ruleId: 'sensitive-log' }),
+    ]))
+  })
+
+  it('does not flag security rule source regexes as unsafe HTML sinks', () => {
+    const projectDir = makeProject()
+    write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+    write(projectDir, 'src/guardrails/OWASPDetector.ts', `
+export const rules = [{
+  patterns: [
+    /\\.innerHTML\\s*[=:]\\s*[^'"][^\`]/i,
+    /dangerouslySetInnerHTML\\s*[=:]\\s*\\{\\{?\\s*__html\\s*:\\s*[^'"]/i,
+    /document\\.write\\s*\\(/i,
+  ],
+  description: 'Potential XSS vulnerability via innerHTML',
+}]
+`)
+    write(projectDir, 'src/workflow/SecurityAudit.ts', `
+export const patterns = [{
+  title: 'dangerouslySetInnerHTML usage',
+  pattern: /dangerouslySetInnerHTML\\s*:/,
+  description: 'React dangerouslySetInnerHTML bypasses XSS protection.',
+  recommendation: 'Sanitize HTML with DOMPurify before passing to dangerouslySetInnerHTML.',
+}]
+`)
+    write(projectDir, 'src/business/upload.ts', `
+export function unsafe(userHtml: string) {
+  document.body.innerHTML = userHtml
+}
+`)
+
+    const report = scanEngineeringStandards({ projectDir })
+
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'src/business/upload.ts', ruleId: 'unsafe-html-sink' }),
+    ]))
+    expect(report.findings.some(finding => finding.path === 'src/guardrails/OWASPDetector.ts' && finding.ruleId === 'unsafe-html-sink')).toBe(false)
+    expect(report.findings.some(finding => finding.path === 'src/workflow/SecurityAudit.ts' && finding.ruleId === 'unsafe-html-sink')).toBe(false)
+  })
+
   it('keeps standards doctor non-ok when blocking findings exist', () => {
     const projectDir = makeProject()
     write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
@@ -170,6 +228,29 @@ export function getPaymentConfig() {
         path: 'src/service/payment.ts',
         line: 3,
       }),
+    ]))
+  })
+
+  it('allows environment variable names and runtime env references for secrets', () => {
+    const projectDir = makeProject()
+    write(projectDir, '.scale/engineering-standards.json', engineeringStandardsPolicyTemplate())
+    write(projectDir, 'src/service/providers.ts', `
+const provider = { apiKeyEnv: 'GBRAIN_API_KEY' }
+const tokenEnv = 'MEMOS_API_KEY'
+const apiKey = process.env[tokenEnv]
+export function authHeader() {
+  return {
+    authorization: \`Bearer \${process.env[provider.apiKeyEnv]}\`,
+    token: \`Token \${apiKey}\`,
+    tokenEnv,
+  }
+}
+`)
+
+    const report = doctorEngineeringStandards({ projectDir })
+
+    expect(report.findings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ ruleId: 'hardcoded-secret' }),
     ]))
   })
 

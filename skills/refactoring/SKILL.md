@@ -3,9 +3,9 @@ name: refactoring
 version: 1.0.0
 description: Safe refactoring steps
 triggers:
-  - refactor
-  - clean
-  - improve
+  - "refactor"
+  - "clean"
+  - "improve"
 agents:
   - reviewer
   - implementer

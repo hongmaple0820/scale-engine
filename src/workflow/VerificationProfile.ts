@@ -7,6 +7,8 @@ export type VerificationCommandName = 'build' | 'lint' | 'test' | 'coverage' | '
 export type VerificationArtifactGateMode = 'off' | 'warn' | 'block'
 export type VerificationArtifactGateLevel = 'M' | 'L' | 'CRITICAL'
 export type VerificationEngineeringStandardsGateMode = 'off' | 'warn' | 'block'
+export type VerificationEcosystemReadinessGateMode = 'off' | 'warn' | 'block'
+export type VerificationEcosystemReadinessSkillScope = 'required' | 'recommended' | 'all'
 
 export interface VerificationService {
   name: string
@@ -28,6 +30,9 @@ export interface VerificationPolicy {
   artifactGateLevels?: VerificationArtifactGateLevel[]
   engineeringStandardsGate?: VerificationEngineeringStandardsGateMode
   productSmokeGate?: VerificationEngineeringStandardsGateMode
+  ecosystemReadinessGate?: VerificationEcosystemReadinessGateMode
+  ecosystemReadinessPacks?: string[]
+  ecosystemReadinessSkillScope?: VerificationEcosystemReadinessSkillScope
 }
 
 export interface VerificationMatrix {
@@ -70,6 +75,9 @@ export const DEFAULT_VERIFICATION_POLICY: VerificationPolicy = {
   artifactGateLevels: ['M', 'L', 'CRITICAL'],
   engineeringStandardsGate: 'block',
   productSmokeGate: 'warn',
+  ecosystemReadinessGate: 'warn',
+  ecosystemReadinessPacks: ['full'],
+  ecosystemReadinessSkillScope: 'required',
 }
 
 export function loadVerificationMatrix(
@@ -190,6 +198,9 @@ export function resolveVerificationPolicy(matrix: VerificationMatrix | null | un
     artifactGateLevels: normalizeArtifactGateLevels(policy.artifactGateLevels),
     engineeringStandardsGate: normalizeEngineeringStandardsGate(policy.engineeringStandardsGate) ?? DEFAULT_VERIFICATION_POLICY.engineeringStandardsGate,
     productSmokeGate: normalizeEngineeringStandardsGate(policy.productSmokeGate) ?? DEFAULT_VERIFICATION_POLICY.productSmokeGate,
+    ecosystemReadinessGate: normalizeEngineeringStandardsGate(policy.ecosystemReadinessGate) ?? DEFAULT_VERIFICATION_POLICY.ecosystemReadinessGate,
+    ecosystemReadinessPacks: normalizeEcosystemReadinessPacks(policy.ecosystemReadinessPacks),
+    ecosystemReadinessSkillScope: normalizeEcosystemReadinessSkillScope(policy.ecosystemReadinessSkillScope) ?? DEFAULT_VERIFICATION_POLICY.ecosystemReadinessSkillScope,
   }
 }
 
@@ -261,6 +272,20 @@ function normalizeEngineeringStandardsGate(value: unknown): VerificationEngineer
   return undefined
 }
 
+function normalizeEcosystemReadinessPacks(value: unknown): string[] {
+  if (!Array.isArray(value)) return DEFAULT_VERIFICATION_POLICY.ecosystemReadinessPacks ?? ['full']
+  const valid = new Set(['ui', 'memory', 'knowledge', 'external-cli', 'full'])
+  const packs = value
+    .map(item => String(item).trim())
+    .filter(item => valid.has(item))
+  return packs.length > 0 ? [...new Set(packs)] : DEFAULT_VERIFICATION_POLICY.ecosystemReadinessPacks ?? ['full']
+}
+
+function normalizeEcosystemReadinessSkillScope(value: unknown): VerificationEcosystemReadinessSkillScope | undefined {
+  if (value === 'required' || value === 'recommended' || value === 'all') return value
+  return undefined
+}
+
 function normalizeArtifactGateLevels(value: unknown): VerificationArtifactGateLevel[] {
   if (!Array.isArray(value)) return DEFAULT_VERIFICATION_POLICY.artifactGateLevels ?? ['M', 'L', 'CRITICAL']
   const levels = value.filter((level): level is VerificationArtifactGateLevel =>
@@ -303,6 +328,9 @@ export function exportProfileToOpenFormat(profile: ResolvedVerificationProfile):
               artifactGate: policy.artifactGate ?? 'block',
               engineeringStandardsGate: policy.engineeringStandardsGate ?? 'warn',
               productSmokeGate: policy.productSmokeGate ?? 'warn',
+              ecosystemReadinessGate: policy.ecosystemReadinessGate ?? 'warn',
+              ecosystemReadinessPacks: policy.ecosystemReadinessPacks ?? ['full'],
+              ecosystemReadinessSkillScope: policy.ecosystemReadinessSkillScope ?? 'required',
             },
           },
         },
@@ -332,6 +360,9 @@ export function importProfileFromOpenFormat(
       artifactGate: service.policy.artifactGate,
       engineeringStandardsGate: service.policy.engineeringStandardsGate,
       productSmokeGate: service.policy.productSmokeGate,
+      ecosystemReadinessGate: service.policy.ecosystemReadinessGate,
+      ecosystemReadinessPacks: service.policy.ecosystemReadinessPacks,
+      ecosystemReadinessSkillScope: service.policy.ecosystemReadinessSkillScope,
     },
   }
 }

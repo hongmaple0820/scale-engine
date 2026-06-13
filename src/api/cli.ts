@@ -52,17 +52,19 @@ import {
 } from '../skills/SkillRadar.js'
 import { listLeadershipPresets, renderLeadershipPresetsMarkdown } from '../agents/LeadershipPresets.js'
 import { listWorkflowPresets, getPresetsByScenario } from '../workflows/presets.js'
-import { EvidenceStore } from '../workflow/EvidenceStore.js'
+import { EvidenceStore, type GateEvidenceRecord } from '../workflow/EvidenceStore.js'
 import { OutOfScopeStore } from '../workflow/OutOfScopeStore.js'
 import { ReviewStore } from '../workflow/ReviewStore.js'
 import { WorkflowEngine } from '../workflow/WorkflowEngine.js'
 import {
+  loadVerificationMatrix,
   resolveVerificationTargets,
   type ResolvedVerificationTargets,
   type VerificationEngineeringStandardsGateMode,
   type VerificationPolicy,
 } from '../workflow/VerificationProfile.js'
-import { preflightGateStages } from '../workflow/GateCatalog.js'
+import { evaluateEcosystemReadinessGate } from '../workflow/EcosystemReadinessGate.js'
+import { CORE_GATE_CATALOG, META_GATE_CATALOG, preflightGateStages } from '../workflow/GateCatalog.js'
 import { gatesCommand } from '../cli/gateStatusCommands.js'
 import { scoreCommand } from '../cli/scoreCommands.js'
 import { promptCommand } from '../cli/promptCommands.js'
@@ -218,6 +220,15 @@ import { SCALE_ENGINE_VERSION } from '../version.js'
 const SCALE_DIR = process.env.SCALE_DIR ?? '.scale'
 const PROJECT_DIR = process.env.SCALE_PROJECT_DIR ?? process.cwd()
 const DB_PATH = join(SCALE_DIR, 'scale.db')
+const GATE_BLOCKING_BY_STAGE = new Map<GateStage, boolean>(
+  [...CORE_GATE_CATALOG, ...META_GATE_CATALOG]
+    .filter(gate => gate.stage)
+    .map(gate => [gate.stage!, gate.blocking] as const),
+)
+
+function isBlockingGateStage(stage: GateStage): boolean {
+  return GATE_BLOCKING_BY_STAGE.get(stage) ?? true
+}
 
 function governanceModeFromScenario(scenario: string): GovernanceMode {
   if (scenario === 'critical') return 'critical'
@@ -268,6 +279,73 @@ function normalizePreflightProfile(value: unknown): PreflightProfile {
 
 function gatesForPreflightProfile(profile: PreflightProfile): GateStage[] {
   return preflightGateStages(profile)
+}
+
+interface PreflightVerificationProfileResolution {
+  profile?: string
+  warnings: string[]
+}
+
+function resolvePreflightVerificationProfile(
+  projectDir: string,
+  scaleDir: string,
+  requestedProfile: unknown,
+  preflightProfile: PreflightProfile,
+): PreflightVerificationProfileResolution {
+  const warnings: string[] = []
+  const matrix = loadVerificationMatrix(projectDir, scaleDir)
+  const profiles = matrix?.profiles ?? {}
+  const explicitProfile = typeof requestedProfile === 'string' && requestedProfile.trim()
+    ? requestedProfile.trim()
+    : undefined
+  if (explicitProfile) {
+    const explicitCandidate = resolveVerificationProfileCandidate(profiles, explicitProfile) ?? explicitProfile
+    const matchingPreflightProfile = resolveVerificationProfileCandidate(
+      profiles,
+      preflightVerificationProfileCandidates(preflightProfile),
+    )
+    if (
+      preflightProfile === 'fast-lane' &&
+      matrix?.defaultProfile &&
+      explicitProfile === matrix.defaultProfile &&
+      matchingPreflightProfile &&
+      matchingPreflightProfile !== explicitCandidate
+    ) {
+      warnings.push(`fast-lane preflight selected verification profile "${matchingPreflightProfile}" instead of default profile "${explicitProfile}" to avoid running the default full test command.`)
+      return { profile: matchingPreflightProfile, warnings }
+    }
+    return { profile: explicitCandidate, warnings }
+  }
+
+  for (const candidate of preflightVerificationProfileCandidates(preflightProfile)) {
+    if (profiles[candidate]) return { profile: candidate, warnings }
+  }
+  return { profile: undefined, warnings }
+}
+
+function preflightVerificationProfileCandidates(profile: PreflightProfile): string[] {
+  if (profile === 'fast-lane') return ['fast-lane', 'fastLane', 'fastlane']
+  return [profile]
+}
+
+function resolveVerificationProfileCandidate(
+  profiles: Record<string, unknown>,
+  requested: string | string[],
+): string | undefined {
+  const candidates = Array.isArray(requested) ? requested : [requested]
+  for (const candidate of candidates) {
+    if (profiles[candidate]) return candidate
+  }
+  return undefined
+}
+
+function latestBlockingEvidenceFailure(records: GateEvidenceRecord[]): GateEvidenceRecord | undefined {
+  const latestByGate = new Map<GateStage, GateEvidenceRecord>()
+  for (const record of records) {
+    if (!isBlockingGateStage(record.gate)) continue
+    if (!latestByGate.has(record.gate)) latestByGate.set(record.gate, record)
+  }
+  return Array.from(latestByGate.values()).find(record => !record.passed)
 }
 
 function shouldSkipPreflightCommandTargets(
@@ -763,12 +841,14 @@ const preflight = defineCommand({
     const scaleDir = resolveScaleDirForProject(projectDir)
     const workflowEngine = createVerificationWorkflowEngine(scaleDir)
     const preflightProfile = normalizePreflightProfile(args['preflight-profile'])
+    const verificationProfile = resolvePreflightVerificationProfile(projectDir, scaleDir, args.profile, preflightProfile)
     const resolved = resolveVerificationTargets({
       projectDir,
       scaleDir,
-      profile: args.profile,
+      profile: verificationProfile.profile,
       service: args.service,
     })
+    resolved.warnings.push(...verificationProfile.warnings)
     let gateStages = gatesForPreflightProfile(preflightProfile)
     if (resolved.targets.some(target => target.config.smoke)) {
       gateStages = ['G8']
@@ -787,6 +867,13 @@ const preflight = defineCommand({
           scaleDir,
           changedFiles: engineeringStandardsChangedFiles,
         })
+    const ecosystemReadiness = await evaluateEcosystemReadinessGate({
+      policy: resolved.policy,
+      projectDir,
+      scaleDir,
+      checked: preflightProfile === 'ci',
+      skipReason: `ecosystem readiness is only checked by the ci preflight profile; current profile is ${preflightProfile}`,
+    })
 
     const targetResults: Array<{
       service?: string
@@ -812,6 +899,14 @@ const preflight = defineCommand({
         }
       } else {
         console.log('  Engineering standards: skipped')
+      }
+      if (ecosystemReadiness.checked) {
+        const status = ecosystemReadiness.blocked ? 'BLOCKED' : ecosystemReadiness.ok ? 'OK' : 'WARN'
+        console.log(`  Ecosystem readiness: ${status} (${ecosystemReadiness.mode})`)
+        console.log(`  Ecosystem tools: ${ecosystemReadiness.summary.installedTools}/${ecosystemReadiness.summary.totalTools}`)
+        console.log(`  Ecosystem skills: ${ecosystemReadiness.summary.installedWorkflowSkills}/${ecosystemReadiness.summary.totalWorkflowSkills}`)
+      } else {
+        console.log('  Ecosystem readiness: skipped')
       }
     }
 
@@ -854,16 +949,19 @@ const preflight = defineCommand({
 
     const passed = (targetResults.length === 0 || targetResults.every(target => target.passed)) &&
       !workspaceSafety.blocked &&
-      !engineeringStandards.blocked
+      !engineeringStandards.blocked &&
+      !ecosystemReadiness.blocked
     const result = {
       phase: 'PREFLIGHT',
       profile: resolved.profileName,
       preflightProfile,
       gates: gateStages,
       services: targetResults.map(target => target.service).filter(Boolean),
+      warnings: resolved.warnings,
       policy: resolved.policy,
       workspaceSafety,
       engineeringStandards,
+      ecosystemReadiness,
       targets: targetResults,
       commandTargetsSkipped,
       passed,
@@ -887,25 +985,29 @@ const status = defineCommand({
     const { store } = getEngine()
     const evidenceStore = new EvidenceStore(SCALE_DIR)
     const reviewStore = new ReviewStore(SCALE_DIR)
-    const [specs, plans, tasks, releases] = await Promise.all([
+    const [specs, plans, tasks] = await Promise.all([
       store.query({ type: 'Spec', limit: 1 }),
       store.query({ type: 'Plan', limit: 1 }),
       store.query({ type: 'Task', limit: 1 }),
-      store.query({ type: 'Release', limit: 1 }),
     ])
     const latestEvidence = evidenceStore.listGateResults(5)
+    const latestEvidenceForBlockers = evidenceStore.listGateResults(50)
     const latestReviews = reviewStore.listReviews(5)
     const latestTask = tasks[0]
-    const taskPayload = latestTask?.payload as { verificationEvidenceIds?: string[]; reviewEvidenceIds?: string[]; reviewPassed?: boolean; reviewedAt?: number; verifiedAt?: number; testPassed?: boolean; lintStatus?: string; testCoverage?: number } | undefined
+    const taskPayload = latestTask?.payload as TaskPayload | undefined
     const workflowState = new WorkflowArtifactWriter(SCALE_DIR).readCurrentState()
     const currentOpenTasks = workflowState?.openTasks ?? []
     const nextOpenTask = nextWorkflowOpenTask(currentOpenTasks)
 
     const blockers: string[] = []
-    const latestBlockingEvidence = latestEvidence.find(record => !record.passed)
-    const latestBlockingReview = latestReviews.find(record => !record.passed)
+    const latestBlockingEvidence = latestBlockingEvidenceFailure(latestEvidenceForBlockers)
+    const latestReviewForTask = latestTask
+      ? reviewStore.listReviews(50).find(record => record.taskId === latestTask.id)
+      : undefined
     if (latestBlockingEvidence) blockers.push(`${latestBlockingEvidence.gate}: ${latestBlockingEvidence.blockers.join('; ') || latestBlockingEvidence.status}`)
-    if (latestBlockingReview) blockers.push(`Review ${latestBlockingReview.id}: ${latestBlockingReview.summary.critical} critical, ${latestBlockingReview.summary.high} high`)
+    if (latestReviewForTask && !latestReviewForTask.passed) {
+      blockers.push(`Review ${latestReviewForTask.id}: ${latestReviewForTask.summary.critical} critical, ${latestReviewForTask.summary.high} high`)
+    }
     if (latestTask && (!taskPayload?.verificationEvidenceIds || taskPayload.verificationEvidenceIds.length === 0)) {
       blockers.push(`Task ${latestTask.id} has no persisted verification evidence`)
     }
@@ -914,6 +1016,8 @@ const status = defineCommand({
     }
 
     const nextCommand = (() => {
+      const taskShipped = taskPayload?.shipPassed === true ||
+        Boolean(taskPayload?.shipCommitHash || taskPayload?.shipDeploymentRecordId)
       if (nextOpenTask?.kind === 'command') return nextOpenTask.value
       if (nextOpenTask?.kind === 'blocker') return `Resolve workflow blocker: ${nextOpenTask.value}`
       if (!specs[0]) return 'scale define "<feature>" --description "<what to build>"'
@@ -922,7 +1026,7 @@ const status = defineCommand({
       if (!taskPayload?.verificationEvidenceIds?.length) return `scale verify ${latestTask.id}`
       if (latestTask.status !== 'COMPLETED') return `scale verify ${latestTask.id}`
       if (!taskPayload.reviewEvidenceIds?.length || taskPayload.reviewPassed !== true) return `scale review ${latestTask.id}`
-      if (!releases[0]) return `scale ship ${latestTask.id}`
+      if (!taskShipped) return `scale ship ${latestTask.id}`
       return 'scale evidence list'
     })()
 
@@ -940,6 +1044,11 @@ const status = defineCommand({
           evidenceIds: taskPayload?.verificationEvidenceIds ?? [],
           reviewPassed: taskPayload?.reviewPassed,
           reviewEvidenceIds: taskPayload?.reviewEvidenceIds ?? [],
+          shipPassed: taskPayload?.shipPassed,
+          shippedAt: taskPayload?.shippedAt,
+          shipMode: taskPayload?.shipMode,
+          shipCommitHash: taskPayload?.shipCommitHash,
+          shipDeploymentRecordId: taskPayload?.shipDeploymentRecordId,
         } : null,
       },
       recentEvidence: latestEvidence.map(record => ({
@@ -1329,6 +1438,7 @@ const aiOsStatusCommand = defineCommand({
       console.log(`  Context risk: ${report.intelligence.summary.contextQuality.compressionRisk}; omitted ${report.intelligence.summary.contextQuality.omittedSections} section(s), evidence warnings ${report.intelligence.summary.contextQuality.evidenceLossWarnings.length}`)
       console.log(`  Evaluator gates: ${report.intelligence.summary.evaluatorQuality.requiredGates}; uncertainty ${report.intelligence.summary.evaluatorQuality.averageUncertainty}`)
       console.log(`  Tool strategy: ${report.intelligence.summary.toolStrategyQuality.totalSteps} step(s), cost ${report.intelligence.summary.toolStrategyQuality.estimatedCostUnits}, fallback ${report.intelligence.summary.toolStrategyQuality.fallbackCoverage}`)
+      console.log(`  Agent Loop: ${report.intelligence.summary.agentLoopQuality.status}; ${report.intelligence.summary.agentLoopQuality.readySignals}/6 ready, score ${report.intelligence.summary.agentLoopQuality.score}/100`)
       for (const signal of report.intelligence.signals) console.log(`  [${signal.status}] ${signal.id}: ${signal.summary}`)
       for (const check of report.checks) console.log(`  [${check.status}] ${check.id}: ${check.summary}`)
       if (report.verificationRecommendations.length > 0) {
@@ -1349,6 +1459,7 @@ const aiOsStatusCommand = defineCommand({
       console.log(`  Context risk: ${report.intelligence.summary.contextQuality.compressionRisk}; omitted ${report.intelligence.summary.contextQuality.omittedSections} section(s), evidence warnings ${report.intelligence.summary.contextQuality.evidenceLossWarnings.length}`)
       console.log(`  Evaluator gates: ${report.intelligence.summary.evaluatorQuality.requiredGates}; uncertainty ${report.intelligence.summary.evaluatorQuality.averageUncertainty}`)
       console.log(`  Tool strategy: ${report.intelligence.summary.toolStrategyQuality.totalSteps} step(s), cost ${report.intelligence.summary.toolStrategyQuality.estimatedCostUnits}, fallback ${report.intelligence.summary.toolStrategyQuality.fallbackCoverage}`)
+      console.log(`  Agent Loop: ${report.intelligence.summary.agentLoopQuality.status}; ${report.intelligence.summary.agentLoopQuality.readySignals}/6 ready, score ${report.intelligence.summary.agentLoopQuality.score}/100`)
       for (const signal of report.intelligence.signals) console.log(`  [${signal.status}] ${signal.id}: ${signal.summary}`)
       for (const check of report.checks) console.log(`  [${check.status}] ${check.id}: ${check.summary}`)
       if (report.verificationRecommendations.length > 0) {

@@ -3,10 +3,10 @@ name: security-audit
 version: 1.0.0
 description: OWASP Top 10 security checklist
 triggers:
-  - security
-  - audit
-  - vulnerability
-  - owasp
+  - "security"
+  - "audit"
+  - "vulnerability"
+  - "owasp"
 agents:
   - security
 ---

@@ -21,10 +21,12 @@ function makeProject(): string {
   return dir
 }
 
-function writeSkill(projectDir: string, skillId: string): void {
+function writeSkill(projectDir: string, skillId: string): string {
   const dir = join(projectDir, '.agents', 'skills', skillId)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${skillId}\n---\n`, 'utf-8')
+  const file = join(dir, 'SKILL.md')
+  writeFileSync(file, `---\nname: ${skillId}\n---\n`, 'utf-8')
+  return file
 }
 
 function uiSkillPlan() {
@@ -197,6 +199,53 @@ describe('ToolOrchestrator', () => {
       passed: 1,
       ok: true,
     })
+  })
+
+  it('records installed skill files as passed readiness evidence', async () => {
+    const projectDir = makeProject()
+    const skillPath = writeSkill(projectDir, 'code-reviewer')
+    const evidenceStore = new ToolEvidenceStore({ projectDir })
+    const orchestrator = new ToolOrchestrator({
+      projectDir,
+      policy: resolveToolPolicy({ mode: 'evidence-required' }),
+      evidenceStore,
+      capabilityReport: inspectToolCapabilities({
+        projectDir,
+        toolIds: ['code-reviewer'],
+      }),
+    })
+    const plan: ToolExecutionPlan = {
+      taskId: 'TASK-SKILL',
+      taskName: 'Check skill readiness',
+      mode: 'evidence-required',
+      blockers: [],
+      warnings: [],
+      steps: [
+        {
+          id: 'tool-1-code-reviewer',
+          toolId: 'code-reviewer',
+          domain: 'review',
+          adapter: 'skill',
+          required: true,
+          status: 'ready',
+          reason: 'Tool is available.',
+          capability: inspectToolCapabilities({ projectDir, toolIds: ['code-reviewer'] }).tools[0],
+        },
+      ],
+    }
+
+    const report = await orchestrator.run(plan)
+
+    expect(report.ok).toBe(true)
+    expect(report.evidence[0]).toMatchObject({
+      tool: 'code-reviewer',
+      adapter: 'skill',
+      status: 'passed',
+      exitCode: 0,
+      outputPaths: [skillPath],
+      safetyPolicy: expect.arrayContaining(['skill-file-readiness-check']),
+    })
+    expect(report.evidence[0].outputSummary).toContain('Skill usage evidence must still be captured')
   })
 
   it('classifies browser and desktop automation tools with side-effect aware adapters', () => {

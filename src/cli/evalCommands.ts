@@ -96,6 +96,7 @@ const evalRun = defineCommand({
     console.log(`  Tool calls: ${result.run.metrics.totalToolCalls}`)
     console.log(`  Estimated tokens: ${result.run.metrics.estimatedTokens}`)
     console.log(`  Failures: ${result.run.metrics.failureReplayCount}`)
+    console.log(`  Closed failures: ${result.closedFailureIds.length}`)
     console.log(`  Run path: ${result.runPath}`)
     if (benchmarkPath) console.log(`  Benchmark path: ${benchmarkPath}`)
     for (const failurePath of result.failurePaths) console.log(`  Failure replay: ${failurePath}`)

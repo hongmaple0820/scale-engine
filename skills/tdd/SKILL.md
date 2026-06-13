@@ -3,9 +3,9 @@ name: tdd
 version: 1.0.0
 description: Test-driven development workflow
 triggers:
-  - test
-  - tdd
-  - coverage
+  - "test"
+  - "tdd"
+  - "coverage"
 agents:
   - tester
   - implementer

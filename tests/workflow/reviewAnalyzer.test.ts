@@ -179,6 +179,9 @@ describe('ReviewAnalyzer', () => {
         text: [
           '+/.*(?:password|api[_-]?key|secret|shell: true|innerHTML|catch)/i.test(text)',
           '+const fixtureRiskPattern = /(?:password|api[_-]?key|secret|shell: true|innerHTML|catch)/i',
+          "+if (/^(?:name|title|description):\\\\s*['\\\"].*(?:dangerouslySetInnerHTML|innerHTML|document\\\\.write|eval\\\\(|new Function|shell:\\\\s*true)/i.test(trimmed)) return true",
+          '+const riskyFixtureText = /[\\\'"`].*(?:password|api[_-]?key|secret|curl\\\\b.*\\\\|.*(?:bash|sh)|rm\\\\s+-rf|shell: true|dangerouslySetInnerHTML|eval\\\\(|new Function)/i.test(line)',
+          "+  recommendation: 'Sanitize HTML with DOMPurify before passing to dangerouslySetInnerHTML.',",
         ].join('\n'),
       }],
       taskPayload: { verificationEvidenceIds: ['GATE-1'] },
@@ -201,8 +204,36 @@ describe('ReviewAnalyzer', () => {
       diffs: [{ file: 'tests/workflow/example.test.ts', text: '+await execa(command, { shell: true })\n' }],
       taskPayload: { verificationEvidenceIds: ['GATE-1'] },
     })
+    const securityFixtureResult = analyzeReview({
+      statusOutput: ' M tests/workflow/gateSystem.test.ts',
+      diffs: [{
+        file: 'tests/workflow/gateSystem.test.ts',
+        text: [
+          "+\"{ pattern: /curl\\\\s+.*\\\\|\\\\s*(bash|sh)/i, description: 'curl pipe to shell' },\"",
+          "+'/** A real `eval(...)` call or `Function(...)` / `new Function(...)` construction starts on this line. */',",
+          "+\"execSync('rm -rf /')\",",
+        ].join('\n'),
+      }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+    const templateFixtureResult = analyzeReview({
+      statusOutput: ' M tests/workflow/engineeringStandards.test.ts',
+      diffs: [{
+        file: 'tests/workflow/engineeringStandards.test.ts',
+        text: [
+          "+write(projectDir, 'src/business/upload.ts', `",
+          '+export function unsafe(userHtml: string) {',
+          '+  document.body.innerHTML = userHtml',
+          '+}',
+          '+`)',
+        ].join('\n'),
+      }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
 
     expect(fixtureResult.findings.some(f => f.category === 'security')).toBe(false)
+    expect(securityFixtureResult.findings.some(f => f.category === 'security')).toBe(false)
+    expect(templateFixtureResult.findings.some(f => f.category === 'security')).toBe(false)
     expect(executableResult.findings).toContainEqual(expect.objectContaining({
       category: 'security',
       severity: 'HIGH',
@@ -284,6 +315,29 @@ describe('ReviewAnalyzer', () => {
       category: 'process',
       severity: 'MEDIUM',
     }))
+  })
+
+  it('flags partial diff review coverage only when changed files exceed scanned diffs', () => {
+    const partial = analyzeReview({
+      statusOutput: ' M src/a.ts\n M src/b.ts',
+      diffs: [{ file: 'src/a.ts', text: '+const a = 1\n' }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+    const complete = analyzeReview({
+      statusOutput: ' M src/a.ts\n M src/b.ts',
+      diffs: [
+        { file: 'src/a.ts', text: '+const a = 1\n' },
+        { file: 'src/b.ts', text: '+const b = 1\n' },
+      ],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+
+    expect(partial.findings).toContainEqual(expect.objectContaining({
+      category: 'process',
+      severity: 'MEDIUM',
+      description: expect.stringContaining('Review scanned diffs for 1/2 changed files'),
+    }))
+    expect(complete.findings.some(f => f.description.includes('Review scanned diffs'))).toBe(false)
   })
 
   it('summarizes finding severity counts', () => {

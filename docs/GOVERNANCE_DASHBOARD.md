@@ -15,6 +15,57 @@ scale artifact dashboard --output docs/worklog/tasks/<task-id>/artifacts/governa
 scale artifact dashboard --json
 ```
 
+## Live Dashboard Server
+
+The live SPA dashboard is served by:
+
+```bash
+npm run serve
+```
+
+The server prints direct URLs after startup, for example:
+
+```text
+SCALE Dashboard is running:
+- scale-engine: http://127.0.0.1:3210/spa/ (E:\project\scale-engine)
+```
+
+Default behavior is intentionally compatible with earlier versions:
+
+- project: current working directory
+- port: `3210`
+- host: `0.0.0.0`
+
+For one explicit project:
+
+```bash
+SCALE_DASHBOARD_PROJECT_DIR=/path/to/project SCALE_DASHBOARD_PORT=3210 npm run serve
+```
+
+For multiple projects, use a semicolon-separated project list. Each item can be either a path or `name=path`:
+
+```bash
+SCALE_DASHBOARD_PROJECTS="scale-engine=/path/to/scale-engine;scaffold=/path/to/project-scaffold" SCALE_DASHBOARD_PORT=auto npm run serve
+```
+
+When `SCALE_DASHBOARD_PORT=auto`, `SCALE_DASHBOARD_AUTO_PORT=1`, or more than one project is configured, the launcher probes ports starting from the base port and skips occupied ports. Each project gets its own dashboard process binding and each dashboard exposes `/api/projects` so the SPA can switch to sibling project URLs.
+
+The live dashboard currently exposes:
+
+- `Documents`: preview `.html`, `.md`, and `.json` from `.scale/docs`, `.scale/artifacts`, and `docs`.
+- `Knowledge`: browse local Memory Brain nodes and run explicit provider recall queries through the configured memory provider route.
+
+Knowledge review actions are governed write operations, not direct database edits. The dashboard API accepts `POST /api/knowledge/local/:id/review` with one of four actions:
+
+| Action | Allowed transition |
+| --- | --- |
+| `approve` | `candidate` -> `active`, requiring existing evidence paths |
+| `reject` | `candidate` -> `rejected` |
+| `stale` | `active` -> `stale` |
+| `restore` | `stale` or `rejected` -> `active`, requiring existing evidence paths |
+
+Invalid transitions return an error and leave the Memory Brain unchanged. Every successful transition writes append-only runtime evidence under `.scale/evidence/runtime/` with `taskId=dashboard-memory-review`, the previous and next status, the action, and the reviewed memory node id. Provider recall remains read-only in this surface; exporting or changing external provider memory must use the provider's own governed API.
+
 Default output:
 
 ```text
@@ -60,6 +111,38 @@ You can inspect the same model-usage ledger directly without opening the HTML da
 scale token report --since-days 7
 scale token report --day 2026-05-23 --json
 ```
+
+## Workflow Effectiveness CLI
+
+For release readiness, workflow reviews, and cross-methodology audits, use:
+
+```bash
+scale workflow effectiveness
+scale workflow effectiveness --json
+scale workflow effectiveness --days 30 --json
+scale workflow effectiveness --memory-query "release gate lessons" --json
+scale workflow effectiveness --skip-memory-recall --json
+```
+
+This report is stricter than the HTML dashboard. It combines gate evidence, workflow eval runs, failure replays, task metrics, memory provider status, a read-only provider recall probe, workflow skill readiness, Cortex ROI metrics, and DORA-style delivery signals into one reviewable model. Signals with no authoritative source are reported as `missing`, not as zero. This keeps missing deployment frequency, lead time, restore time, long-task evidence, memory recall quality, or instinct hit-rate evidence visible instead of silently improving the score.
+
+The memory section does not treat "provider installed" as enough. By default, `scale workflow effectiveness` runs a read-only provider recall query and reports provider recall hit rate, returned item count, and context-savings evidence. Use `--skip-memory-recall` only for deterministic unit tests or offline environments; otherwise an available gbrain that returns no relevant context is reported as a workflow gap.
+
+The Agent Loop section is report-only in v1, so it is counted in measured/missing signals but is not part of the weighted score. It reads existing `.scale/evidence`, `.scale/evidence/runtime`, `.scale/reviews`, and `.scale/ai-os/runs` evidence to check tool execution, failure recovery, guardrails, budget controls, handoff/delegation, and termination evidence. `scale ai-os status --json` exposes the same roll-up as the `agent-loop-readiness` intelligence signal and `agentLoopQuality` summary.
+
+Deployment evidence is append-only runtime state:
+
+```bash
+scale ship <task-id> --record-deployment --deploy-environment production --deploy-version v0.49.0 --json
+scale workflow deploy record --git-tag v0.49.0 --json
+scale workflow deploy record --version v0.49.0 --commit <sha> --commit-time <iso> --completed-at <iso> --source release --json
+scale workflow deploy record --status failed --failed-at <iso> --restored-at <iso> --source ci --json
+scale workflow deploy list --days 30 --json
+```
+
+These commands write `.scale/release/deployments.jsonl`. `scale ship --record-deployment` records only after a real governed ship commit succeeds; `--no-commit` delivery reports are not counted as deployments. `scale workflow deploy record --git-tag <tag>` infers version, commit SHA, commit timestamp, release timestamp, source, and tag evidence from the local Git tag, while explicit fields remain available for CI or external release systems. `scale workflow effectiveness` reads the ledger for DORA deployment frequency, lead time for changes, change failure rate, and recovery time. Failed deployments without `restoredAt` remain partial evidence until recovery is closed.
+
+Cortex instinct hit rate is measured only from runtime evidence. The denominator comes from session-start Cortex metadata in `.scale/events/sessions/*.jsonl` (`metadata.cortex.instinctsApplied`), and successful outcomes come from `.scale/instincts/.audit.jsonl` `apply` entries with `application-succeeded`. Legacy YAML counters are treated as partial evidence; static instincts alone do not prove that learning reached the runtime.
 
 ## Status Model
 

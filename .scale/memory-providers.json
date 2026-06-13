@@ -3,10 +3,7 @@
   "routing": {
     "mode": "external-first",
     "defaultOrder": [
-      "gbrain",
-      "memos",
-      "agentmemory",
-      "scale-local"
+      "gbrain"
     ],
     "allowExternalWrite": false,
     "requireEvidence": true,
@@ -14,31 +11,11 @@
   },
   "providers": [
     {
-      "id": "agentmemory",
-      "kind": "agentmemory",
-      "enabled": true,
-      "priority": 90,
-      "endpoint": "http://localhost:3111",
-      "statusPath": "/health",
-      "searchPath": "/search",
-      "capabilities": [
-        "semantic-recall",
-        "session-memory",
-        "mcp"
-      ],
-      "safetyLevel": "review-required",
-      "writeMode": "disabled",
-      "attribution": {
-        "license": "Apache-2.0",
-        "sourceUrl": "https://github.com/rohitg00/agentmemory",
-        "notice": "Self-hosted local memory server. Default port 3111. Start with: npx @agentmemory/agentmemory"
-      }
-    },
-    {
       "id": "gbrain",
       "kind": "gbrain",
       "enabled": true,
       "priority": 95,
+      "homeDir": ".scale/memory/gbrain-home",
       "statusPath": "/health",
       "searchPath": "/search",
       "apiKeyEnv": "GBRAIN_API_KEY",
@@ -55,40 +32,6 @@
         "sourceUrl": "https://github.com/garrytan/gbrain",
         "notice": "Optional graph memory provider. Treat returned knowledge as recall evidence, not final truth."
       }
-    },
-    {
-      "id": "memos",
-      "kind": "memos",
-      "enabled": true,
-      "priority": 85,
-      "endpoint": "http://localhost:8001/api/openmem/v1",
-      "statusPath": "/health",
-      "searchPath": "/search/memory",
-      "apiKeyEnv": "MEMOS_API_KEY",
-      "capabilities": [
-        "semantic-recall",
-        "graph-recall",
-        "session-memory",
-        "mcp"
-      ],
-      "safetyLevel": "review-required",
-      "writeMode": "disabled",
-      "attribution": {
-        "license": "Apache-2.0",
-        "sourceUrl": "https://github.com/MemTensor/MemOS",
-        "notice": "Memory Operating System — graph-first 3-layer memory. Self-host: docker compose up. Cloud: set MEMOS_API_KEY from memos-dashboard.openmem.net"
-      }
-    },
-    {
-      "id": "scale-local",
-      "kind": "scale-local",
-      "enabled": true,
-      "priority": 10,
-      "capabilities": [
-        "keyword-recall"
-      ],
-      "safetyLevel": "trusted-local",
-      "writeMode": "candidate-only"
     }
   ]
 }

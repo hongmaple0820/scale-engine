@@ -109,10 +109,13 @@ function isRegexRuleDefinition(text: string): boolean {
   const trimmed = text.trim()
   return /^\/.*\/[dgimsuy]*,?$/.test(trimmed) ||
     /^\/.*\/[dgimsuy]*,?\s*\/\/.*$/.test(trimmed) ||
+    /^(?:if\s*\(|return\s+)?\/.*\/[dgimsuy]*\.(?:test|exec)\(/.test(trimmed) ||
     /^\/.*\/[dgimsuy]*\.(?:test|exec)\(/.test(trimmed) ||
+    /=\s*\/.*\/[dgimsuy]*\.(?:test|exec)\(/.test(trimmed) ||
     /=\s*\/.*\/[dgimsuy]*\s*(?:[),;]|$)/.test(trimmed) ||
     /\bfirstMatch\([^,]+,\s*\/.*\/[dgimsuy]*\)?/.test(trimmed) ||
     /^pattern:\s*\/.*\/[dgimsuy]*,?$/.test(trimmed) ||
+    /^(?:title|name|description|recommendation|remediation|reason|label):\s*['"`].*['"`],?$/.test(trimmed) ||
     // Array of regex patterns: /pattern/flags, // comment
     /^\/.*\/[dgimsuy]*\s*,/.test(trimmed)
 }
@@ -120,12 +123,15 @@ function isRegexRuleDefinition(text: string): boolean {
 function isTestDiffFixture(file: string, text: string): boolean {
   if (!isTestPath(file)) return false
   const trimmed = text.trim()
-  const fixtureRiskPattern = /(?:password|api[_-]?key|secret|token|auth|credential|private[_-]?key|git add|shell: true|innerHTML|@ts-ignore|catch)/i
+  const fixtureRiskPattern = /(?:password|api[_-]?key|secret|token|auth|credential|private[_-]?key|git add|rm\s+-rf|curl|wget|Invoke-WebRequest|Invoke-Expression|shell: true|innerHTML|dangerouslySetInnerHTML|document\.write|eval\(|new Function|@ts-ignore|catch)/i
   return (
     /\b(?:text|diff|diffs|[A-Za-z]+Diff)\b\s*[:=]/.test(text) && /['"`]\+/.test(text)
   ) || (
     /['"`][^'"`]+['"`]\s*:/.test(trimmed) &&
-    /['"`].*(?:password|api[_-]?key|secret|token|auth|credential|private[_-]?key|git add|shell: true|innerHTML|@ts-ignore|catch)/i.test(trimmed)
+    /['"`].*(?:password|api[_-]?key|secret|token|auth|credential|private[_-]?key|git add|rm\s+-rf|curl|wget|Invoke-WebRequest|Invoke-Expression|shell: true|innerHTML|dangerouslySetInnerHTML|document\.write|eval\(|new Function|@ts-ignore|catch)/i.test(trimmed)
+  ) || (
+    isCommentOrWhitespace(trimmed) &&
+    fixtureRiskPattern.test(trimmed)
   ) || (
     /^['"`].*['"`]\s*,?$/.test(trimmed) &&
     fixtureRiskPattern.test(trimmed)
@@ -133,7 +139,56 @@ function isTestDiffFixture(file: string, text: string): boolean {
 }
 
 function getExecutableAddedLines(diff: DiffInput): DiffLine[] {
-  return getAddedLines(diff.text).filter(line => !isRegexRuleDefinition(line.text) && !isTestDiffFixture(diff.file, line.text))
+  const lines = getAddedLines(diff.text)
+  const executable: DiffLine[] = []
+  let insideTestFixtureTemplate = false
+
+  for (const line of lines) {
+    if (isTestPath(diff.file)) {
+      const startsFixtureTemplate = startsTestFixtureTemplate(line.text)
+      if (insideTestFixtureTemplate || startsFixtureTemplate) {
+        const closesTemplate = containsUnescapedBacktick(line.text) && !startsFixtureTemplate
+        insideTestFixtureTemplate = startsFixtureTemplate ? !templateStartsAndEndsOnSameLine(line.text) : !closesTemplate
+        continue
+      }
+    }
+
+    if (!isRegexRuleDefinition(line.text) && !isTestDiffFixture(diff.file, line.text)) {
+      executable.push(line)
+    }
+  }
+
+  return executable
+}
+
+function startsTestFixtureTemplate(text: string): boolean {
+  return /\b(?:write|writeFileSync|appendFileSync)\s*\([^)]*,\s*`/.test(text) ||
+    /\b(?:text|diff|diffs|content|fixture)\b\s*[:=]\s*`/.test(text)
+}
+
+function templateStartsAndEndsOnSameLine(text: string): boolean {
+  return countUnescapedBackticks(text) >= 2
+}
+
+function containsUnescapedBacktick(text: string): boolean {
+  return countUnescapedBackticks(text) > 0
+}
+
+function countUnescapedBackticks(text: string): number {
+  let count = 0
+  let escaped = false
+  for (const char of text) {
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '`') count++
+  }
+  return count
 }
 
 function findEmptyCatch(lines: DiffLine[]): DiffLine | undefined {
