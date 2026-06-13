@@ -261,7 +261,11 @@ describe('GovernanceMetricsCalculator', () => {
     const obsDir = join(dir, 'observations')
     mkdirSync(obsDir, { recursive: true })
 
-    const obs = makeObservation({ gateName: 'G7', gateStatus: 'PASS' })
+    const obs = makeObservation({
+      timestamp: new Date(Date.now() - 1000).toISOString(),
+      gateName: 'G7',
+      gateStatus: 'PASS',
+    })
     writeFileSync(join(obsDir, '2026-05-27.jsonl'), 'not-json\n' + JSON.stringify(obs) + '\n')
 
     const calculator = new GovernanceMetricsCalculator(dir)
@@ -330,7 +334,7 @@ describe('GovernanceMetricsCalculator', () => {
     const dir = makeDir('cortex-metrics-autofix-events-')
     const eventsDir = join(dir, 'events')
     mkdirSync(eventsDir, { recursive: true })
-    const now = Date.now()
+    const now = Date.now() - 1000
     const events = [
       {
         id: 'EVT-autofix-pass',

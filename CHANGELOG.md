@@ -1,3 +1,11 @@
+## 0.50.1 - 2026-06-14
+
+### CI and Workflow
+- Stabilize Cortex governance metrics tests for tag-based Linux CI by avoiding right-open time-window boundary fixtures.
+- Keep the 0.50 release payload unchanged while unblocking automated tag publish.
+
+---
+
 ## 0.50.0 - 2026-06-14
 
 ### Features
