@@ -143,6 +143,22 @@ Strategic value:
 
 Adapter expansion should not become the main roadmap by itself. The strategic value comes from shared governance semantics, not from the count of supported agents.
 
+### 3.6 Dashboard and Prompt Studio as an Adoption Surface
+
+SCALE now has a Vue 3 + Naive UI default dashboard at the server root with Prompt Studio for built-in vibe templates, phase prompt registry entries, prompt packs, project/global custom prompts, and deterministic prompt optimization.
+
+Strategic value:
+
+- makes runtime capability gaps visible through an explicit data-source readiness matrix instead of unexplained empty panels
+- makes the existing prompt assets discoverable without requiring users to remember CLI flags
+- gives vibe coding prompts a copy/download/export surface inside the same dashboard as documents, repo knowledge, gbrain memory, graphs, metrics, and gates
+- keeps prompt optimization local and deterministic, so it can be tested and versioned like normal code
+- preserves the core boundary: prompts help start and shape work, but gates, evidence, memory, and runtime status decide whether work is complete
+
+This helps adoption, but it should not change the category claim. SCALE is not trying to win by having the largest prompt library. The prompt surface is valuable because it is attached to governed execution, not because prompt text is sufficient by itself.
+
+The dashboard itself must remain evidence-honest. Normal `npm run serve` can show filesystem-backed documents, prompt templates, repo-native knowledge base data, Graphify graph outputs, gbrain memory, command evidence, model usage, topology, monitoring, and runtime ledgers; it should mark EventBus/FSM-backed realtime transitions as partial until those runtime dependencies are actually injected. Knowledge base and memory are separate surfaces: knowledge comes from documents, `.scale/knowledge.db`, LLM/Karpathy guidance, and graph artifacts, while gbrain memory is the evidence-backed recall/review system.
+
 ## 4. Honest Capability Assessment
 
 SCALE can already claim:
@@ -152,6 +168,7 @@ SCALE can already claim:
 - hard verification gates for delivery claims
 - evidence-based runtime reporting
 - Agent Loop readiness reporting from local execution, recovery, guardrail, budget, delegation, and termination evidence
+- dashboard Prompt Studio for built-in and custom prompt assets plus deterministic optimization
 - first-class supply-chain audit direction
 - growing adapter coverage
 - memory and skill orchestration foundations
@@ -167,6 +184,40 @@ SCALE should not yet overclaim:
 - universal skill routing intelligence
 
 Use target ranges only in roadmap or evaluation documents, not as product claims, until eval evidence supports them.
+
+### 4.1 Horizontal Comparison
+
+This comparison is methodology-level. It is based on repo-native integration points, local skill documentation, and SCALE's current implementation, not on unverified external benchmark claims.
+
+| Workflow / method | Strong at | Weak at | SCALE relationship |
+| --- | --- | --- | --- |
+| Superpowers brainstorming | upfront clarification, approach comparison, design approval before implementation | intentionally blocks implementation until the spec path is approved; not itself an evidence ledger or release gate | SCALE should borrow the discipline of explicit design approval, then carry the result into executable gates, runtime evidence, and dashboard status |
+| gstack-style workflows | practical QA, dogfooding, browser evidence, shipping/review rituals, project learnings | optimized around skill workflows and browser/test execution rather than a project-wide governance runtime | SCALE can interoperate with gstack-style skills while adding persistent gates, multi-project dashboard state, memory routing, and ship blocking |
+| ECC Instincts | observation -> pattern -> instinct extraction, session-start injection, repeated-failure learning | instinct existence does not prove runtime application unless hit-rate evidence is recorded | Scale Cortex aligns with this pattern, but must keep proving that instincts actually enter runtime and improve outcomes |
+| OMC-style skill/agent methods | agent and skill packaging, deep-interview style demand refinement, portable skill metadata | can become a library of methods without hard workflow completion controls | SCALE treats OMC/gstack/ECC as import/export and inspiration surfaces, while keeping native FSM, gates, and evidence as the source of truth |
+| Prompt-only vibe coding packs | fast onboarding, lower activation energy, useful first drafts | weak against hallucinated completion, skipped tests, long-task drift, and stale memory | SCALE now exposes prompts in Prompt Studio, but keeps them subordinate to verification, memory, and governance evidence |
+
+Current advantages:
+
+- stronger anti-fake-completion posture because delivery claims need local evidence
+- multi-surface visibility: CLI, dashboard, AI OS status, workflow effectiveness, and runtime ledger
+- provider-aware memory strategy with gbrain-only policy support when configured
+- prompt assets, documents, knowledge, metrics, and gate evidence can be reviewed in one dashboard
+
+Current disadvantages:
+
+- fewer polished public examples and demo projects than mature workflow ecosystems
+- Prompt Studio is now visible, but not yet connected to guided task creation or one-click plan/run flows
+- the Vue dashboard now explains partial/missing sources, but the normal HTTP serve path is still read-mostly until EventBus, artifact store, and FSM wiring are completed
+- comparative quality claims still need repeatable eval datasets and release-to-release trend reports
+- external skill ecosystems may have broader community templates, even when they lack hard gates
+
+Highest-leverage improvements:
+
+- add guided "prompt -> plan -> verify" handoff from Prompt Studio into `scale ai-os plan` or the normal workflow commands
+- publish a small benchmark corpus for hallucination, recovery, memory recall, long-task handling, and gate effectiveness
+- add dashboard baseline trends for prompt optimizer use, token usage, verification pass rate, and memory recall usefulness
+- keep interop adapters for gstack/OMC/ECC, but avoid letting adapter breadth outrank native governance quality
 
 ## 5. Current Gaps
 

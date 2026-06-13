@@ -605,6 +605,77 @@ describe('InstinctStore', () => {
     expect(store.history(id).map(entry => entry.op)).toContain('apply')
   })
 
+  it('caps hit rate when applications outnumber observations', () => {
+    const dir = makeDir('cortex-hitrate-cap-')
+    const store = new InstinctStore(dir)
+
+    const id = store.save(makeInstinct({
+      trigger: 'over-applied instinct',
+      observations: 3,
+      appliedCount: 3,
+    }))
+    store.recordApplication(id, true)
+
+    const loaded = store.findById(id)
+    expect(loaded?.appliedCount).toBe(4)
+    expect(loaded?.hitRate).toBe(1)
+  })
+
+  it('separates serialized evidence from action when re-saving instincts', () => {
+    const dir = makeDir('cortex-evidence-dedupe-')
+    const store = new InstinctStore(dir)
+
+    const id = store.save(makeInstinct({
+      trigger: 'evidence dedupe',
+      action: '## Action\nRecord one evidence section only',
+      evidence: ['[2026-06-13] evidence dedupe'],
+    }))
+    store.recordApplication(id, true)
+
+    const loaded = store.findById(id)
+    expect(loaded?.action).toBe('## Action\nRecord one evidence section only')
+    expect(loaded?.evidence).toEqual(['[2026-06-13] evidence dedupe'])
+  })
+
+  it('repairs historical instinct metric and evidence serialization drift', () => {
+    const dir = makeDir('cortex-repair-')
+    const store = new InstinctStore(dir)
+    const domainDir = join(dir, 'general')
+    mkdirSync(domainDir, { recursive: true })
+    writeFileSync(join(domainDir, 'instinct-bad.yaml'), [
+      '---',
+      'id: instinct-bad',
+      'trigger: "repair bad metric"',
+      'confidence: 0.5',
+      'domain: general',
+      'source: "test"',
+      'scope: project',
+      'project_id: ',
+      'observations: 3',
+      'applied_count: 4',
+      'hit_rate: 1.33',
+      'created_at: 2026-06-13T00:00:00.000Z',
+      'updated_at: 2026-06-13T00:00:00.000Z',
+      '---',
+      '',
+      '## Action',
+      'Verify evidence before claiming completion',
+      '',
+      '## Evidence',
+      '  - "[2026-06-13] repair bad metric"',
+      '',
+    ].join('\n'), 'utf-8')
+
+    const report = store.repairIntegrity()
+    const loaded = store.findById('instinct-bad')
+
+    expect(report).toMatchObject({ scanned: 1, repaired: ['instinct-bad'], skipped: [] })
+    expect(loaded?.hitRate).toBe(1)
+    expect(loaded?.action).toBe('## Action\nVerify evidence before claiming completion')
+    expect(loaded?.evidence).toEqual(['[2026-06-13] repair bad metric'])
+    expect(store.history('instinct-bad').map(entry => entry.op)).toContain('repair')
+  })
+
   it('computes stats by domain and confidence bucket', () => {
     const dir = makeDir('cortex-stats-')
     const store = new InstinctStore(dir)
@@ -719,14 +790,47 @@ describe('SessionInjector', () => {
     const dir = makeDir('cortex-minimal-')
     const store = new InstinctStore(dir)
 
-    store.save(makeInstinct({ id: 'i1', trigger: 't1', confidence: 0.7 }))
+    store.save(makeInstinct({
+      id: 'i1',
+      trigger: 't1',
+      confidence: 0.7,
+      action: '## Action\nFix the test before reporting success',
+    }))
 
     const injector = new SessionInjector(store)
     const injection = injector.buildMinimal()
 
     expect(injection.instinctCount).toBe(1)
     expect(injection.content.length).toBeLessThan(500) // minimal is shorter
+    expect(injection.content).toContain('Fix the test before reporting success')
     expect(injection.content).toContain('证据纪律') // contract present even when minimal
+  })
+
+  it('uses recommended action rather than a markdown heading in minimal injection', () => {
+    const dir = makeDir('cortex-minimal-summary-')
+    const store = new InstinctStore(dir)
+
+    store.save(makeInstinct({
+      trigger: 'workflow incomplete',
+      confidence: 0.5,
+      observations: 3,
+      action: [
+        '## Trigger',
+        'G12: workflow incomplete',
+        '',
+        '## Observed Behavior',
+        'This failure pattern has repeated.',
+        '',
+        '## Recommended Action',
+        'Record workflow evidence before claiming completion.',
+      ].join('\n'),
+    }))
+
+    const injection = new SessionInjector(store).buildMinimal()
+
+    expect(injection.instinctCount).toBe(1)
+    expect(injection.content).toContain('Record workflow evidence before claiming completion.')
+    expect(injection.content).not.toContain('testing: Trigger')
   })
 
   it('keeps the evidence-discipline contract in minimal injection with no instincts', () => {

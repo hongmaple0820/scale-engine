@@ -6,6 +6,7 @@ Memory Fabric 是 SCALE 用来降低长会话 token 消耗、提升 Agent 记忆
 
 - Runtime Evidence：真实运行过的命令、工具、浏览器、skill、MCP 和人工验证证据。
 - Session Events：当前会话的阶段、工具使用和证据写入事件。
+- Cortex Learned Instincts：从 `.scale/instincts/` 读取当前 SessionStart 会注入的强置信或已审 moderate instinct，把自我学习结果作为可审计上下文，而不是只停留在启动提示词里。
 - Knowledge Recall：从项目知识库召回已验证经验、规则和历史教训。
 - Project Graph：检测 `graphify-out/graph.json`、`graphify-out/GRAPH_REPORT.md` 或 `.scale/graph/manifest.json`，只引用图谱状态和摘要，不把大型图谱全文塞进上下文。
 
@@ -68,8 +69,10 @@ Memory Fabric 使用估算 token 预算控制上下文规模。优先级从高�
 
 1. Runtime Evidence：失败证据和通过证据优先保留。
 2. Session Events：最近会话事件优先保留。
-3. Knowledge Recall：按任务描述和文件范围召回 Top K 知识。
-4. Project Graph：只保留图谱报告路径和短摘要。
+3. Cortex Learned Instincts：已审学习规则优先进入上下文，但排在真实运行证据之后。
+4. Provider Memory：从外部或本地 provider 召回的长期记忆。
+5. Knowledge Recall：按任务描述和文件范围召回 Top K 知识。
+6. Project Graph：只保留图谱报告路径和短摘要。
 
 当预算不足时，低优先级 section 会被标记为 omitted，并写入原因。这样 Agent 能知道哪些上下文被刻意裁剪，而不是误以为项目没有相关信息。
 
@@ -78,6 +81,7 @@ Memory Fabric 使用估算 token 预算控制上下文规模。优先级从高�
 Memory Fabric 不替代知识库。它是知识库、运行证据和图谱之间的读取层：
 
 - Runtime Evidence 记录“这次实际做过什么”。
+- Cortex 记录“反复观察后已形成的行为 instinct”，Memory Fabric 会读取可注入 instinct，供任务恢复和评审使用。
 - Knowledge Base 记录“长期可复用的经验和规则”。
 - Graphify 或项目图谱记录“模块之间的结构关系”。
 - Memory Fabric 在每次任务开始、恢复、评审或发版前，生成本次最相关的上下文包。

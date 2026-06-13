@@ -3,7 +3,6 @@
 // Historical context wrapped in narrative sentinels (anti-replay protection)
 // Injects: instincts + prior session summary + learned skills + project detection
 
-import { logger } from '../core/logger.js'
 import { EVIDENCE_DISCIPLINE_PROMPT, EVIDENCE_DISCIPLINE_PROMPT_MINIMAL } from '../agents/evidenceDiscipline.js'
 import type { Instinct } from './InstinctExtractor.js'
 import type { InstinctStore } from './InstinctStore.js'
@@ -131,7 +130,7 @@ export class SessionInjector {
 
     // One-liner format for minimal context consumption
     const lines = instincts.map(i =>
-      `[Cortex ${i.confidence}] ${i.domain}: ${i.action.split('\n')[0]?.replace(/^##\s*/, '')?.slice(0, 120)}`,
+      `[Cortex ${i.confidence}] ${i.domain}: ${summarizeInstinctAction(i)}`,
     )
 
     return {
@@ -207,10 +206,11 @@ export class SessionInjector {
     const confidenceLabel = instinct.confidence >= 0.9 ? 'NEAR-CERTAIN' :
       instinct.confidence >= 0.7 ? 'STRONG' :
       instinct.confidence >= 0.5 ? 'MODERATE' : 'TENTATIVE'
+    const hitRate = Math.max(0, Math.min(1, instinct.hitRate))
 
     return [
       `### [${confidenceLabel}] ${instinct.domain}/${instinct.id}`,
-      `**Confidence:** ${(instinct.confidence * 100).toFixed(0)}% | **Observed:** ${instinct.observations} times | **Hit Rate:** ${(instinct.hitRate * 100).toFixed(0)}%`,
+      `**Confidence:** ${(instinct.confidence * 100).toFixed(0)}% | **Observed:** ${instinct.observations} times | **Hit Rate:** ${(hitRate * 100).toFixed(0)}%`,
       '',
       instinct.action,
       '',
@@ -233,4 +233,43 @@ export class SessionInjector {
       fallbackLimit: 3,
     })
   }
+}
+
+function summarizeInstinctAction(instinct: Instinct): string {
+  const lines = instinct.action
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(line => line.trim())
+
+  const preferred = firstLineAfterHeading(lines, ['Recommended Action', 'Action', 'Known Resolutions'])
+  const fallback = preferred ?? lines.find(line =>
+    line &&
+    !/^#{1,6}\s+/.test(line) &&
+    !/^[-*_`>]+$/.test(line) &&
+    !/^## Evidence$/i.test(line)
+  )
+  const summary = cleanSummary(fallback ?? instinct.trigger)
+  return summary.slice(0, 140)
+}
+
+function firstLineAfterHeading(lines: string[], headings: string[]): string | undefined {
+  const normalizedHeadings = headings.map(heading => heading.toLowerCase())
+  for (let index = 0; index < lines.length; index++) {
+    const match = lines[index]?.match(/^#{1,6}\s+(.+)$/)
+    if (!match || !normalizedHeadings.includes(match[1].trim().toLowerCase())) continue
+    for (const candidate of lines.slice(index + 1)) {
+      if (!candidate) continue
+      if (/^#{1,6}\s+/.test(candidate)) break
+      return candidate
+    }
+  }
+  return undefined
+}
+
+function cleanSummary(value: string): string {
+  return value
+    .replace(/^[-*]\s+/, '')
+    .replace(/^#+\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

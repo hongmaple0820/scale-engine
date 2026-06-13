@@ -9,6 +9,8 @@ import {
 } from '../runtime/RuntimeEvidenceLedger.js'
 import { SessionLedger, type RuntimeSessionEvent, type RuntimeSessionLevel } from '../runtime/SessionLedger.js'
 import { redactEvidenceText } from '../tools/ToolEvidenceStore.js'
+import { InstinctStore } from '../cortex/InstinctStore.js'
+import type { Instinct } from '../cortex/InstinctExtractor.js'
 import { recallMemoryProviders, type MemoryProviderRecallItem } from './MemoryProviders.js'
 
 export interface MemoryFabricOptions {
@@ -73,6 +75,7 @@ export interface ContextPack {
 export type ContextPackItem =
   | RuntimeEvidenceContextItem
   | RuntimeSessionContextItem
+  | CortexInstinctContextItem
   | ProviderMemoryContextItem
   | KnowledgeContextItem
   | GraphContextItem
@@ -98,6 +101,18 @@ export interface RuntimeSessionContextItem {
   phase?: string
   message?: string
   createdAt: string
+}
+
+export interface CortexInstinctContextItem {
+  type: 'cortex-instinct'
+  id: string
+  domain: string
+  trigger: string
+  confidence: number
+  observations: number
+  hitRate: number
+  action: string
+  evidence: string[]
 }
 
 export interface ProviderMemoryContextItem {
@@ -180,6 +195,7 @@ export class MemoryFabric {
     const drafts: DraftSection[] = [
       this.runtimeEvidenceSection(task),
       this.sessionEventsSection(task),
+      this.cortexInstinctSection(),
       await this.providerMemorySection(task, input.knowledgeTopK ?? DEFAULT_KNOWLEDGE_TOP_K),
       await this.knowledgeSection(task, input.knowledgeTopK ?? DEFAULT_KNOWLEDGE_TOP_K),
       this.graphSection(),
@@ -247,6 +263,22 @@ export class MemoryFabric {
       title: 'Session Events',
       priority: 80,
       items: events.map(toSessionEventItem),
+    }
+  }
+
+  private cortexInstinctSection(): DraftSection {
+    const store = new InstinctStore(join(this.scaleRoot, 'instincts'), { createDirs: false })
+    const instincts = store.getInjectionInstincts(undefined, {
+      allowModerateFallback: true,
+      fallbackMinConfidence: 0.5,
+      fallbackMinObservations: 3,
+      fallbackLimit: 3,
+    })
+    return {
+      id: 'cortex-instincts',
+      title: 'Cortex Learned Instincts',
+      priority: 75,
+      items: instincts.map(toCortexInstinctItem),
     }
   }
 
@@ -435,6 +467,20 @@ function toSessionEventItem(event: RuntimeSessionEvent): RuntimeSessionContextIt
   }
 }
 
+function toCortexInstinctItem(instinct: Instinct): CortexInstinctContextItem {
+  return {
+    type: 'cortex-instinct',
+    id: instinct.id,
+    domain: instinct.domain,
+    trigger: instinct.trigger,
+    confidence: instinct.confidence,
+    observations: instinct.observations,
+    hitRate: Math.max(0, Math.min(1, instinct.hitRate)),
+    action: summarizeInstinctAction(instinct.action, instinct.trigger),
+    evidence: instinct.evidence.slice(0, 3),
+  }
+}
+
 function toProviderMemoryItem(item: MemoryProviderRecallItem): ProviderMemoryContextItem {
   return {
     type: 'provider-memory',
@@ -452,9 +498,39 @@ function toProviderMemoryItem(item: MemoryProviderRecallItem): ProviderMemoryCon
 function renderItemSummary(item: ContextPackItem): string {
   if (item.type === 'runtime-evidence') return `[${item.status}] ${item.title}: ${item.summary}`
   if (item.type === 'session-event') return `${item.eventType}${item.phase ? `/${item.phase}` : ''}: ${item.message ?? item.createdAt}`
+  if (item.type === 'cortex-instinct') return `${item.domain}/${item.id}: ${item.action} (${item.confidence.toFixed(2)})`
   if (item.type === 'provider-memory') return `${item.provider}/${item.id}: ${item.title} (${item.confidence.toFixed(2)})`
   if (item.type === 'knowledge') return `${item.title} (${item.tags.join(', ') || 'no tags'})`
   return `${item.kind}: ${item.path}`
+}
+
+function summarizeInstinctAction(action: string, fallback: string): string {
+  const lines = action
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(line => line.trim())
+  const preferred = firstLineAfterHeading(lines, ['Recommended Action', 'Action', 'Known Resolutions'])
+  const summary = preferred ?? lines.find(line =>
+    line &&
+    !/^#{1,6}\s+/.test(line) &&
+    !/^[-*_`>]+$/.test(line) &&
+    !/^## Evidence$/i.test(line)
+  ) ?? fallback
+  return truncate(summary.replace(/^[-*]\s+/, '').replace(/^#+\s+/, '').replace(/\s+/g, ' ').trim(), 180)
+}
+
+function firstLineAfterHeading(lines: string[], headings: string[]): string | undefined {
+  const normalizedHeadings = headings.map(heading => heading.toLowerCase())
+  for (let index = 0; index < lines.length; index++) {
+    const match = lines[index]?.match(/^#{1,6}\s+(.+)$/)
+    if (!match || !normalizedHeadings.includes(match[1].trim().toLowerCase())) continue
+    for (const candidate of lines.slice(index + 1)) {
+      if (!candidate) continue
+      if (/^#{1,6}\s+/.test(candidate)) break
+      return candidate
+    }
+  }
+  return undefined
 }
 
 function estimateTokens(text: string): number {

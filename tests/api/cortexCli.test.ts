@@ -154,6 +154,79 @@ describe('cortex CLI', () => {
     expect(countInstinctFiles(join(scaleDir, 'instincts'))).toBe(0)
   })
 
+  it('treats stale-filtered candidates as reviewed in cortex verify', async () => {
+    const projectDir = makeProject('scale-cortex-cli-verify-stale-')
+    const scaleDir = join(projectDir, '.scale')
+    const base = Date.UTC(2026, 5, 12, 10, 0)
+    for (let i = 0; i < 5; i++) {
+      writeGateEvidence(scaleDir, {
+        id: `GATE-G7-${base + i}-fail`,
+        createdAt: base + i,
+      })
+    }
+    writeGateEvidence(scaleDir, {
+      id: `GATE-G7-${base + 10_000}-pass`,
+      createdAt: base + 10_000,
+      passed: true,
+      path: 'src',
+    })
+    new InstinctStore(join(scaleDir, 'instincts')).save({
+      id: 'instinct-verify-stale',
+      trigger: 'verify stale candidate handling',
+      confidence: 0.9,
+      domain: 'governance',
+      source: 'test',
+      scope: 'global',
+      action: '## Action\nKeep stale candidates filtered during Cortex verification',
+      evidence: ['[2026-06-13] verify stale candidate handling'],
+      observations: 5,
+      createdAt: '2026-06-13T00:00:00.000Z',
+      updatedAt: '2026-06-13T00:00:00.000Z',
+      appliedCount: 0,
+      hitRate: 0,
+    })
+
+    const result = await runScale(['cortex', 'verify', '--dir', projectDir, '--json'], {
+      SCALE_LOCAL_MODEL: '',
+    })
+    const report = JSON.parse(result.stdout) as {
+      overall: string
+      checks: Array<{ name: string; status: string; detail: string }>
+    }
+    const candidateReview = report.checks.find(check => check.name === 'Candidate review')
+    const reflexion = report.checks.find(check => check.name === 'Reflexion engine')
+
+    expect(result.exitCode).toBe(0)
+    expect(report.overall).toBe('PASS')
+    expect(candidateReview).toMatchObject({
+      status: 'PASS',
+      detail: 'accepted=0, stale-filtered=1, needs-review=0',
+    })
+    expect(reflexion).toMatchObject({
+      status: 'PASS',
+      detail: 'SCALE_LOCAL_MODEL not set — deterministic heuristic fallback available',
+    })
+  })
+
+  it('fails cortex verify when local reflexion model is required but unavailable', async () => {
+    const projectDir = makeProject('scale-cortex-cli-verify-require-model-')
+    const result = await runScale(['cortex', 'verify', '--dir', projectDir, '--require-local-model', '--json'], {
+      SCALE_LOCAL_MODEL: '',
+    })
+    const report = JSON.parse(result.stdout) as {
+      overall: string
+      checks: Array<{ name: string; status: string; detail: string }>
+    }
+    const reflexion = report.checks.find(check => check.name === 'Reflexion engine')
+
+    expect(result.exitCode).toBe(1)
+    expect(report.overall).toBe('FAIL')
+    expect(reflexion).toMatchObject({
+      status: 'FAIL',
+      detail: 'SCALE_LOCAL_MODEL not set and --require-local-model was requested',
+    })
+  })
+
   it('approves an accepted candidate into the injection store', async () => {
     const projectDir = makeProject('scale-cortex-cli-approve-')
     const scaleDir = join(projectDir, '.scale')

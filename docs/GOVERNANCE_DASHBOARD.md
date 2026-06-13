@@ -1,6 +1,6 @@
 # Governance Dashboard
 
-Status: implemented baseline
+Status: implemented baseline, Vue dashboard default at the server root
 Since: v0.25 development branch
 
 Governance Dashboard turns existing SCALE evidence into a single reviewable HTML page. It does not replace Markdown, JSON, runtime evidence, eval records, or memory. It is a human-facing view over those sources.
@@ -17,7 +17,7 @@ scale artifact dashboard --json
 
 ## Live Dashboard Server
 
-The live SPA dashboard is served by:
+The live dashboard is served by the Hono dashboard server. The Vue 3 + Vite + Naive UI dashboard is the default at the server root `/`. Old `/spa/` and `/vue/` preview URLs redirect to `/` for compatibility; `/classic/` is no longer a supported dashboard surface.
 
 ```bash
 npm run serve
@@ -27,8 +27,10 @@ The server prints direct URLs after startup, for example:
 
 ```text
 SCALE Dashboard is running:
-- scale-engine: http://127.0.0.1:3210/spa/ (E:\project\scale-engine)
+- scale-engine: http://127.0.0.1:3210/ (E:\project\scale-engine)
 ```
+
+Open the printed root URL for the default dashboard. If an old process is still bound to the port, stop it and restart `npm run serve`; otherwise the browser may show an older dashboard bundle and newer APIs such as `/api/prompts` or `/api/dashboard/capabilities` may be missing.
 
 Default behavior is intentionally compatible with earlier versions:
 
@@ -52,8 +54,60 @@ When `SCALE_DASHBOARD_PORT=auto`, `SCALE_DASHBOARD_AUTO_PORT=1`, or more than on
 
 The live dashboard currently exposes:
 
-- `Documents`: preview `.html`, `.md`, and `.json` from `.scale/docs`, `.scale/artifacts`, and `docs`.
-- `Knowledge`: browse local Memory Brain nodes and run explicit provider recall queries through the configured memory provider route.
+- `Overview`: data-source readiness, realtime mode, artifact/event snapshots, and partial/missing source explanations.
+- `Workflow`: artifact/FSM closure status and runtime-evidence visibility.
+- `Topology`: codegraph-derived topology, layer/kind filtering, domain summary, node detail, and JSON/SVG export.
+- `Monitoring`: detector, defect, event, command pass/fail, and token-compression monitoring.
+- `Tokens & Cost`: command-output compression metrics and model usage from `.scale/model-usage/usage.jsonl`.
+- `Documents`: preview `.html`, `.md`, and `.json` from `.scale/docs`, `.scale/artifacts`, `.scale/knowledge`, `.scale/graphify-knowledge/entries`, `graphify-out`, and `docs`, grouped by directory with copy/download/export actions.
+- `Knowledge`: separate repo knowledge base, gbrain memory, and graph views. The knowledge-base tab reads knowledge documents, `.scale/knowledge.db`, Karpathy/LLM guidance docs, and Graphify outputs; the memory tab remains the gbrain review/recall surface.
+- `Prompts`: browse built-in vibe coding templates, phase prompt registry entries, project/global custom prompts, prompt packs, and the deterministic prompt optimizer.
+
+## Live Data Contract
+
+The Vue dashboard does not treat an empty chart as success. It reads `GET /api/dashboard/capabilities` and shows each data source as `ready`, `partial`, `missing`, or `error`, including the source path, refresh mode, count, and empty-state reason.
+
+Important signals:
+
+| Signal | Ready when | Partial or missing when |
+| --- | --- | --- |
+| Runtime evidence | `.scale/evidence/runtime/*.json` exists | no governed runtime evidence has been recorded |
+| Command runs | `.scale/evidence/command-runs/*.json` exists | commands were not recorded through the governed runner |
+| Model usage | `.scale/model-usage/usage.jsonl` has records | no `scale token record` data exists, so token/cost charts stay empty |
+| gbrain memory | `.scale/memory/brain.sqlite` has memory nodes | database is absent or exists with zero nodes |
+| Knowledge base | knowledge docs, `.scale/knowledge.db` entries, or `graphify-out/graph.json` exist | no knowledge docs, SQLite entries, or Graphify graph were found |
+| Documents/prototypes | `.html`, `.md`, or `.json` files exist under configured doc/artifact roots | no previewable files were found |
+| Prompt Studio | built-in or project prompt templates are discovered | prompt registry discovery failed |
+| Event stream | server was started with an EventBus | normal `npm run serve` is heartbeat-only SSE plus polling |
+| Artifact transitions | server was started with artifact store and FSM | normal `npm run serve` is read-mostly and transition APIs report partial |
+
+This is intentional: the dashboard should tell users whether a capability is actually wired, not silently present empty UI as a healthy state. The Vue implementation is served from the root URL so users do not need to remember an internal `/spa/` path.
+
+Knowledge is not treated as the same thing as memory. The dashboard keeps `GET /api/knowledge` as the gbrain/provider-memory endpoint, and exposes `GET /api/knowledge-base` for repository knowledge sources: previewable knowledge documents, SQLite knowledge entries, Graphify graph/report artifacts, and a derived gbrain memory graph for visualization/export.
+
+## Prompt Studio
+
+The live SPA exposes prompt assets through `GET /api/prompts` and local prompt optimization through `POST /api/prompts/optimize`.
+
+Prompt Studio is a usability surface, not a new prompt-only execution model. It reads these existing sources:
+
+| Area | Source |
+| --- | --- |
+| Vibe templates | `src/prompts/VibeTemplateGallery.ts` |
+| Phase prompts and packs | `src/prompts/PhasePromptRegistry.ts` |
+| Project custom prompts | `.scale/prompts/*.md` |
+| Global custom prompts | `~/.claude/prompts/*.md` |
+| Prompt optimizer | `src/prompts/PromptOptimizer.ts` |
+
+The page supports search, source filtering, copy, command copy, JSON export, and prompt download. Custom registry prompts that do not have a CLI route are marked copy-only in the dashboard rather than pretending they can be executed through `scale vibe`.
+
+The optimizer uses the same deterministic local logic as:
+
+```bash
+scale prompt optimize --input "raw coding request" --json
+```
+
+It does not call an external Agent SDK or LLM provider. Its output should still go through normal SCALE workflow, verification, review, and ship gates before being treated as delivery evidence.
 
 Knowledge review actions are governed write operations, not direct database edits. The dashboard API accepts `POST /api/knowledge/local/:id/review` with one of four actions:
 

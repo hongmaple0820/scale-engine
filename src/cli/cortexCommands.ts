@@ -262,11 +262,13 @@ export const cortexVerifyCommand = defineCommand({
   },
   args: {
     dir: { type: 'string', default: process.cwd(), description: 'Project directory' },
+    'require-local-model': { type: 'boolean', default: false, description: 'Fail verification when SCALE_LOCAL_MODEL is not configured' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
     const projectDir = String(args.dir ?? process.cwd())
     const scaleDir = join(projectDir, '.scale')
+    const requireLocalModel = args['require-local-model'] === true
 
     const checks: { name: string; status: 'PASS' | 'WARN' | 'FAIL'; detail: string }[] = []
 
@@ -325,8 +327,8 @@ export const cortexVerifyCommand = defineCommand({
       })
       checks.push({
         name: 'Candidate review',
-        status: reviewSummary.stale > 0 || reviewSummary['needs-review'] > 0 ? 'WARN' : 'PASS',
-        detail: `accepted=${reviewSummary.accepted}, stale=${reviewSummary.stale}, needs-review=${reviewSummary['needs-review']}`,
+        status: reviewSummary['needs-review'] > 0 ? 'WARN' : 'PASS',
+        detail: `accepted=${reviewSummary.accepted}, stale-filtered=${reviewSummary.stale}, needs-review=${reviewSummary['needs-review']}`,
       })
     } else {
       checks.push({
@@ -374,10 +376,12 @@ export const cortexVerifyCommand = defineCommand({
     const hasLocalModel = !!process.env.SCALE_LOCAL_MODEL
     checks.push({
       name: 'Reflexion engine',
-      status: hasLocalModel ? 'PASS' : 'WARN',
+      status: hasLocalModel ? 'PASS' : requireLocalModel ? 'FAIL' : 'PASS',
       detail: hasLocalModel
         ? `Local model configured: ${process.env.SCALE_LOCAL_MODEL}`
-        : 'SCALE_LOCAL_MODEL not set — reflexion uses heuristic fallback',
+        : requireLocalModel
+          ? 'SCALE_LOCAL_MODEL not set and --require-local-model was requested'
+          : 'SCALE_LOCAL_MODEL not set — deterministic heuristic fallback available',
     })
 
     // Output
@@ -385,6 +389,7 @@ export const cortexVerifyCommand = defineCommand({
     const warned = checks.filter(c => c.status === 'WARN').length
     const failed = checks.filter(c => c.status === 'FAIL').length
     const overall = failed > 0 ? 'FAIL' : warned > 0 ? 'WARN' : 'PASS'
+    if (failed > 0) process.exitCode = 1
 
     if (args.json) {
       console.log(JSON.stringify({ overall, checks, store: storeStats }, null, 2))
@@ -398,6 +403,45 @@ export const cortexVerifyCommand = defineCommand({
     }
     console.log(`\n  Overall: ${overall} (${passed} passed, ${warned} warnings, ${failed} failures)`)
     console.log(`  Store: ${storeStats.total} instincts across ${Object.keys(storeStats.byDomain).length} domain(s)\n`)
+  },
+})
+
+// ---------------------------------------------------------------------------
+// scale cortex repair
+// ---------------------------------------------------------------------------
+
+export const cortexRepairCommand = defineCommand({
+  meta: {
+    name: 'repair',
+    description: 'Normalize existing Cortex instinct files and record repair audit entries',
+  },
+  args: {
+    dir: { type: 'string', default: process.cwd(), description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = String(args.dir ?? process.cwd())
+    const scaleDir = join(projectDir, '.scale')
+    const store = new InstinctStore(join(scaleDir, 'instincts'))
+    const report = store.repairIntegrity()
+
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2))
+      return
+    }
+
+    console.log('SCALE Cortex - Instinct Store Repair\n')
+    console.log(`  Scanned:  ${report.scanned}`)
+    console.log(`  Repaired: ${report.repaired.length}`)
+    if (report.repaired.length > 0) {
+      for (const id of report.repaired) console.log(`    ${id}`)
+    }
+    if (report.skipped.length > 0) {
+      console.log(`  Skipped:  ${report.skipped.length}`)
+      for (const skipped of report.skipped) {
+        console.log(`    ${skipped.id}: ${skipped.reasons.join('; ')}`)
+      }
+    }
   },
 })
 
@@ -489,6 +533,7 @@ export const cortexCommand = defineCommand({
     approve: cortexApproveCommand,
     reject: cortexRejectCommand,
     verify: cortexVerifyCommand,
+    repair: cortexRepairCommand,
     apply: cortexApplyCommand,
     audit: cortexAuditCommand,
     restore: cortexRestoreCommand,

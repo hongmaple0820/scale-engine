@@ -8,6 +8,7 @@ import { streamSSE } from 'hono/streaming'
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { basename, join, dirname, extname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import Database from 'better-sqlite3'
 import type { ServerType } from '@hono/node-server'
 import type { EventBus } from '../core/eventBus.js'
 import type { Gate } from '../artifact/types.js'
@@ -29,6 +30,13 @@ import { generateTour } from '../topology/TourGenerator.js'
 import { aggregateGovernanceMetrics } from './MetricsAggregator.js'
 import { logger } from '../core/logger.js'
 import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
+import {
+  optimizeCodingPrompt,
+  type PromptOptimizationLanguageInput,
+  type PromptOptimizationResult,
+} from '../prompts/PromptOptimizer.js'
+import { PhasePromptRegistry, type PromptPack, type PromptTemplate } from '../prompts/PhasePromptRegistry.js'
+import { listVisualVibeTemplates, type VisualVibeTemplate } from '../prompts/VibeTemplateGallery.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MEMORY_REVIEW_ACTIONS = ['approve', 'reject', 'stale', 'restore'] as const
@@ -113,6 +121,128 @@ export interface DashboardKnowledgeReport {
   warnings: string[]
 }
 
+export interface DashboardDocumentSummary {
+  name: string
+  path: string
+  type: string
+  size: number
+}
+
+export interface DashboardDocumentTreeNode {
+  name: string
+  path: string
+  type: 'folder' | 'document'
+  size?: number
+  docType?: string
+  children?: DashboardDocumentTreeNode[]
+}
+
+export interface DashboardKnowledgeEntrySummary {
+  id: string
+  title: string
+  content: string
+  type: string
+  tags: string[]
+  score: number
+  createdAt: number
+  updatedAt: number
+  source?: string
+}
+
+export interface DashboardKnowledgeGraphNode {
+  id: string
+  label: string
+  kind: string
+  group: string
+  source: string
+  path?: string
+}
+
+export interface DashboardKnowledgeGraphEdge {
+  source: string
+  target: string
+  label?: string
+}
+
+export interface DashboardKnowledgeGraphReport {
+  status: DashboardDataSourceStatus
+  source: string
+  reportPath?: string
+  nodeCount: number
+  edgeCount: number
+  nodes: DashboardKnowledgeGraphNode[]
+  edges: DashboardKnowledgeGraphEdge[]
+  emptyReason?: string
+}
+
+export interface DashboardKnowledgeBaseReport {
+  project: DashboardProjectSummary
+  generatedAt: number
+  summary: {
+    documents: number
+    entries: number
+    graphNodes: number
+    graphEdges: number
+    memoryNodes: number
+    memoryEdges: number
+  }
+  documents: DashboardDocumentSummary[]
+  documentTree: DashboardDocumentTreeNode[]
+  entries: DashboardKnowledgeEntrySummary[]
+  graph: DashboardKnowledgeGraphReport
+  memoryGraph: DashboardKnowledgeGraphReport
+  exports: {
+    report: string
+    documents: string
+    graph: string
+    memoryGraph: string
+  }
+  warnings: string[]
+}
+
+export type DashboardPromptSource = 'builtin' | 'project' | 'global'
+
+export interface DashboardPromptTemplateSummary extends PromptTemplate {
+  source: DashboardPromptSource
+  command?: string
+}
+
+export interface DashboardPromptPackSummary extends Omit<PromptPack, 'templates'> {
+  templateIds: string[]
+  command: string
+}
+
+export interface DashboardVisualVibeTemplateSummary extends VisualVibeTemplate {
+  command: string
+}
+
+export interface DashboardPromptStudioReport {
+  project: DashboardProjectSummary
+  generatedAt: number
+  summary: {
+    vibeTemplates: number
+    phasePrompts: number
+    packs: number
+    customPrompts: number
+  }
+  commands: {
+    vibeIndex: string
+    vibeTemplate: string
+    vibePack: string
+    promptOptimize: string
+  }
+  vibeTemplates: DashboardVisualVibeTemplateSummary[]
+  phasePrompts: DashboardPromptTemplateSummary[]
+  packs: DashboardPromptPackSummary[]
+  warnings: string[]
+}
+
+export interface DashboardPromptOptimizationReport {
+  project: DashboardProjectSummary
+  generatedAt: number
+  result: PromptOptimizationResult
+}
+
 export interface DashboardProjectsSummaryReport {
   generatedAt: number
   sinceDays: number
@@ -130,6 +260,48 @@ export interface DashboardProjectsSummaryReport {
     gateFailures: number
   }
   projects: DashboardProjectOverview[]
+  warnings: string[]
+}
+
+export type DashboardDataSourceStatus = 'ready' | 'partial' | 'missing' | 'error'
+export type DashboardRefreshMode = 'sse' | 'polling' | 'manual' | 'snapshot'
+
+export interface DashboardDataSourceSignal {
+  id: string
+  title: string
+  description: string
+  status: DashboardDataSourceStatus
+  refreshMode: DashboardRefreshMode
+  source: string
+  count?: number
+  lastUpdated?: number
+  emptyReason?: string
+  action?: string
+}
+
+export interface DashboardCapabilityReport {
+  project: DashboardProjectSummary
+  generatedAt: number
+  summary: {
+    total: number
+    ready: number
+    partial: number
+    missing: number
+    error: number
+  }
+  realtime: {
+    status: DashboardDataSourceStatus
+    mode: 'event-bus' | 'heartbeat-only'
+    busAvailable: boolean
+    heartbeatOnly: boolean
+    refreshIntervalMs: number
+  }
+  writeOps: {
+    artifactTransitions: boolean
+    memoryReview: boolean
+    promptOptimization: boolean
+  }
+  dataSources: DashboardDataSourceSignal[]
   warnings: string[]
 }
 
@@ -228,10 +400,11 @@ export class DashboardServer {
   // ── SPA Serves ───────────────────────────────────────────────────────
 
   private setupSPA(): void {
-    // Resolve SPA dir: try dist/spa first, fall back to src/spa
-    const distSpa = join(__dirname, 'spa')
-    const srcSpa = join(__dirname, '..', '..', 'src', 'dashboard', 'spa')
-    const spaDir = existsSync(distSpa) ? distSpa : srcSpa
+    // Vue dashboard is the canonical UI and is served from the dashboard root.
+    const packagedVueSpa = join(__dirname, 'spa')
+    const projectVueSpa = join(__dirname, '..', '..', 'dist', 'dashboard', 'spa')
+    const hasVueDashboard = (dir: string) => existsSync(join(dir, 'index.html')) && existsSync(join(dir, 'assets'))
+    const vueSpaDir = hasVueDashboard(packagedVueSpa) ? packagedVueSpa : hasVueDashboard(projectVueSpa) ? projectVueSpa : ''
     const mimeTypes: Record<string, string> = {
       '.html': 'text/html; charset=utf-8',
       '.js': 'application/javascript; charset=utf-8',
@@ -242,12 +415,16 @@ export class DashboardServer {
       '.ico': 'image/x-icon',
     }
 
-    // Serve SPA static files
-    this.app.get('/spa/*', async (c) => {
-      const path = c.req.path.replace('/spa/', '') || 'index.html'
-      const filePath = join(spaDir, path)
+    const serveStatic = (c: Context, prefix: string, dir: string, fallbackToIndex = false) => {
+      const path = c.req.path.replace(prefix, '') || 'index.html'
+      const filePath = join(dir, path)
       if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-        return c.notFound()
+        if (!fallbackToIndex) return c.notFound()
+        const indexPath = join(dir, 'index.html')
+        if (!existsSync(indexPath)) return c.notFound()
+        return new Response(readFileSync(indexPath), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+        })
       }
       const ext = extname(filePath)
       const contentType = mimeTypes[ext] ?? 'application/octet-stream'
@@ -255,10 +432,23 @@ export class DashboardServer {
       return new Response(content, {
         headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache' },
       })
-    })
+    }
 
-    // Root redirect to SPA
-    this.app.get('/', (c) => c.redirect('/spa/'))
+    const serveVueSpa = (c: Context) => {
+      if (existsSync(vueSpaDir)) return serveStatic(c, '/', vueSpaDir, true)
+      return c.html('<!doctype html><html><head><title>SCALE Engine Dashboard</title></head><body><main id="app">Run npm run build to generate the Vue dashboard.</main></body></html>', 503)
+    }
+
+    this.app.get('/assets/*', (c) => existsSync(vueSpaDir) ? serveStatic(c, '/', vueSpaDir) : c.notFound())
+
+    // Backward-compatible preview URLs from the migration period.
+    this.app.get('/spa', (c) => c.redirect('/'))
+    this.app.get('/spa/*', (c) => c.redirect('/'))
+    this.app.get('/vue', (c) => c.redirect('/'))
+    this.app.get('/vue/*', (c) => c.redirect('/'))
+
+    // Root Vue dashboard.
+    this.app.get('/', serveVueSpa)
 
     this.app.get('/favicon.ico', () => new Response(null, {
       status: 204,
@@ -305,6 +495,8 @@ export class DashboardServer {
       const limit = parsePositiveInt(c.req.query('limit'), 100)
       return c.json(this.getProjectsSummary(sinceDays, limit))
     })
+    this.app.get('/api/dashboard/capabilities', (c) => c.json(this.getDashboardCapabilityReport()))
+    this.app.get('/api/capabilities', (c) => c.json(this.getDashboardCapabilityReport()))
 
     // Full dashboard state
     this.app.get('/api/state', async (c) => c.json(await this.getDashboardState()))
@@ -372,6 +564,35 @@ export class DashboardServer {
       const runRecall = c.req.query('recall') === '1' || c.req.query('recall') === 'true'
       const provider = c.req.query('provider')?.trim() || undefined
       return c.json(await this.getKnowledgeReport({ query, limit, includeProviders, runRecall, provider }))
+    })
+
+    // Repo-native knowledge base: docs, SQLite knowledge, Graphify graph, and gbrain visualization.
+    this.app.get('/api/knowledge-base', (c) => c.json(this.getKnowledgeBaseReport()))
+
+    this.app.get('/api/prompts', (c) => c.json(this.getPromptStudioReport()))
+    this.app.post('/api/prompts/optimize', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const rawPrompt = String(body.rawPrompt ?? body.input ?? body.prompt ?? '').trim()
+      if (!rawPrompt) return c.json({ error: 'Prompt input is required.' }, 400)
+
+      try {
+        const result = optimizeCodingPrompt({
+          rawPrompt,
+          title: typeof body.title === 'string' ? body.title : undefined,
+          language: normalizeDashboardPromptLanguage(body.language),
+          level: typeof body.level === 'string' ? body.level : undefined,
+          files: toStringArray(body.files),
+          services: toStringArray(body.services ?? body.service),
+          successCriteria: toStringArray(body.successCriteria ?? body['success-criteria']),
+        })
+        return c.json({
+          project: this.currentProject,
+          generatedAt: Date.now(),
+          result,
+        } satisfies DashboardPromptOptimizationReport)
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+      }
     })
 
     // Available FSM actions for artifact
@@ -741,6 +962,180 @@ export class DashboardServer {
     }
   }
 
+  private getDashboardCapabilityReport(): DashboardCapabilityReport {
+    const warnings: string[] = []
+    let metrics: ReturnType<typeof aggregateGovernanceMetrics> | null = null
+    try {
+      metrics = aggregateGovernanceMetrics({
+        projectDir: this.projectDir,
+        scaleDir: this.scaleDir,
+        sinceDays: 7,
+      })
+    } catch (error) {
+      warnings.push(`metrics aggregation failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    const scaleDirExists = existsSync(this.scaleDir)
+    const documents = this.listDocuments()
+    const memoryDb = join(this.scaleDir, 'memory', 'brain.sqlite')
+    const modelUsageFile = join(this.scaleDir, 'model-usage', 'usage.jsonl')
+    const runtimeEvidenceDir = join(this.scaleDir, 'evidence', 'runtime')
+    const commandRunsDir = join(this.scaleDir, 'evidence', 'command-runs')
+    const promptReport = this.getPromptStudioReport()
+    const knowledgeBaseReport = this.getKnowledgeBaseReport()
+    const runtimeEvidenceCount = countMatchingFiles(runtimeEvidenceDir, file => file.endsWith('.json'))
+    const commandRunCount = metrics?.commandRuns.total ?? countMatchingFiles(commandRunsDir, file => file.endsWith('.json'))
+    const modelUsageCount = metrics?.modelUsage.totalRecords ?? 0
+    const memoryCount = this.getLocalKnowledgeSummary(this.currentProject, warnings).total
+    const busAvailable = Boolean(this.bus)
+    const artifactTransitions = Boolean(this.fsm && this.store)
+    const dataSources: DashboardDataSourceSignal[] = [
+      {
+        id: 'project-scale-dir',
+        title: 'Project .scale state',
+        description: 'Workspace governance state and local evidence root.',
+        status: scaleDirExists ? 'ready' : 'missing',
+        refreshMode: 'snapshot',
+        source: this.scaleDir,
+        count: scaleDirExists ? 1 : 0,
+        lastUpdated: latestMtime(this.scaleDir),
+        emptyReason: scaleDirExists ? undefined : 'The project has no .scale directory yet.',
+        action: scaleDirExists ? undefined : 'Run scale bootstrap or initialize the workflow in this project.',
+      },
+      {
+        id: 'runtime-evidence',
+        title: 'Runtime evidence ledger',
+        description: 'Pass/fail/resolved records produced by governed workflow runs.',
+        status: runtimeEvidenceCount > 0 ? 'ready' : 'missing',
+        refreshMode: 'polling',
+        source: runtimeEvidenceDir,
+        count: runtimeEvidenceCount,
+        lastUpdated: latestMtime(runtimeEvidenceDir),
+        emptyReason: runtimeEvidenceCount > 0 ? undefined : 'No runtime evidence JSON files were found.',
+        action: runtimeEvidenceCount > 0 ? undefined : 'Run a governed verify/preflight command that records runtime evidence.',
+      },
+      {
+        id: 'command-runs',
+        title: 'Command run evidence',
+        description: 'Recorded shell/tool executions, pass rate, and output compression savings.',
+        status: commandRunCount > 0 ? 'ready' : 'missing',
+        refreshMode: 'polling',
+        source: commandRunsDir,
+        count: commandRunCount,
+        lastUpdated: latestMtime(commandRunsDir),
+        emptyReason: commandRunCount > 0 ? undefined : 'No command-run evidence files were found.',
+        action: commandRunCount > 0 ? undefined : 'Run commands through the governed runtime or preflight pipeline.',
+      },
+      {
+        id: 'model-usage',
+        title: 'Model usage ledger',
+        description: 'Actual model token usage and cache savings from scale token record/report.',
+        status: modelUsageCount > 0 ? 'ready' : 'missing',
+        refreshMode: 'polling',
+        source: modelUsageFile,
+        count: modelUsageCount,
+        lastUpdated: latestMtime(modelUsageFile),
+        emptyReason: modelUsageCount > 0 ? undefined : 'No model usage ledger is present, so token/cost charts are empty.',
+        action: modelUsageCount > 0 ? undefined : 'Record provider usage with scale token record, then refresh the dashboard.',
+      },
+      {
+        id: 'memory-brain',
+        title: 'gbrain memory',
+        description: 'Local gbrain memory nodes used by the knowledge page.',
+        status: existsSync(memoryDb) ? (memoryCount > 0 ? 'ready' : 'partial') : 'missing',
+        refreshMode: 'polling',
+        source: memoryDb,
+        count: memoryCount,
+        lastUpdated: latestMtime(memoryDb),
+        emptyReason: existsSync(memoryDb) ? (memoryCount > 0 ? undefined : 'The memory database exists but has no nodes.') : 'No local gbrain database exists.',
+        action: memoryCount > 0 ? undefined : 'Capture or approve project memory through the memory workflow.',
+      },
+      {
+        id: 'knowledge-base',
+        title: 'Knowledge base',
+        description: 'Repo-native knowledge documents, SQLite knowledge entries, Karpathy guidance, and Graphify knowledge graph.',
+        status: knowledgeBaseReport.summary.documents + knowledgeBaseReport.summary.entries + knowledgeBaseReport.summary.graphNodes > 0 ? 'ready' : 'missing',
+        refreshMode: 'polling',
+        source: `${join(this.scaleDir, 'knowledge.db')} + ${join(this.projectDir, 'graphify-out')} + knowledge docs`,
+        count: knowledgeBaseReport.summary.documents + knowledgeBaseReport.summary.entries,
+        lastUpdated: latestMtimeForDocuments(knowledgeBaseReport.documents, this.projectDir, this.scaleDir)
+          ?? latestMtime(join(this.scaleDir, 'knowledge.db'))
+          ?? latestMtime(join(this.projectDir, 'graphify-out')),
+        emptyReason: knowledgeBaseReport.summary.documents + knowledgeBaseReport.summary.entries + knowledgeBaseReport.summary.graphNodes > 0
+          ? undefined
+          : 'No knowledge docs, knowledge.db entries, or Graphify graph were found.',
+        action: knowledgeBaseReport.summary.documents + knowledgeBaseReport.summary.entries + knowledgeBaseReport.summary.graphNodes > 0
+          ? undefined
+          : 'Add knowledge docs, run the knowledge ingestion flow, or generate graphify-out/graph.json.',
+      },
+      {
+        id: 'documents',
+        title: 'Documents and prototypes',
+        description: 'Markdown, JSON, and HTML artifacts available for preview, copy, and download.',
+        status: documents.length > 0 ? 'ready' : 'missing',
+        refreshMode: 'polling',
+        source: `${this.projectDir}/docs + ${this.scaleDir}/docs + ${this.scaleDir}/artifacts + knowledge graph entry docs`,
+        count: documents.length,
+        lastUpdated: latestMtimeForDocuments(documents, this.projectDir, this.scaleDir),
+        emptyReason: documents.length > 0 ? undefined : 'No previewable docs or HTML prototypes were found.',
+        action: documents.length > 0 ? undefined : 'Generate or add docs/artifacts under docs, .scale/docs, or .scale/artifacts.',
+      },
+      {
+        id: 'prompt-studio',
+        title: 'Prompt Studio',
+        description: 'Built-in vibe coding templates, prompt packs, and optimizer API.',
+        status: promptReport.summary.vibeTemplates + promptReport.summary.phasePrompts > 0 ? 'ready' : 'missing',
+        refreshMode: 'snapshot',
+        source: 'src/prompts + .scale/prompts',
+        count: promptReport.summary.vibeTemplates + promptReport.summary.phasePrompts + promptReport.summary.packs,
+        emptyReason: promptReport.summary.vibeTemplates + promptReport.summary.phasePrompts > 0 ? undefined : 'No prompt templates were discovered.',
+        action: promptReport.summary.vibeTemplates + promptReport.summary.phasePrompts > 0 ? undefined : 'Add project prompts under .scale/prompts or use built-in templates.',
+      },
+      {
+        id: 'event-stream',
+        title: 'Realtime event stream',
+        description: 'Server-sent events used to refresh live runtime changes.',
+        status: busAvailable ? 'ready' : 'partial',
+        refreshMode: busAvailable ? 'sse' : 'polling',
+        source: '/api/stream',
+        count: busAvailable ? 1 : 0,
+        emptyReason: busAvailable ? undefined : 'The dashboard server is running heartbeat-only SSE because no runtime EventBus was injected.',
+        action: busAvailable ? undefined : 'Start the dashboard from an embedded runtime or wire an EventBus into serve.',
+      },
+      {
+        id: 'artifact-fsm',
+        title: 'Workflow artifact transitions',
+        description: 'Dashboard write path for artifact actions and lesson review transitions.',
+        status: artifactTransitions ? 'ready' : 'partial',
+        refreshMode: 'manual',
+        source: '/api/artifacts/:id/actions + /api/artifacts/:id/transition',
+        count: artifactTransitions ? 1 : 0,
+        emptyReason: artifactTransitions ? undefined : 'The HTTP dashboard was started without artifact store/FSM injection.',
+        action: artifactTransitions ? undefined : 'Wire the serve entrypoint to an artifact store and FSM before enabling dashboard transitions.',
+      },
+    ]
+    const summary = summarizeDataSources(dataSources)
+    return {
+      project: this.currentProject,
+      generatedAt: Date.now(),
+      summary,
+      realtime: {
+        status: busAvailable ? 'ready' : 'partial',
+        mode: busAvailable ? 'event-bus' : 'heartbeat-only',
+        busAvailable,
+        heartbeatOnly: !busAvailable,
+        refreshIntervalMs: 30000,
+      },
+      writeOps: {
+        artifactTransitions,
+        memoryReview: existsSync(memoryDb),
+        promptOptimization: true,
+      },
+      dataSources,
+      warnings: [...warnings, ...promptReport.warnings, ...knowledgeBaseReport.warnings],
+    }
+  }
+
   private getGovernanceMetricSummary(
     project: DashboardProjectSummary,
     sinceDays: number,
@@ -799,12 +1194,18 @@ export class DashboardServer {
     }
   }
 
-  private listDocuments(): Array<{ name: string; path: string; type: string; size: number }> {
+  private listDocuments(): DashboardDocumentSummary[] {
     return this.listDocumentsFor(this.projectDir, this.scaleDir)
   }
 
-  private listDocumentsFor(projectDir: string, scaleDir: string): Array<{ name: string; path: string; type: string; size: number }> {
-    const docs: Array<{ name: string; path: string; type: string; size: number }> = []
+  private listDocumentsFor(projectDir: string, scaleDir: string): DashboardDocumentSummary[] {
+    const docs: DashboardDocumentSummary[] = []
+    const addFile = (path: string) => {
+      const fullPath = join(projectDir, path)
+      if (!existsSync(fullPath) || !statSync(fullPath).isFile()) return
+      const stat = statSync(fullPath)
+      docs.push({ name: basename(path), path, type: extname(path).slice(1), size: stat.size })
+    }
     const scanDir = (dir: string, prefix: string) => {
       if (!existsSync(dir)) return
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -821,8 +1222,13 @@ export class DashboardServer {
     // Scan common doc locations
     scanDir(join(scaleDir, 'docs'), '.scale/docs')
     scanDir(join(scaleDir, 'artifacts'), '.scale/artifacts')
+    scanDir(join(scaleDir, 'knowledge'), '.scale/knowledge')
+    scanDir(join(scaleDir, 'graphify-knowledge', 'entries'), '.scale/graphify-knowledge/entries')
     scanDir(join(projectDir, 'docs'), 'docs')
-    return docs
+    addFile('graphify-out/GRAPH_REPORT.md')
+    addFile('graphify-out/graph.json')
+    addFile('graphify-out/manifest.json')
+    return dedupeDocuments(docs)
   }
 
   private serveDocument(docPath: string, c: Context): Response {
@@ -909,7 +1315,296 @@ export class DashboardServer {
     }
   }
 
+  private getKnowledgeBaseReport(): DashboardKnowledgeBaseReport {
+    const warnings: string[] = []
+    const documents = this.listKnowledgeDocuments()
+    const entries = this.listKnowledgeEntries(warnings)
+    const graph = this.getGraphifyKnowledgeGraph()
+    const memoryGraph = this.getGbrainMemoryGraph(warnings)
+
+    if (graph.status === 'error' && graph.emptyReason) warnings.push(graph.emptyReason)
+    if (memoryGraph.status === 'error' && memoryGraph.emptyReason) warnings.push(memoryGraph.emptyReason)
+
+    return {
+      project: this.currentProject,
+      generatedAt: Date.now(),
+      summary: {
+        documents: documents.length,
+        entries: entries.length,
+        graphNodes: graph.nodeCount,
+        graphEdges: graph.edgeCount,
+        memoryNodes: memoryGraph.nodeCount,
+        memoryEdges: memoryGraph.edgeCount,
+      },
+      documents,
+      documentTree: buildDocumentTree(documents),
+      entries,
+      graph,
+      memoryGraph,
+      exports: {
+        report: '/api/knowledge-base',
+        documents: '/api/documents',
+        graph: graph.source,
+        memoryGraph: '/api/knowledge',
+      },
+      warnings,
+    }
+  }
+
+  private listKnowledgeDocuments(): DashboardDocumentSummary[] {
+    const docs = this.listDocuments()
+    const specialPaths = [
+      'src/skills/karpathy-guidelines/SKILL.md',
+      'docs/CODE_INTELLIGENCE.md',
+      'docs/MEMORY_FABRIC.md',
+      'docs/MEMORY_BRAIN.md',
+      'docs/THIRD_PARTY_SKILLS.md',
+      'docs/EXTERNAL_REFERENCES.md',
+      '.scale/code-intelligence.json',
+      '.scale/graph/manifest.json',
+      'graphify-out/GRAPH_REPORT.md',
+      'graphify-out/graph.json',
+    ]
+
+    for (const path of specialPaths) {
+      const fullPath = join(this.projectDir, path)
+      if (!existsSync(fullPath) || !statSync(fullPath).isFile()) continue
+      const stat = statSync(fullPath)
+      docs.push({
+        name: basename(path),
+        path,
+        type: extname(path).slice(1),
+        size: stat.size,
+      })
+    }
+
+    return dedupeDocuments(docs).filter(document => isKnowledgeDocument(document.path))
+  }
+
+  private listKnowledgeEntries(warnings: string[]): DashboardKnowledgeEntrySummary[] {
+    const dbPath = join(this.scaleDir, 'knowledge.db')
+    if (!existsSync(dbPath)) return []
+
+    let db: Database.Database | null = null
+    try {
+      db = new Database(dbPath, { readonly: true, fileMustExist: true })
+      const rows = db.prepare(`
+        SELECT id, title, content, type, tags, score, createdAt, updatedAt, source
+        FROM knowledge_entries
+        ORDER BY updatedAt DESC
+        LIMIT 200
+      `).all() as KnowledgeEntryRow[]
+
+      return rows.map(row => ({
+        id: String(row.id),
+        title: String(row.title || row.id),
+        content: String(row.content || ''),
+        type: String(row.type || 'unknown'),
+        tags: parseStringList(row.tags),
+        score: Number(row.score || 0),
+        createdAt: Number(row.createdAt || 0),
+        updatedAt: Number(row.updatedAt || 0),
+        source: typeof row.source === 'string' ? row.source : undefined,
+      }))
+    } catch (error) {
+      warnings.push(`knowledge.db read failed: ${error instanceof Error ? error.message : String(error)}`)
+      return []
+    } finally {
+      db?.close()
+    }
+  }
+
+  private getGraphifyKnowledgeGraph(): DashboardKnowledgeGraphReport {
+    const graphPath = join(this.projectDir, 'graphify-out', 'graph.json')
+    const reportPath = join(this.projectDir, 'graphify-out', 'GRAPH_REPORT.md')
+    const manifestPath = join(this.scaleDir, 'graph', 'manifest.json')
+    const source = existsSync(graphPath) ? 'graphify-out/graph.json' : existsSync(manifestPath) ? '.scale/graph/manifest.json' : 'graphify-out/graph.json'
+
+    if (!existsSync(graphPath) && !existsSync(manifestPath)) {
+      return {
+        status: 'missing',
+        source,
+        reportPath: existsSync(reportPath) ? 'graphify-out/GRAPH_REPORT.md' : undefined,
+        nodeCount: 0,
+        edgeCount: 0,
+        nodes: [],
+        edges: [],
+        emptyReason: 'Graphify graph was not found.',
+      }
+    }
+
+    try {
+      const raw = JSON.parse(readFileSync(existsSync(graphPath) ? graphPath : manifestPath, 'utf-8')) as unknown
+      const rawNodes = extractGraphNodes(raw)
+      const rawEdges = extractGraphEdges(raw)
+      const nodes = rawNodes.slice(0, 160).map((node, index) => normalizeGraphNode(node, index, 'graphify'))
+      const nodeIds = new Set(nodes.map(node => node.id))
+      const edges = rawEdges
+        .map(edge => normalizeGraphEdge(edge))
+        .filter(edge => edge && nodeIds.has(edge.source) && nodeIds.has(edge.target))
+        .slice(0, 260) as DashboardKnowledgeGraphEdge[]
+
+      return {
+        status: rawNodes.length > 0 ? 'ready' : 'partial',
+        source,
+        reportPath: existsSync(reportPath) ? 'graphify-out/GRAPH_REPORT.md' : undefined,
+        nodeCount: rawNodes.length,
+        edgeCount: rawEdges.length,
+        nodes,
+        edges,
+        emptyReason: rawNodes.length > 0 ? undefined : 'Graphify graph exists but has no readable nodes.',
+      }
+    } catch (error) {
+      return {
+        status: 'error',
+        source,
+        reportPath: existsSync(reportPath) ? 'graphify-out/GRAPH_REPORT.md' : undefined,
+        nodeCount: 0,
+        edgeCount: 0,
+        nodes: [],
+        edges: [],
+        emptyReason: `Graphify graph read failed: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
+  }
+
+  private getGbrainMemoryGraph(warnings: string[]): DashboardKnowledgeGraphReport {
+    const dbPath = join(this.scaleDir, 'memory', 'brain.sqlite')
+    if (!existsSync(dbPath)) {
+      return {
+        status: 'missing',
+        source: '.scale/memory/brain.sqlite',
+        nodeCount: 0,
+        edgeCount: 0,
+        nodes: [],
+        edges: [],
+        emptyReason: 'No local gbrain database exists.',
+      }
+    }
+
+    let brain: MemoryBrain | null = null
+    try {
+      brain = new MemoryBrain({ projectDir: this.projectDir, scaleDir: this.scaleDir })
+      const memories = brain.list()
+      const nodes: DashboardKnowledgeGraphNode[] = []
+      const edges: DashboardKnowledgeGraphEdge[] = []
+
+      for (const memory of memories.slice(0, 120)) {
+        const memoryId = `memory:${memory.id}`
+        nodes.push({
+          id: memoryId,
+          label: memory.title || memory.id,
+          kind: memory.type || 'memory',
+          group: memory.layer || memory.status || 'memory',
+          source: 'gbrain',
+        })
+
+        const layer = memory.layer || 'unknown-layer'
+        const layerId = `layer:${layer}`
+        if (!nodes.some(node => node.id === layerId)) {
+          nodes.push({
+            id: layerId,
+            label: layer,
+            kind: 'layer',
+            group: 'memory-layer',
+            source: 'gbrain',
+          })
+        }
+        edges.push({ source: memoryId, target: layerId, label: 'layer' })
+
+        for (const evidencePath of (memory.evidencePaths || []).slice(0, 4)) {
+          const evidenceId = `evidence:${evidencePath}`
+          if (!nodes.some(node => node.id === evidenceId)) {
+            nodes.push({
+              id: evidenceId,
+              label: basename(evidencePath),
+              kind: 'evidence',
+              group: 'evidence',
+              source: 'gbrain',
+              path: evidencePath,
+            })
+          }
+          edges.push({ source: memoryId, target: evidenceId, label: 'evidence' })
+        }
+      }
+
+      return {
+        status: memories.length > 0 ? 'ready' : 'partial',
+        source: '.scale/memory/brain.sqlite',
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        nodes,
+        edges: edges.slice(0, 240),
+        emptyReason: memories.length > 0 ? undefined : 'The gbrain database exists but has no memory nodes.',
+      }
+    } catch (error) {
+      warnings.push(`gbrain graph failed: ${error instanceof Error ? error.message : String(error)}`)
+      return {
+        status: 'error',
+        source: '.scale/memory/brain.sqlite',
+        nodeCount: 0,
+        edgeCount: 0,
+        nodes: [],
+        edges: [],
+        emptyReason: `gbrain graph failed: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    } finally {
+      brain?.close()
+    }
+  }
+
   // ── Lifecycle ────────────────────────────────────────────────────────
+
+  private getPromptStudioReport(): DashboardPromptStudioReport {
+    const warnings: string[] = []
+    let phasePrompts: DashboardPromptTemplateSummary[] = []
+    let packs: DashboardPromptPackSummary[] = []
+
+    try {
+      const registry = new PhasePromptRegistry(this.projectDir)
+      phasePrompts = registry.listPrompts().map(prompt => ({
+        ...prompt,
+        source: classifyPromptSource(prompt.id),
+        command: prompt.id.includes(':') ? undefined : `scale vibe --phase ${prompt.phase}`,
+      }))
+      packs = registry.listPacks().map(pack => ({
+        id: pack.id,
+        name: pack.name,
+        description: pack.description,
+        phases: pack.phases,
+        templateIds: pack.templates.map(template => template.id),
+        command: `scale vibe --pack ${pack.id}`,
+      }))
+    } catch (error) {
+      warnings.push(`phase prompt registry failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    const vibeTemplates = listVisualVibeTemplates().map(template => ({
+      ...template,
+      command: `scale vibe --template ${template.id}`,
+    }))
+
+    return {
+      project: this.currentProject,
+      generatedAt: Date.now(),
+      summary: {
+        vibeTemplates: vibeTemplates.length,
+        phasePrompts: phasePrompts.length,
+        packs: packs.length,
+        customPrompts: phasePrompts.filter(prompt => prompt.source !== 'builtin').length,
+      },
+      commands: {
+        vibeIndex: 'scale vibe-index',
+        vibeTemplate: 'scale vibe --template <template-id> --app "<project>"',
+        vibePack: 'scale vibe --pack <pack-id> --app "<project>"',
+        promptOptimize: 'scale prompt optimize --input "<raw prompt>" --json',
+      },
+      vibeTemplates,
+      phasePrompts,
+      packs,
+      warnings,
+    }
+  }
 
   async start(): Promise<void> {
     try {
@@ -996,9 +1691,200 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function classifyPromptSource(id: string): DashboardPromptSource {
+  if (id.startsWith('project:')) return 'project'
+  if (id.startsWith('global:')) return 'global'
+  return 'builtin'
+}
+
+function normalizeDashboardPromptLanguage(value: unknown): PromptOptimizationLanguageInput {
+  const normalized = String(value ?? 'auto').trim().toLowerCase()
+  return normalized === 'zh' || normalized === 'en' || normalized === 'auto' ? normalized : 'auto'
+}
+
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean)
+  if (typeof value === 'string') return value.split(',').map(item => item.trim()).filter(Boolean)
+  return []
+}
+
 function normalizeMemoryReviewAction(value: string | undefined): MemoryReviewAction | null {
   if (!value) return null
   return (MEMORY_REVIEW_ACTIONS as readonly string[]).includes(value) ? value as MemoryReviewAction : null
+}
+
+interface KnowledgeEntryRow {
+  id: unknown
+  title: unknown
+  content: unknown
+  type: unknown
+  tags: unknown
+  score: unknown
+  createdAt: unknown
+  updatedAt: unknown
+  source?: unknown
+}
+
+function dedupeDocuments(documents: DashboardDocumentSummary[]): DashboardDocumentSummary[] {
+  const seen = new Map<string, DashboardDocumentSummary>()
+  for (const document of documents) {
+    if (!seen.has(document.path)) seen.set(document.path, document)
+  }
+  return [...seen.values()].sort((left, right) => left.path.localeCompare(right.path))
+}
+
+function buildDocumentTree(documents: DashboardDocumentSummary[]): DashboardDocumentTreeNode[] {
+  const roots: DashboardDocumentTreeNode[] = []
+  const folderByPath = new Map<string, DashboardDocumentTreeNode>()
+
+  const ensureFolder = (parts: string[], depth: number): DashboardDocumentTreeNode[] => {
+    if (depth >= parts.length) return roots
+    const path = parts.slice(0, depth + 1).join('/')
+    const parentChildren = depth === 0 ? roots : ensureFolder(parts, depth - 1)
+    let folder = folderByPath.get(path)
+    if (!folder) {
+      folder = { name: parts[depth] || path, path, type: 'folder', children: [] }
+      folderByPath.set(path, folder)
+      parentChildren.push(folder)
+    }
+    return folder.children ?? []
+  }
+
+  for (const document of documents) {
+    const parts = document.path.split('/').filter(Boolean)
+    const folderParts = parts.slice(0, -1)
+    const children = folderParts.length > 0 ? ensureFolder(folderParts, folderParts.length - 1) : roots
+    children.push({
+      name: document.name,
+      path: document.path,
+      type: 'document',
+      size: document.size,
+      docType: document.type,
+    })
+  }
+
+  const sortTree = (nodes: DashboardDocumentTreeNode[]) => {
+    nodes.sort((left, right) => {
+      if (left.type !== right.type) return left.type === 'folder' ? -1 : 1
+      return left.name.localeCompare(right.name)
+    })
+    for (const node of nodes) sortTree(node.children ?? [])
+  }
+  sortTree(roots)
+  return roots
+}
+
+function isKnowledgeDocument(path: string): boolean {
+  const normalized = path.toLowerCase()
+  const keywords = [
+    'knowledge',
+    'memory',
+    'graph',
+    'code-intelligence',
+    'code_intelligence',
+    'karpathy',
+    'llm',
+    'context',
+    'skill',
+    'workflow',
+    'governance',
+  ]
+  return normalized.startsWith('.scale/knowledge/')
+    || normalized.startsWith('.scale/graphify-knowledge/')
+    || normalized.startsWith('graphify-out/')
+    || keywords.some(keyword => normalized.includes(keyword))
+}
+
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean)
+  if (typeof value !== 'string') return []
+  const trimmed = value.trim()
+  if (!trimmed) return []
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (Array.isArray(parsed)) return parsed.map(item => String(item).trim()).filter(Boolean)
+  } catch {
+    // Fall back to comma-separated tags.
+  }
+  return trimmed.split(',').map(item => item.trim()).filter(Boolean)
+}
+
+function extractGraphNodes(raw: unknown): Record<string, unknown>[] {
+  const record = asRecord(raw)
+  const candidates = [
+    record.nodes,
+    asRecord(record.graph).nodes,
+    asRecord(record.elements).nodes,
+    asRecord(record.data).nodes,
+  ]
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue
+    return candidate
+      .map(item => asRecord(asRecord(item).data ?? item))
+      .filter(item => Object.keys(item).length > 0)
+  }
+  return []
+}
+
+function extractGraphEdges(raw: unknown): Record<string, unknown>[] {
+  const record = asRecord(raw)
+  const candidates = [
+    record.edges,
+    record.links,
+    asRecord(record.graph).edges,
+    asRecord(record.graph).links,
+    asRecord(record.elements).edges,
+    asRecord(record.data).edges,
+  ]
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue
+    return candidate
+      .map(item => asRecord(asRecord(item).data ?? item))
+      .filter(item => Object.keys(item).length > 0)
+  }
+  return []
+}
+
+function normalizeGraphNode(
+  node: Record<string, unknown>,
+  index: number,
+  source: string,
+): DashboardKnowledgeGraphNode {
+  const id = firstString(node.id, node.key, node.name, node.path, node.label) || `${source}:node:${index}`
+  const label = firstString(node.label, node.name, node.title, node.path, node.id) || id
+  const kind = firstString(node.kind, node.type, node.category, node.nodeType) || 'node'
+  const group = firstString(node.group, node.layer, node.domain, node.package, node.kind, node.type) || kind
+  return {
+    id,
+    label,
+    kind,
+    group,
+    source,
+    path: firstString(node.path, node.file, node.filePath),
+  }
+}
+
+function normalizeGraphEdge(edge: Record<string, unknown>): DashboardKnowledgeGraphEdge | null {
+  const source = firstString(edge.source, edge.from, edge.src, edge.start, edge.sourceId)
+  const target = firstString(edge.target, edge.to, edge.dst, edge.end, edge.targetId)
+  if (!source || !target) return null
+  return {
+    source,
+    target,
+    label: firstString(edge.label, edge.type, edge.kind, edge.relation),
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  }
+  return undefined
 }
 
 function countBy<T>(items: T[], selector: (item: T) => string): Record<string, number> {
@@ -1012,4 +1898,56 @@ function countBy<T>(items: T[], selector: (item: T) => string): Record<string, n
 
 function sum<T>(items: T[], selector: (item: T) => number): number {
   return items.reduce((total, item) => total + selector(item), 0)
+}
+
+function summarizeDataSources(dataSources: DashboardDataSourceSignal[]): DashboardCapabilityReport['summary'] {
+  return {
+    total: dataSources.length,
+    ready: dataSources.filter(source => source.status === 'ready').length,
+    partial: dataSources.filter(source => source.status === 'partial').length,
+    missing: dataSources.filter(source => source.status === 'missing').length,
+    error: dataSources.filter(source => source.status === 'error').length,
+  }
+}
+
+function countMatchingFiles(dir: string, predicate: (file: string) => boolean): number {
+  if (!existsSync(dir)) return 0
+  let count = 0
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const absolute = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      count += countMatchingFiles(absolute, predicate)
+      continue
+    }
+    if (entry.isFile() && predicate(entry.name)) count += 1
+  }
+  return count
+}
+
+function latestMtime(path: string): number | undefined {
+  if (!existsSync(path)) return undefined
+  const stat = statSync(path)
+  if (stat.isFile()) return stat.mtimeMs
+  let latest = stat.mtimeMs
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const child = latestMtime(join(path, entry.name))
+    if (child && child > latest) latest = child
+  }
+  return latest
+}
+
+function latestMtimeForDocuments(
+  documents: Array<{ path: string }>,
+  projectDir: string,
+  scaleDir: string,
+): number | undefined {
+  let latest: number | undefined
+  for (const document of documents) {
+    const candidates = [join(projectDir, document.path), join(scaleDir, document.path)]
+    for (const candidate of candidates) {
+      const value = latestMtime(candidate)
+      if (value && (!latest || value > latest)) latest = value
+    }
+  }
+  return latest
 }

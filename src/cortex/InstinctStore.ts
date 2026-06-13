@@ -13,7 +13,7 @@ import {
   validateInstinct,
 } from './InstinctValidation.js'
 
-export type InstinctAuditOperation = 'save' | 'replace' | 'delete' | 'apply' | 'reject' | 'restore'
+export type InstinctAuditOperation = 'save' | 'replace' | 'delete' | 'apply' | 'reject' | 'restore' | 'repair'
 
 export interface InstinctAuditEntry {
   auditId: string
@@ -38,6 +38,12 @@ export interface InjectionInstinctOptions {
   fallbackMinConfidence?: number
   fallbackMinObservations?: number
   fallbackLimit?: number
+}
+
+export interface InstinctRepairReport {
+  scanned: number
+  repaired: string[]
+  skipped: Array<{ id: string; reasons: string[] }>
 }
 
 // ---------------------------------------------------------------------------
@@ -79,11 +85,11 @@ export class InstinctStore {
     if (existing && existing.confidence >= candidate.confidence) {
       // Keep existing. Increment observation count.
       const before = cloneInstinct(existing)
-      const after = {
+      const after = this.normalizeForSave({
         ...existing,
         observations: existing.observations + candidate.observations,
         updatedAt: new Date().toISOString(),
-      }
+      })
       this.writeInstinctFile(after)
       this.appendAudit({
         op: 'save',
@@ -292,19 +298,18 @@ export class InstinctStore {
 
     const before = cloneInstinct(instinct)
     instinct.appliedCount++
-    instinct.hitRate = instinct.observations > 0
-      ? instinct.appliedCount / instinct.observations
-      : 0
+    instinct.hitRate = computeHitRate(instinct.appliedCount, instinct.observations)
     instinct.updatedAt = new Date().toISOString()
 
-    this.writeInstinctFile(instinct)
+    const after = this.normalizeForSave(instinct)
+    this.writeInstinctFile(after)
     this.appendAudit({
       op: 'apply',
       id,
-      scope: instinct.scope,
-      projectId: instinct.projectId,
+      scope: after.scope,
+      projectId: after.projectId,
       before,
-      after: cloneInstinct(instinct),
+      after: cloneInstinct(after),
       reason: success ? 'application-succeeded' : 'application-failed',
     })
   }
@@ -395,17 +400,53 @@ export class InstinctStore {
     return { total: all.length, byDomain, byConfidence }
   }
 
+  /**
+   * Normalize existing instinct files without recording a new application.
+   */
+  repairIntegrity(): InstinctRepairReport {
+    const report: InstinctRepairReport = { scanned: 0, repaired: [], skipped: [] }
+    for (const instinct of this.loadAll()) {
+      report.scanned++
+      const before = cloneInstinct(instinct)
+      const after = this.normalizeForSave(instinct)
+      const validation = validateInstinct(after)
+      if (!validation.ok) {
+        report.skipped.push({ id: instinct.id || 'unknown', reasons: validation.reasons })
+        continue
+      }
+      if (!instinctChanged(before, after)) continue
+
+      this.writeInstinctFile(after)
+      this.appendAudit({
+        op: 'repair',
+        id: after.id,
+        scope: after.scope,
+        projectId: after.projectId,
+        before,
+        after: cloneInstinct(after),
+        reason: 'integrity-normalize',
+      })
+      report.repaired.push(after.id)
+    }
+    return report
+  }
+
   // -----------------------------------------------------------------------
   // Internal
   // -----------------------------------------------------------------------
 
   private normalizeForSave(instinct: Instinct): Instinct {
+    const observations = normalizeCount(instinct.observations)
+    const appliedCount = normalizeCount(instinct.appliedCount)
     return {
       ...instinct,
       trigger: normalizeInstinctTrigger(instinct.trigger ?? ''),
       action: (instinct.action ?? '').trim(),
       projectId: instinct.projectId?.trim() || undefined,
       scope: instinct.scope ?? 'project',
+      observations,
+      appliedCount,
+      hitRate: computeHitRate(appliedCount, observations),
     }
   }
 
@@ -498,6 +539,7 @@ export class InstinctStore {
 
       const frontmatter = fmMatch[1]
       const body = fmMatch[2] ?? ''
+      const parsedBody = parseInstinctBody(body)
 
       const getYamlVal = (key: string): string => {
         const m = frontmatter.match(new RegExp(`^${key}:[^\\S\\r\\n]*([^\\r\\n]*)$`, 'm'))
@@ -512,8 +554,8 @@ export class InstinctStore {
         source: getYamlVal('source'),
         scope: (getYamlVal('scope') as 'project' | 'global') || 'project',
         projectId: getYamlVal('project_id') || undefined,
-        action: body.trim(),
-        evidence: [],
+        action: parsedBody.action,
+        evidence: parsedBody.evidence,
         observations: parseInt(getYamlVal('observations'), 10) || 0,
         createdAt: getYamlVal('created_at') || new Date().toISOString(),
         updatedAt: getYamlVal('updated_at') || new Date().toISOString(),
@@ -532,4 +574,53 @@ function cloneInstinct(instinct: Instinct): Instinct {
     ...instinct,
     evidence: [...instinct.evidence],
   }
+}
+
+function normalizeCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+}
+
+function computeHitRate(appliedCount: number, observations: number): number {
+  if (!Number.isFinite(appliedCount) || !Number.isFinite(observations) || observations <= 0) return 0
+  return Math.max(0, Math.min(1, appliedCount / observations))
+}
+
+function parseInstinctBody(body: string): { action: string; evidence: string[] } {
+  const normalized = body.replace(/\r\n/g, '\n')
+  const evidenceMatch = normalized.match(/^## Evidence\s*$/m)
+  if (!evidenceMatch || evidenceMatch.index === undefined) {
+    return { action: normalized.trim(), evidence: [] }
+  }
+
+  const action = normalized.slice(0, evidenceMatch.index).trim()
+  const evidenceBlock = normalized.slice(evidenceMatch.index + evidenceMatch[0].length)
+  const evidence = evidenceBlock
+    .split('\n')
+    .map(line => line.trim())
+    .map(line => line.match(/^-\s*"?(.+?)"?$/)?.[1]?.trim() ?? '')
+    .filter(Boolean)
+
+  return { action, evidence }
+}
+
+function instinctChanged(before: Instinct, after: Instinct): boolean {
+  return JSON.stringify({
+    trigger: before.trigger,
+    action: before.action,
+    projectId: before.projectId,
+    scope: before.scope,
+    observations: before.observations,
+    appliedCount: before.appliedCount,
+    hitRate: before.hitRate,
+    evidence: before.evidence,
+  }) !== JSON.stringify({
+    trigger: after.trigger,
+    action: after.action,
+    projectId: after.projectId,
+    scope: after.scope,
+    observations: after.observations,
+    appliedCount: after.appliedCount,
+    hitRate: after.hitRate,
+    evidence: after.evidence,
+  })
 }

@@ -3,8 +3,10 @@ import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer, type Server } from 'node:net'
+import Database from 'better-sqlite3'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
 import { MemoryBrain } from '../../src/memory/MemoryBrain.js'
+import { ModelUsageLedger } from '../../src/runtime/ModelUsageLedger.js'
 import { resolveDashboardLaunchPlan } from '../../src/api/DashboardHttpConfig.js'
 
 const tempRoots: string[] = []
@@ -16,11 +18,68 @@ afterEach(() => {
 })
 
 describe('DashboardServer API', () => {
+  it('serves the Vue dashboard at the root and retires the classic fallback route', async () => {
+    const projectDir = makeTempDir('scale-dashboard-static-')
+    const scaleDir = join(projectDir, '.scale')
+    const server = new DashboardServer({ projectDir, scaleDir })
+    const app = server.getApp()
+
+    const vue = await app.request('/')
+    expect(vue.status).toBe(200)
+    expect(await vue.text()).toContain('SCALE Engine Dashboard')
+
+    const legacySpa = await app.request('/spa/')
+    expect(legacySpa.status).toBe(302)
+    expect(legacySpa.headers.get('location')).toBe('/')
+
+    const legacyPreview = await app.request('/vue/')
+    expect(legacyPreview.status).toBe(302)
+    expect(legacyPreview.headers.get('location')).toBe('/')
+
+    const classic = await app.request('/classic/')
+    expect(classic.status).toBe(404)
+  })
+
   it('serves project metadata, previewable documents, and local knowledge', async () => {
     const projectDir = makeTempDir('scale-dashboard-server-project-')
     const scaleDir = join(projectDir, '.scale')
+    mkdirSync(scaleDir, { recursive: true })
     mkdirSync(join(projectDir, 'docs'), { recursive: true })
     writeFileSync(join(projectDir, 'docs', 'guide.md'), '# Guide\n\nAuth pattern', 'utf-8')
+    writeFileSync(join(projectDir, 'docs', 'CODE_INTELLIGENCE.md'), '# Code Intelligence\n\nGraphify knowledge graph.', 'utf-8')
+    mkdirSync(join(projectDir, 'src', 'skills', 'karpathy-guidelines'), { recursive: true })
+    writeFileSync(join(projectDir, 'src', 'skills', 'karpathy-guidelines', 'SKILL.md'), '# Karpathy LLM Guidelines\n\nKeep context simple.', 'utf-8')
+    mkdirSync(join(projectDir, 'graphify-out'), { recursive: true })
+    writeFileSync(join(projectDir, 'graphify-out', 'GRAPH_REPORT.md'), '# Graph Report\n\nTwo nodes.', 'utf-8')
+    writeFileSync(join(projectDir, 'graphify-out', 'graph.json'), JSON.stringify({
+      nodes: [
+        { id: 'guide', label: 'Guide', kind: 'doc', group: 'docs', path: 'docs/guide.md' },
+        { id: 'karpathy', label: 'Karpathy', kind: 'skill', group: 'llm', path: 'src/skills/karpathy-guidelines/SKILL.md' },
+      ],
+      edges: [{ source: 'guide', target: 'karpathy', label: 'references' }],
+    }), 'utf-8')
+    const knowledgeDb = new Database(join(scaleDir, 'knowledge.db'))
+    try {
+      knowledgeDb.exec(`
+        CREATE TABLE knowledge_entries (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          type TEXT NOT NULL,
+          tags TEXT NOT NULL,
+          score REAL NOT NULL,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL,
+          source TEXT
+        )
+      `)
+      knowledgeDb.prepare(`
+        INSERT INTO knowledge_entries (id, title, content, type, tags, score, createdAt, updatedAt, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('KB-LLM', 'LLM Context Rule', 'Prefer compact repo-native context.', 'guideline', JSON.stringify(['llm', 'karpathy']), 0.91, 1, 2, 'test')
+    } finally {
+      knowledgeDb.close()
+    }
 
     const brain = new MemoryBrain({ projectDir, scaleDir })
     try {
@@ -67,6 +126,158 @@ describe('DashboardServer API', () => {
     )
     expect(knowledge.local.total).toBe(1)
     expect(knowledge.local.nodes).toEqual([expect.objectContaining({ id: 'MEM-AUTH', title: 'Auth Pattern' })])
+
+    const knowledgeBase = await json<{
+      summary: { documents: number; entries: number; graphNodes: number; graphEdges: number; memoryNodes: number }
+      documents: Array<{ path: string }>
+      entries: Array<{ id: string; tags: string[] }>
+      graph: { status: string; nodeCount: number; edgeCount: number; reportPath?: string }
+      memoryGraph: { status: string; nodeCount: number; edgeCount: number }
+    }>(await app.request('/api/knowledge-base'))
+    expect(knowledgeBase.summary).toEqual(expect.objectContaining({
+      entries: 1,
+      graphNodes: 2,
+      graphEdges: 1,
+    }))
+    expect(knowledgeBase.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'src/skills/karpathy-guidelines/SKILL.md' }),
+      expect.objectContaining({ path: 'graphify-out/GRAPH_REPORT.md' }),
+    ]))
+    expect(knowledgeBase.entries).toEqual([expect.objectContaining({ id: 'KB-LLM', tags: ['llm', 'karpathy'] })])
+    expect(knowledgeBase.graph).toEqual(expect.objectContaining({ status: 'ready', nodeCount: 2, edgeCount: 1, reportPath: 'graphify-out/GRAPH_REPORT.md' }))
+    expect(knowledgeBase.memoryGraph.status).toBe('ready')
+    expect(knowledgeBase.memoryGraph.nodeCount).toBeGreaterThan(0)
+
+    const karpathyDoc = await app.request('/api/documents/src/skills/karpathy-guidelines/SKILL.md')
+    expect(karpathyDoc.status).toBe(200)
+    expect(await karpathyDoc.text()).toContain('Karpathy LLM Guidelines')
+  })
+
+  it('serves prompt studio templates and optimizes raw prompts', async () => {
+    const projectDir = makeTempDir('scale-dashboard-prompts-')
+    const scaleDir = join(projectDir, '.scale')
+    mkdirSync(join(scaleDir, 'prompts'), { recursive: true })
+    writeFileSync(join(scaleDir, 'prompts', 'release-check.md'), '# Release Check\n\nVerify release gates.', 'utf-8')
+
+    const server = new DashboardServer({ projectDir, scaleDir, projectName: 'Prompt Project' })
+    const app = server.getApp()
+
+    const promptReport = await json<{
+      summary: { vibeTemplates: number; phasePrompts: number; packs: number; customPrompts: number }
+      commands: { vibeTemplate: string; promptOptimize: string }
+      vibeTemplates: Array<{ id: string; command: string; copyPrompt: string }>
+      phasePrompts: Array<{ id: string; source: string; command?: string; template: string }>
+      packs: Array<{ id: string; command: string; templateIds: string[] }>
+    }>(await app.request('/api/prompts'))
+
+    expect(promptReport.summary.vibeTemplates).toBeGreaterThanOrEqual(5)
+    expect(promptReport.summary.phasePrompts).toBeGreaterThanOrEqual(7)
+    expect(promptReport.summary.packs).toBeGreaterThanOrEqual(4)
+    expect(promptReport.summary.customPrompts).toBeGreaterThanOrEqual(1)
+    expect(promptReport.commands).toEqual(expect.objectContaining({
+      vibeTemplate: 'scale vibe --template <template-id> --app "<project>"',
+      promptOptimize: 'scale prompt optimize --input "<raw prompt>" --json',
+    }))
+    expect(promptReport.vibeTemplates).toContainEqual(expect.objectContaining({
+      id: 'product-ceo-discovery',
+      command: 'scale vibe --template product-ceo-discovery',
+    }))
+    expect(promptReport.phasePrompts).toContainEqual(expect.objectContaining({
+      id: 'idea-validate',
+      source: 'builtin',
+      command: 'scale vibe --phase idea',
+    }))
+    expect(promptReport.phasePrompts).toContainEqual(expect.objectContaining({
+      id: 'project:release-check',
+      source: 'project',
+      template: expect.stringContaining('Verify release gates.'),
+    }))
+    expect(promptReport.packs).toContainEqual(expect.objectContaining({
+      id: 'full-mvp',
+      command: 'scale vibe --pack full-mvp',
+      templateIds: expect.arrayContaining(['idea-validate', 'build-mvp']),
+    }))
+
+    const optimized = await json<{
+      result: {
+        language: string
+        optimizedPrompt: string
+        quality: { score: number }
+        stats: { originalChars: number; optimizedChars: number }
+      }
+    }>(await app.request('/api/prompts/optimize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rawPrompt: 'Implement dashboard prompt studio and verify tests pass.',
+        language: 'en',
+        files: ['src/dashboard/spa/pages/prompts.js'],
+        successCriteria: ['dashboard API returns prompt templates'],
+      }),
+    }))
+    expect(optimized.result.language).toBe('en')
+    expect(optimized.result.optimizedPrompt).toContain('Objective')
+    expect(optimized.result.quality.score).toBeGreaterThan(0)
+    expect(optimized.result.stats.optimizedChars).toBeGreaterThan(optimized.result.stats.originalChars)
+
+    const empty = await app.request('/api/prompts/optimize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawPrompt: '   ' }),
+    })
+    expect(empty.status).toBe(400)
+  })
+
+  it('explains dashboard data sources, missing ledgers, and partial runtime wiring', async () => {
+    const projectDir = makeTempDir('scale-dashboard-capabilities-')
+    const scaleDir = join(projectDir, '.scale')
+    mkdirSync(join(projectDir, 'docs'), { recursive: true })
+    mkdirSync(join(scaleDir, 'evidence', 'runtime'), { recursive: true })
+    writeFileSync(join(projectDir, 'docs', 'prototype.html'), '<main>Prototype</main>', 'utf-8')
+    writeFileSync(join(scaleDir, 'evidence', 'runtime', 'run.json'), JSON.stringify({ status: 'passed' }), 'utf-8')
+    new ModelUsageLedger(scaleDir).record({
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      inputTokens: 1200,
+      outputTokens: 300,
+      cachedTokens: 400,
+    })
+
+    const server = new DashboardServer({ projectDir, scaleDir, projectName: 'Capability Project' })
+    const report = await json<{
+      summary: { total: number; ready: number; partial: number; missing: number }
+      realtime: { mode: string; heartbeatOnly: boolean }
+      writeOps: { artifactTransitions: boolean; promptOptimization: boolean }
+      dataSources: Array<{ id: string; status: string; count: number; emptyReason?: string }>
+    }>(await server.getApp().request('/api/dashboard/capabilities'))
+
+    const source = (id: string) => report.dataSources.find(item => item.id === id)
+    expect(report.summary.total).toBeGreaterThanOrEqual(9)
+    expect(report.summary.ready).toBeGreaterThanOrEqual(4)
+    expect(report.summary.partial).toBeGreaterThanOrEqual(2)
+    expect(report.realtime).toEqual(expect.objectContaining({
+      mode: 'heartbeat-only',
+      heartbeatOnly: true,
+    }))
+    expect(report.writeOps).toEqual(expect.objectContaining({
+      artifactTransitions: false,
+      promptOptimization: true,
+    }))
+    expect(source('runtime-evidence')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
+    expect(source('model-usage')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
+    expect(source('documents')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
+    expect(source('knowledge-base')).toEqual(expect.objectContaining({
+      status: 'missing',
+      emptyReason: expect.stringContaining('knowledge docs'),
+    }))
+    expect(source('event-stream')).toEqual(expect.objectContaining({
+      status: 'partial',
+      emptyReason: expect.stringContaining('EventBus'),
+    }))
+    expect(source('artifact-fsm')).toEqual(expect.objectContaining({
+      status: 'partial',
+      emptyReason: expect.stringContaining('FSM'),
+    }))
   })
 
   it('summarizes documents, local memory, and health across configured projects', async () => {

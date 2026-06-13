@@ -319,6 +319,7 @@
       cursor: pointer;
     }
     .topo-btn:hover, .topo-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+    .topo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .topo-btn:focus-visible, .tab:focus-visible, .nav-item:focus-visible, .doc-tree-item:focus-visible {
       outline: 2px solid var(--accent); outline-offset: 2px;
     }
@@ -371,12 +372,68 @@
     .event-time { font-size: 11px; color: var(--text-2); margin-left: auto; }
 
     /* ── Responsive ───────────────────────────────────────────────── */
+    .prompt-layout {
+      display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 24px;
+      align-items: start; min-height: calc(100vh - var(--header-h) - 96px);
+    }
+    .prompt-list {
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 12px; overflow-y: auto;
+      position: sticky; top: 0; max-height: calc(100vh - var(--header-h) - 96px);
+    }
+    .prompt-list-item {
+      display: flex; flex-direction: column; gap: 6px; width: 100%;
+      padding: 10px; border: 1px solid transparent; border-radius: var(--radius);
+      background: transparent; color: var(--text-1); text-align: left; cursor: pointer;
+      transition: all var(--transition);
+    }
+    .prompt-list-item:hover { background: var(--bg-2); border-color: var(--border); color: var(--text-0); }
+    .prompt-list-item.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text-0); }
+    .prompt-list-title { font-size: 13px; font-weight: 600; color: var(--text-0); }
+    .prompt-list-meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--text-2); font-size: 11px; }
+    .prompt-detail { min-width: 0; }
+    .prompt-detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+    .prompt-detail-title { font-size: 18px; font-weight: 700; color: var(--text-0); margin-bottom: 6px; }
+    .prompt-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 12px 0; }
+    .prompt-meta-box { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; background: var(--bg-2); }
+    .prompt-meta-label { color: var(--text-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0; margin-bottom: 5px; }
+    .prompt-meta-value { color: var(--text-0); font-size: 13px; overflow-wrap: anywhere; }
+    .prompt-code {
+      width: 100%; min-height: 260px; max-height: 520px; overflow: auto;
+      white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-0);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;
+      color: var(--text-0); font-size: 12px; line-height: 1.6; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .prompt-textarea {
+      width: 100%; min-height: 170px; resize: vertical; background: var(--bg-0);
+      border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-0);
+      padding: 12px; font-size: 13px; line-height: 1.6;
+    }
+    .prompt-textarea:focus { outline: none; border-color: var(--accent); }
+    .prompt-quality { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+    .prompt-score { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .prompt-section-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+    .prompt-section { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: var(--bg-2); }
+    .prompt-section-title { font-size: 12px; font-weight: 600; color: var(--text-0); margin-bottom: 8px; }
+    .prompt-section ul { margin: 0; padding-left: 18px; color: var(--text-1); line-height: 1.5; font-size: 12px; }
+    .prompt-list-item:focus-visible, .prompt-textarea:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 2px;
+    }
+
     @media (max-width: 768px) {
       .sidebar { transform: translateX(-100%); }
       .main { margin-left: 0; }
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
       .doc-layout { grid-template-columns: 1fr; }
       .doc-tree { position: static; max-height: 320px; }
+      .prompt-layout { grid-template-columns: 1fr; }
+      .prompt-list { position: static; max-height: 340px; }
+      #prompt-search, #prompt-filter, #prompt-optimize-title, #prompt-optimize-files,
+      #prompt-optimize-criteria, #prompt-optimize-language {
+        width: 100% !important; max-width: none !important; flex: 1 1 100% !important;
+      }
+      .prompt-detail-head { flex-direction: column; }
+      .prompt-detail-head .action-row { width: 100%; }
       .page-toolbar { align-items: stretch; }
       .page-toolbar .search-box { width: 100%; max-width: none !important; }
       .toolbar-spacer { display: none; }
@@ -415,6 +472,9 @@
       <div class="nav-item" data-page="knowledge">
         <span class="icon">&#9678;</span> <span data-i18n="nav.knowledge">Knowledge</span>
       </div>
+      <div class="nav-item" data-page="prompts">
+        <span class="icon">&#9635;</span> <span data-i18n="nav.prompts">Prompts</span>
+      </div>
     </div>
     <div class="sidebar-footer">
       <div class="sse-status">
@@ -441,23 +501,24 @@
 
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
-  <script src="/spa/i18n.js"></script>
-  <script src="/spa/app.js"></script>
-  <script src="/spa/components/MetricCard.js"></script>
-  <script src="/spa/components/Panel.js"></script>
-  <script src="/spa/components/StatusBadge.js"></script>
-  <script src="/spa/components/DataTable.js"></script>
-  <script src="/spa/components/EventStream.js"></script>
-  <script src="/spa/components/LoadingState.js"></script>
-  <script src="/spa/pages/overview.js"></script>
-  <script src="/spa/pages/workflow-renderers.js"></script>
-  <script src="/spa/pages/workflow.js"></script>
-  <script src="/spa/pages/monitoring.js"></script>
-  <script src="/spa/pages/costs.js"></script>
-  <script src="/spa/pages/documents.js"></script>
-  <script src="/spa/pages/knowledge.js"></script>
-  <script src="/spa/pages/topology-renderers.js"></script>
-  <script src="/spa/pages/topology.js"></script>
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+  <script src="components/MetricCard.js"></script>
+  <script src="components/Panel.js"></script>
+  <script src="components/StatusBadge.js"></script>
+  <script src="components/DataTable.js"></script>
+  <script src="components/EventStream.js"></script>
+  <script src="components/LoadingState.js"></script>
+  <script src="pages/overview.js"></script>
+  <script src="pages/workflow-renderers.js"></script>
+  <script src="pages/workflow.js"></script>
+  <script src="pages/monitoring.js"></script>
+  <script src="pages/costs.js"></script>
+  <script src="pages/documents.js"></script>
+  <script src="pages/knowledge.js"></script>
+  <script src="pages/prompts.js"></script>
+  <script src="pages/topology-renderers.js"></script>
+  <script src="pages/topology.js"></script>
   <script>window.Dashboard?.navigate(location.hash.slice(1) || 'overview')</script>
 </body>
 </html>

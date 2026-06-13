@@ -48,7 +48,9 @@ function printDashboardUrls(projects: Array<{ name: string; url: string; project
   const lines = [
     '',
     'SCALE Dashboard is running:',
-    ...projects.map(project => `- ${project.name}: ${project.url}/spa/ (${project.projectDir})`),
+    ...projects.flatMap(project => [
+      `- ${project.name}: ${project.url}/ (${project.projectDir})`,
+    ]),
     '',
   ]
   process.stdout.write(`${lines.join('\n')}\n`)

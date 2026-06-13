@@ -315,6 +315,7 @@
     costs: 'costs.title',
     documents: 'documents.title',
     knowledge: 'knowledge.title',
+    prompts: 'prompts.title',
   }
 
   const pages = {
@@ -325,6 +326,7 @@
     costs: { render: () => window.DashboardPages?.costs?.() },
     documents: { render: () => window.DashboardPages?.documents?.() },
     knowledge: { render: () => window.DashboardPages?.knowledge?.() },
+    prompts: { render: () => window.DashboardPages?.prompts?.() },
   }
 
   let currentPage = 'overview'

@@ -1,3 +1,15 @@
+## 0.50.2 - 2026-06-14
+
+### Dashboard
+- Promote the Vue dashboard to the root dashboard URL, keep legacy `/spa` and `/vue` paths as redirects, and retire the classic dashboard fallback.
+- Add dashboard surfaces for prompt templates, knowledge/document previews, memory/knowledge export affordances, and clearer realtime status messaging.
+
+### Cortex and Memory
+- Harden Cortex observation parsing and SessionStart injection around evidence discipline and gbrain-only memory recall.
+- Expand memory fabric and dashboard tests for provider recall, review state transitions, and exportable data packets.
+
+---
+
 ## 0.50.1 - 2026-06-14
 
 ### CI and Workflow

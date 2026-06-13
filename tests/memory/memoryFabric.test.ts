@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import { MemoryFabric } from '../../src/memory/MemoryFabric.js'
 import { RuntimeEvidenceLedger } from '../../src/runtime/RuntimeEvidenceLedger.js'
 import { SessionLedger } from '../../src/runtime/SessionLedger.js'
+import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 import type { KnowledgeEntry } from '../../src/artifact/types.js'
+import type { Instinct } from '../../src/cortex/InstinctExtractor.js'
 
 let dirs: string[] = []
 
@@ -31,6 +33,25 @@ function knowledgeEntry(overrides: Partial<KnowledgeEntry> = {}): KnowledgeEntry
     accessCount: 3,
     verified: true,
     createdAt: 1,
+    ...overrides,
+  }
+}
+
+function instinct(overrides: Partial<Instinct> = {}): Instinct {
+  return {
+    id: 'instinct-memory-fabric',
+    trigger: 'memory fabric cortex recall',
+    confidence: 0.7,
+    domain: 'governance',
+    source: 'test',
+    scope: 'global',
+    action: '## Action\nUse Cortex lessons inside the memory context pack',
+    evidence: ['[2026-06-13] memory fabric cortex recall'],
+    observations: 5,
+    createdAt: '2026-06-13T00:00:00.000Z',
+    updatedAt: '2026-06-13T00:00:00.000Z',
+    appliedCount: 2,
+    hitRate: 0.4,
     ...overrides,
   }
 }
@@ -83,6 +104,7 @@ describe('MemoryFabric', () => {
     expect(pack.sections).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'runtime-evidence', included: true }),
       expect.objectContaining({ id: 'session-events', included: true }),
+      expect.objectContaining({ id: 'cortex-instincts', included: false }),
       expect.objectContaining({ id: 'knowledge', included: true }),
       expect.objectContaining({ id: 'graph', included: true }),
     ]))
@@ -99,6 +121,41 @@ describe('MemoryFabric', () => {
       expect.objectContaining({ path: expect.stringContaining('GRAPH_REPORT.md') }),
     ]))
     expect(recallByVector).toHaveBeenCalledWith(expect.stringContaining('OAuth callback'), 5)
+  })
+
+  it('includes Cortex learned instincts in the context pack', async () => {
+    const projectDir = makeProject()
+    const scaleDir = '.scale'
+    const store = new InstinctStore(join(projectDir, scaleDir, 'instincts'))
+    const savedId = store.save(instinct({
+      trigger: 'workflow evidence required',
+      action: [
+        '## Trigger',
+        'Workflow evidence was missing',
+        '',
+        '## Recommended Action',
+        'Record verification evidence before marking the task complete.',
+      ].join('\n'),
+    }))
+
+    const pack = await new MemoryFabric({ projectDir, scaleDir }).createContextPack({
+      task: 'Continue workflow evidence hardening',
+      level: 'M',
+      budgetTokens: 4_000,
+    })
+    const cortexSection = pack.sections.find(section => section.id === 'cortex-instincts')
+
+    expect(cortexSection).toMatchObject({ included: true })
+    expect(cortexSection?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'cortex-instinct',
+        id: savedId,
+        trigger: 'workflow evidence required',
+        action: 'Record verification evidence before marking the task complete.',
+        confidence: 0.7,
+        hitRate: 0.4,
+      }),
+    ]))
   })
 
   it('keeps high-priority evidence and omits lower-priority sections when token budget is tight', async () => {

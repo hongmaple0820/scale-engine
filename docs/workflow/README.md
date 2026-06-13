@@ -21,7 +21,11 @@ make verify PROFILE=default
 scale gates status --json
 scale score task --changed --json
 scale prompt optimize --input "raw coding request" --json
+scale vibe-index
+npm run serve
 ```
+
+`npm run build` now builds the TypeScript CLI/runtime and builds the Vue 3 dashboard as the default UI. `npm run serve` prints the concrete dashboard URL, normally `http://localhost:3210/`. If the port is already occupied, either stop the stale process or set `SCALE_DASHBOARD_PORT=auto`.
 
 ### SCALE 2.0 引擎命令
 
@@ -51,6 +55,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 
 See [GATES_AND_SCORE.md](GATES_AND_SCORE.md) for gate catalog visibility, architecture standards gate scope, and deterministic task scoring.
 
 See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md) for the deterministic prompt rewrite layer used by `scale prompt optimize` and `scale define`.
+
+See [../VIBE-TEMPLATES.md](../VIBE-TEMPLATES.md) for built-in vibe coding templates. The default live dashboard is the Vue 3 + Naive UI app at the server root `/`. The Vue dashboard includes Overview, Workflow, Topology, Monitoring, Token/Cost, Documents, Knowledge, and Prompt Studio pages. Prompt Studio covers templates, packs, custom prompts, copy/download/export, and the deterministic optimizer. The Knowledge page separates repo knowledge base, gbrain memory, and graph visualization instead of treating memory as the whole knowledge system.
+
+The dashboard reads `GET /api/dashboard/capabilities` before rendering capability claims. Empty panels should have an explicit source and reason: missing model usage means no `.scale/model-usage/usage.jsonl`; missing knowledge base means no knowledge docs, `.scale/knowledge.db`, or `graphify-out/graph.json`; missing gbrain memory means no `.scale/memory/brain.sqlite` nodes; partial realtime/workflow transitions mean the HTTP serve path has not been started with EventBus/FSM/store injection.
 
 ## 模板与示例
 
