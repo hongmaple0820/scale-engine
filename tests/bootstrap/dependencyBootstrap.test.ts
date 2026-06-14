@@ -49,7 +49,7 @@ describe('dependency bootstrap post-checks', () => {
         configExists: true,
         routing: {
           mode: 'external-first',
-          defaultOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+          defaultOrder: ['gbrain'],
           allowExternalWrite: false,
           requireEvidence: true,
           maxResultsPerProvider: 5,
@@ -116,12 +116,12 @@ describe('dependency bootstrap post-checks', () => {
       status: 'passed',
     })
     expect(results.find(result => result.id === 'code-intelligence')).toMatchObject({
-      status: 'warn',
+      status: 'failed',
       summary: 'codegraph=available; graphify-artifact=missing; projectIndex=missing',
     })
   })
 
-  it('downgrades blocked gbrain to warnings when scale-local fallback remains available', () => {
+  it('fails post-checks when gbrain is unavailable', () => {
     const results = runDependencyBootstrapPostChecks({
       projectDir: 'E:/project/demo',
       scaleDir: 'E:/project/demo/.scale',
@@ -143,7 +143,7 @@ describe('dependency bootstrap post-checks', () => {
         configExists: true,
         routing: {
           mode: 'external-first',
-          defaultOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+          defaultOrder: ['gbrain'],
           allowExternalWrite: false,
           requireEvidence: true,
           maxResultsPerProvider: 5,
@@ -161,36 +161,21 @@ describe('dependency bootstrap post-checks', () => {
             writeMode: 'disabled',
             reason: 'gbrain doctor failed in this runtime',
           },
-          {
-            id: 'scale-local',
-            kind: 'scale-local',
-            enabled: true,
-            available: true,
-            selectedByDefault: false,
-            priority: 10,
-            capabilities: ['session-memory'],
-            safetyLevel: 'trusted-local',
-            writeMode: 'candidate-only',
-            reason: 'local MemoryBrain fallback is available',
-          },
         ],
-        availableProviderCount: 1,
+        availableProviderCount: 0,
         warnings: [],
       }),
     })
 
     expect(results.find(result => result.id === 'tool-capabilities')).toMatchObject({
-      status: 'warn',
+      status: 'failed',
       details: {
-        missing: [],
-        degraded: ['gbrain'],
-        fallbackProvider: 'scale-local',
+        missing: ['gbrain'],
       },
     })
     expect(results.find(result => result.id === 'memory-provider')).toMatchObject({
-      status: 'warn',
+      status: 'failed',
       details: {
-        fallbackProvider: 'scale-local',
         gbrainReason: 'gbrain doctor failed in this runtime',
       },
     })
@@ -208,8 +193,8 @@ describe('dependency bootstrap post-checks', () => {
           provider: 'gbrain',
           mode: 'external-first',
           path: 'E:/project/demo/.scale/memory-providers.json',
-          previousOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
-          nextOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+          previousOrder: ['gbrain'],
+          nextOrder: ['gbrain'],
           warnings: [],
         }),
         writeCodeConfig: () => ({ path: 'E:/project/demo/.scale/code-intelligence.json', written: true }),
@@ -218,7 +203,7 @@ describe('dependency bootstrap post-checks', () => {
 
     expect(memoryActions).toEqual([
       'Wrote E:/project/demo/.scale/memory-providers.json',
-      'Memory provider order unchanged: gbrain -> memos -> agentmemory -> scale-local',
+      'Memory provider order unchanged: gbrain',
     ])
 
     const knowledgeActions = applyDependencyBootstrapPostActions(
@@ -232,8 +217,8 @@ describe('dependency bootstrap post-checks', () => {
           provider: 'gbrain',
           mode: 'external-first',
           path: 'E:/project/demo/.scale/memory-providers.json',
-          previousOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
-          nextOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+          previousOrder: ['gbrain'],
+          nextOrder: ['gbrain'],
           warnings: [],
         }),
         writeCodeConfig: () => ({ path: 'E:/project/demo/.scale/code-intelligence.json', written: false }),

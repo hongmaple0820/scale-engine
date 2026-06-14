@@ -35,8 +35,8 @@ describe('quickstart knowledge graph detection', () => {
     expect(report.available).toBe(false)
     expect(report.pythonVersion).toBe('Python 3.12.3')
     expect(report.instructions).toEqual(expect.arrayContaining([
-      'scale bootstrap deps --pack knowledge --json',
-      'scale bootstrap deps --pack knowledge --apply',
+      'scale setup --pack knowledge --json',
+      'scale setup --pack knowledge --apply --yes',
     ]))
   })
 

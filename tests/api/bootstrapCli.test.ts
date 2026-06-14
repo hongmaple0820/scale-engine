@@ -127,7 +127,7 @@ describe('bootstrap CLI', () => {
     expect(report.final.items.map(item => item.id)).toEqual(['awesome-design-md', 'ui-ux-pro-max'])
   }, CLI_TEST_TIMEOUT_MS)
 
-  it('switches memory provider through setup without hand-editing config', async () => {
+  it('switches gbrain memory provider through setup without hand-editing config', async () => {
     const scaleDir = makeDir('scale-bootstrap-cli-scale-')
     const projectDir = makeDir('scale-bootstrap-cli-project-')
     const homeDir = makeDir('scale-bootstrap-cli-home-')
@@ -139,7 +139,7 @@ describe('bootstrap CLI', () => {
       '--pack',
       'memory',
       '--memory-provider',
-      'scale-local',
+      'gbrain',
       '--json',
     ], scaleDir, projectDir, homeDir)
 
@@ -156,11 +156,11 @@ describe('bootstrap CLI', () => {
     }
     expect(report.ok).toBe(true)
     expect(report.memoryProviderSwitch).toMatchObject({
-      provider: 'scale-local',
-      mode: 'local-only',
+      provider: 'gbrain',
+      mode: 'external-first',
     })
-    expect(report.memoryProviderSwitch.previousOrder).toEqual(['gbrain', 'memos', 'agentmemory', 'scale-local'])
-    expect(report.memoryProviderSwitch.nextOrder[0]).toBe('scale-local')
+    expect(report.memoryProviderSwitch.previousOrder).toEqual(['gbrain'])
+    expect(report.memoryProviderSwitch.nextOrder).toEqual(['gbrain'])
     expect(report.final.packIds).toEqual(['memory'])
     expect(report.final.runtimeChecks.map(check => check.id)).toContain('bun')
   }, CLI_TEST_TIMEOUT_MS)
@@ -212,7 +212,7 @@ describe('bootstrap CLI', () => {
     expect(report.ok).toBe(true)
     expect(report.workflowCapabilities).toEqual(['browser', 'search', 'computer'])
     expect(report.capabilitiesEnabled).toEqual(report.workflowCapabilities)
-    expect(report.dependencyBootstrapCommand).toBe('scale bootstrap deps --pack external-cli --json')
+    expect(report.dependencyBootstrapCommand).toBe('scale setup --pack external-cli --memory-provider gbrain --memory-mode external-first --json')
   }, CLI_TEST_TIMEOUT_MS)
 
   it('derives bootstrap packs from profile and governance pack hints', async () => {
@@ -275,8 +275,8 @@ describe('bootstrap CLI', () => {
     expect(report.ok).toBe(true)
     expect(report.profile).toBe('advanced')
     expect(report.bootstrapPacks).toEqual(['external-cli', 'memory', 'knowledge', 'ui'])
-    expect(report.dependencyBootstrapCommand).toBe('scale bootstrap deps --pack external-cli,memory,knowledge,ui --json')
-    expect(report.dependencyBootstrapApplyCommand).toBe('scale bootstrap deps --pack external-cli,memory,knowledge,ui --apply')
+    expect(report.dependencyBootstrapCommand).toBe('scale setup --pack external-cli,memory,knowledge,ui --memory-provider gbrain --memory-mode external-first --json')
+    expect(report.dependencyBootstrapApplyCommand).toBe('scale setup --pack external-cli,memory,knowledge,ui --memory-provider gbrain --memory-mode external-first --apply --yes')
     expect(report.configPath.replaceAll('\\', '/')).toBe('.scale/config.yaml')
   }, CLI_TEST_TIMEOUT_MS)
 })

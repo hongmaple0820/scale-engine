@@ -328,7 +328,7 @@ describe('Doctor', () => {
         configExists: true,
         routing: {
           mode: 'external-first',
-          defaultOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+          defaultOrder: ['gbrain'],
           allowExternalWrite: false,
           requireEvidence: true,
           maxResultsPerProvider: 5,
@@ -346,36 +346,24 @@ describe('Doctor', () => {
             writeMode: 'disabled',
             reason: 'gbrain requires install or endpoint configuration',
           },
-          {
-            id: 'scale-local',
-            kind: 'scale-local',
-            enabled: true,
-            available: true,
-            selectedByDefault: true,
-            priority: 10,
-            capabilities: ['keyword-recall'],
-            safetyLevel: 'trusted-local',
-            writeMode: 'candidate-only',
-            reason: 'local MemoryBrain fallback is available',
-          },
         ],
-        availableProviderCount: 1,
+        availableProviderCount: 0,
         warnings: [],
       }),
     } as any)
 
     const report = await doc.diagnose()
     expect(report.bootstrapPlan?.packs).toEqual(['external-cli', 'memory', 'knowledge'])
-    expect(report.checks.find((c) => c.name === 'CodeGraph CLI')?.fix).toBe('Run: scale bootstrap deps --pack external-cli,memory,knowledge --apply')
-    expect(report.checks.find((c) => c.name === 'Graphify CLI')?.fix).toBe('Run: scale bootstrap deps --pack external-cli,memory,knowledge --apply')
+    expect(report.checks.find((c) => c.name === 'CodeGraph CLI')?.fix).toBe('Run: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --apply --yes')
+    expect(report.checks.find((c) => c.name === 'Graphify CLI')?.fix).toBe('Run: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --apply --yes')
     expect(report.checks.find((c) => c.name === 'Memory provider routing')).toMatchObject({
       optional: true,
       category: 'memory',
-      fix: 'Run: scale bootstrap deps --pack external-cli,memory,knowledge --apply',
+      fix: 'Run: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --apply --yes',
     })
     const formatted = doc.formatReport(report)
     expect(formatted).toContain('Memory Providers (Optional):')
-    expect(formatted).toContain('Bootstrap inspect: scale bootstrap deps --pack external-cli,memory,knowledge --json')
+    expect(formatted).toContain('Bootstrap inspect: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --json')
   })
 
   it('flags legacy qdrant config drift and recommends graphify migration', async () => {
@@ -394,7 +382,7 @@ describe('Doctor', () => {
     expect(configHealth?.status).toBe('warn')
     expect(configHealth?.message).toContain('Legacy Qdrant backend configured')
     expect(configHealth?.fix).toContain('graphify-backed knowledge')
-    expect(configHealth?.fix).toContain('scale bootstrap deps --pack external-cli,memory,knowledge --json')
+    expect(configHealth?.fix).toContain('scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --json')
   })
 
   it('accepts .scale/evals as a valid evolution directory', async () => {
@@ -413,4 +401,3 @@ describe('Doctor', () => {
     expect(configHealth?.message).not.toContain('.scale/eval/')
   })
 })
-

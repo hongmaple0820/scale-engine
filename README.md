@@ -77,11 +77,12 @@ scale --version
 如果你希望把 UI skills、RTK、记忆/知识图谱这类第三方能力一起补齐，使用显式 bootstrap，而不是依赖静默自动安装：
 
 ```bash
-scale bootstrap deps --profile advanced --governance-pack frontend-app --json
-scale bootstrap deps --pack ui,knowledge --apply
+scale setup --pack full --memory-provider gbrain --memory-mode external-first --json
+scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --verify --pack full --json
 ```
 
-`bootstrap deps` 默认先出计划；只有显式加 `--apply` 才会执行安装命令。
+`setup` 默认先出计划；只有显式加 `--apply --yes` 才会执行安装命令。记忆供应商当前只走 gbrain，知识/代码图谱能力由 knowledge 包验证 CodeGraph 和 Graphify 的真实可用性。
 
 安装入口变更后，先跑安装烟测：
 

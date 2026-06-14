@@ -57,7 +57,7 @@ The score is not a promise that the tool will work. It is a routing signal. Any 
 | `review` | PR, merge, release, code review | reviewer skills, severity findings |
 | `docs` | docs, README, ADR, governance asset | doc impact and source-of-truth evidence |
 | `planning` | plans, task_plan, findings, progress, long-running work | file-backed planning, progress logs, plan attestation |
-| `memory` | memory, recall, knowledge, persistent memory, agentmemory, gbrain | provider-routed memory through agentmemory, gbrain, or scale-local fallback |
+| `memory` | memory, recall, knowledge, persistent memory, gbrain | governed memory routing through gbrain with fail-closed readiness checks |
 | `discovery` | skill, MCP, tool, capability discovery | find-skills plus safety review |
 
 ## Evidence Contract

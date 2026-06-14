@@ -173,7 +173,7 @@ When a graph provider answers, the module is reported as measured evidence. When
 
 - SCALE must run when no code graph provider is installed.
 - Missing providers must produce explicit fallback, not silent success.
-- External tools are installed only through explicit user intent such as `scale setup --pack knowledge --yes` or `scale bootstrap deps --pack knowledge --apply`.
+- External tools are installed only through explicit user intent such as `scale setup --pack knowledge --apply --yes`, then verified with `scale setup --verify --pack knowledge --json`.
 - When CodeGraph is installed and the project is initialized, SCALE should prefer the upstream JSON query/context surfaces before falling back to raw file scans.
 - Graphify is treated as an artifact provider. CLI installation is not enough; `graphify-out/graph.json` must exist before graph-backed knowledge recall can use it.
 - Source files are read only through a bounded fallback scan.

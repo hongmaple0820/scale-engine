@@ -202,7 +202,7 @@ describe('MemoryProviders gbrain health', () => {
       version: '1.0',
       routing: {
         mode: 'external-first',
-        defaultOrder: ['gbrain', 'scale-local'],
+        defaultOrder: ['gbrain'],
         allowExternalWrite: false,
         requireEvidence: true,
         maxResultsPerProvider: 5,
@@ -217,15 +217,6 @@ describe('MemoryProviders gbrain health', () => {
           capabilities: ['semantic-recall', 'graph-recall', 'session-memory', 'mcp'],
           safetyLevel: 'review-required',
           writeMode: 'disabled',
-        },
-        {
-          id: 'scale-local',
-          kind: 'scale-local',
-          enabled: true,
-          priority: 10,
-          capabilities: ['keyword-recall'],
-          safetyLevel: 'trusted-local',
-          writeMode: 'candidate-only',
         },
       ],
     }), 'utf-8')
@@ -294,7 +285,7 @@ describe('MemoryProviders gbrain health', () => {
     expect(report.routing.defaultOrder).toEqual(['gbrain'])
     expect(report.providers.map(provider => provider.id)).toEqual(['gbrain'])
     expect(report.availableProviderCount).toBe(1)
-    expect(report.warnings).not.toContain('scale-local fallback is unavailable; autonomous recall may fail closed.')
+    expect(report.warnings).toEqual([])
   })
 
   it('recalls gbrain query output that times out after producing results', async () => {
@@ -446,7 +437,7 @@ describe('MemoryProviders gbrain health', () => {
       version: '1.0',
       routing: {
         mode: 'external-first',
-        defaultOrder: ['gbrain', 'scale-local'],
+        defaultOrder: ['gbrain'],
         allowExternalWrite: false,
         requireEvidence: true,
         maxResultsPerProvider: 5,
@@ -461,15 +452,6 @@ describe('MemoryProviders gbrain health', () => {
           capabilities: ['semantic-recall', 'graph-recall', 'session-memory', 'mcp'],
           safetyLevel: 'review-required',
           writeMode: 'disabled',
-        },
-        {
-          id: 'scale-local',
-          kind: 'scale-local',
-          enabled: true,
-          priority: 10,
-          capabilities: ['keyword-recall'],
-          safetyLevel: 'trusted-local',
-          writeMode: 'candidate-only',
         },
       ],
     }), 'utf-8')

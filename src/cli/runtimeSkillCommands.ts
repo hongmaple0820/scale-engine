@@ -979,14 +979,14 @@ const memoryProviderStatus = defineCommand({
 })
 
 const memoryProviderRecall = defineCommand({
-  meta: { name: 'recall', description: 'Recall relevant memory through provider routing with local fallback' },
+  meta: { name: 'recall', description: 'Recall relevant memory through governed gbrain provider routing' },
   args: {
     query: { type: 'positional', required: true, description: 'Memory query or task context' },
     task: { type: 'string', description: 'Optional task text for provider routing context' },
     files: { type: 'string', description: 'Comma-separated files or modules in scope' },
-    provider: { type: 'string', description: 'Force one provider id, such as agentmemory, gbrain, or scale-local' },
+    provider: { type: 'string', description: 'Force one provider id. Supported default: gbrain' },
     limit: { type: 'string', default: '5', description: 'Maximum results' },
-    'include-candidates': { type: 'boolean', default: false, description: 'Allow scale-local candidate memory fallback' },
+    'include-candidates': { type: 'boolean', default: false, description: 'Include candidate memories when the selected provider supports them' },
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
@@ -1021,8 +1021,8 @@ const memoryProviderRecall = defineCommand({
 const memoryProviderUse = defineCommand({
   meta: { name: 'use', description: 'Promote one memory provider to the front of routing and persist the selection' },
   args: {
-    provider: { type: 'positional', required: true, description: 'Provider id: gbrain, agentmemory, or scale-local' },
-    mode: { type: 'string', description: 'Optional routing mode override: auto, local-only, external-first' },
+    provider: { type: 'positional', required: true, description: 'Provider id. Supported default: gbrain' },
+    mode: { type: 'string', description: 'Optional routing mode override: auto or external-first' },
     endpoint: { type: 'string', description: 'Optional provider endpoint to persist while switching' },
     'write-mode': { type: 'string', description: 'Optional provider write mode: disabled, candidate-only, enabled' },
     'allow-external-write': { type: 'boolean', default: false, description: 'Persist external write allowance when explicitly switching' },
@@ -1037,7 +1037,7 @@ const memoryProviderUse = defineCommand({
       projectDir: PROJECT_DIR,
       scaleDir: SCALE_DIR,
       provider: String(args.provider),
-      mode: mode as 'auto' | 'local-only' | 'external-first' | undefined,
+      mode: mode === 'local-only' ? 'external-first' : mode as 'auto' | 'external-first' | undefined,
       endpoint: args.endpoint ? String(args.endpoint) : undefined,
       writeMode,
       allowExternalWrite: isTruthyFlag(args['allow-external-write']) ? true : undefined,
@@ -1061,7 +1061,7 @@ const memoryProviderUse = defineCommand({
 })
 
 const memoryProvider = defineCommand({
-  meta: { name: 'provider', description: 'Manage autonomous memory provider routing for agentmemory, gbrain, and scale-local' },
+  meta: { name: 'provider', description: 'Manage autonomous memory provider routing for gbrain' },
   subCommands: {
     init: memoryProviderInit,
     status: memoryProviderStatus,

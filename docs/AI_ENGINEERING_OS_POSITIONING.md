@@ -360,7 +360,7 @@ Core work:
 | Module | Outcome |
 | --- | --- |
 | Context Compiler | relevance-ranked, budgeted, explainable context packs |
-| Memory Provider Runtime | gbrain, agentmemory, code memory, and local memory as provider choices |
+| Memory Provider Runtime | gbrain readiness, recall evidence, and fail-closed memory routing |
 | Skill Routing Engine | task-intent routing with evidence requirements and fallback decisions |
 | Governance ROI | quantify token cost, evidence quality, and gate friction |
 
@@ -429,7 +429,7 @@ Core work:
 | Verification Recommendation | derive suggested verification commands from task level, changed files, project verification profile, and risk signals |
 | Failure Learning Closure | convert failed guarded runs, gate failures, and missing evidence into reviewed lesson/rule candidates |
 | Closed-Loop Demo Pack | provide repeatable docs and code task demos that exercise plan -> run -> verify -> dashboard -> benchmark |
-| Memory Provider Bridge | keep gbrain, agentmemory, code memory, and local memory selectable through one provider contract |
+| Memory Provider Bridge | keep gbrain as the governed memory route and surface missing readiness instead of silently falling back |
 | Context Compiler v2 | merge task intent, risk level, files, memory recall, and role into one explainable context pack |
 | Skill Router v2 | create an execution graph for skills, MCP tools, CLIs, artifacts, and required evidence |
 | Adaptive Workflow Profiles | choose light, standard, or strict gates from risk and changed-file signals |
@@ -473,7 +473,7 @@ Core work:
 | Module | Outcome |
 | --- | --- |
 | Memory Quality Scoring | score recall precision, contradiction risk, accepted memory rate, and stale-memory risk |
-| Provider Fallback Policy | choose between gbrain, agentmemory, code memory, local memory, or no memory with an explicit reason |
+| Provider Readiness Policy | require real gbrain evidence, then report blocked/no-memory states with an explicit reason |
 | Context Compression | summarize low-risk context while preserving high-risk evidence verbatim |
 | Skill Strategy Learning | learn preferred tools from successful evidence, failures, and user overrides |
 | Workflow Eval Integration | turn benchmark results into release-gate evidence |

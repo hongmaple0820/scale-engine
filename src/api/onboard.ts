@@ -201,8 +201,9 @@ export async function runOnboardWizard(options: {
 
   const nextSteps: string[] = [
     `scale init --profile ${recommendation.profileId}`,
-    `scale setup --pack full --apply`,
-    `scale preflight`,
+    `scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes`,
+    `scale setup --verify --pack full --json`,
+    `scale preflight --preflight-profile quick`,
   ]
 
   if (recommendation.profileId === 'advanced') {

@@ -11,7 +11,7 @@ import type { MemoryProviderRecallItem } from '../../src/memory/MemoryProviders.
 
 function makeItem(overrides: Partial<MemoryProviderRecallItem> = {}): MemoryProviderRecallItem {
   return {
-    provider: 'scale-local',
+    provider: 'gbrain',
     id: 'item-1',
     title: 'Test Item',
     summary: 'A test memory item',
@@ -34,13 +34,13 @@ describe('scoreMemoryQuality', () => {
 
   it('scores high-quality items with high overall', () => {
     const items = [
-      makeItem({ provider: 'scale-local', confidence: 0.9, score: 0.85, evidencePaths: ['/ev1'] }),
-      makeItem({ provider: 'agentmemory', id: 'item-2', confidence: 0.95, score: 0.9, evidencePaths: ['/ev2'] }),
+      makeItem({ confidence: 0.9, score: 0.85, evidencePaths: ['/ev1'] }),
+      makeItem({ id: 'item-2', confidence: 0.95, score: 0.9, evidencePaths: ['/ev2'] }),
     ]
     const report = scoreMemoryQuality({ items })
     expect(report.qualityScore.overall).toBeGreaterThan(0.6)
     expect(report.qualityScore.signals.confidence).toBeGreaterThan(0.8)
-    expect(report.qualityScore.signals['cross-provider']).toBe(1) // 2 unique providers
+    expect(report.qualityScore.signals['cross-provider']).toBe(1) // governed gbrain route present
     expect(report.qualityScore.signals['evidence-backed']).toBe(1) // all have evidence
   })
 
@@ -68,13 +68,12 @@ describe('scoreMemoryQuality', () => {
 
   it('groups provider breakdown correctly', () => {
     const items = [
-      makeItem({ provider: 'scale-local' }),
-      makeItem({ provider: 'scale-local', id: 'item-2' }),
-      makeItem({ provider: 'gbrain', id: 'item-3' }),
+      makeItem(),
+      makeItem({ id: 'item-2' }),
+      makeItem({ id: 'item-3' }),
     ]
     const report = scoreMemoryQuality({ items })
-    expect(report.providerBreakdown['scale-local'].count).toBe(2)
-    expect(report.providerBreakdown['gbrain'].count).toBe(1)
+    expect(report.providerBreakdown['gbrain'].count).toBe(3)
   })
 })
 
@@ -152,7 +151,7 @@ describe('applyFreshnessDecay', () => {
 describe('summarizeMemoryIntelligence', () => {
   it('produces readable report', () => {
     const items = [
-      makeItem({ provider: 'scale-local', confidence: 0.9, score: 0.85 }),
+      makeItem({ confidence: 0.9, score: 0.85 }),
       makeItem({ provider: 'gbrain', id: 'item-2', confidence: 0.8, score: 0.75 }),
     ]
     const report = scoreMemoryQuality({ items })

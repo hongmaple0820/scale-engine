@@ -14,7 +14,6 @@ The inventory is intentionally conservative:
 | Upstream | Role in SCALE | Usage status | License status | Primary source surface |
 | --- | --- | --- | --- | --- |
 | [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files) | File-backed planning workflow reference | adapted concept, not vendored | MIT | `SkillRepository`, README, `THIRD_PARTY_SKILLS` |
-| [rohitg00/agentmemory](https://github.com/rohitg00/agentmemory) | Secondary external memory provider | external provider, fallback-only | Apache-2.0 | `MemoryProviders`, `SkillRepository`, README |
 | [garrytan/gbrain](https://github.com/garrytan/gbrain) | Default graph-backed memory provider | external provider, default-enabled | MIT | `MemoryProviders`, `SkillRepository`, README |
 | [MemTensor/MemOS](https://github.com/MemTensor/MemOS) | Memory Operating System — graph-first 3-layer memory architecture | external provider, optional | Apache-2.0 | `MemoryProviders`, `SkillRepository`, README |
 | [safishamsi/graphify](https://github.com/safishamsi/graphify) | Default knowledge graph and semantic recall source | external provider, default-enabled | review-required | `GraphifyKnowledgeBase`, `CodeIntelligence`, docs |

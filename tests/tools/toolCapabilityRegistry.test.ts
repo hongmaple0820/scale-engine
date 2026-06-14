@@ -114,9 +114,9 @@ describe('ToolCapabilityRegistry', () => {
     expect(report.ok).toBe(true)
     expect(report.tools.map(tool => tool.id)).toEqual(['gbrain', 'codegraph', 'graphify'])
     expect(report.tools.every(tool => tool.installed)).toBe(true)
-    expect(report.tools.find(tool => tool.id === 'gbrain')?.installHint).toBe('scale bootstrap deps --pack memory --apply')
-    expect(report.tools.find(tool => tool.id === 'codegraph')?.installHint).toBe('scale bootstrap deps --pack knowledge --apply')
-    expect(report.tools.find(tool => tool.id === 'graphify')?.installHint).toBe('scale bootstrap deps --pack knowledge --apply')
+    expect(report.tools.find(tool => tool.id === 'gbrain')?.installHint).toBe('scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes')
+    expect(report.tools.find(tool => tool.id === 'codegraph')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
+    expect(report.tools.find(tool => tool.id === 'graphify')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
   })
 
   it('detects policy-selected skills that are not in the static tool catalog', () => {

@@ -1,12 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { MemoryBrain, type MemoryNode } from './MemoryBrain.js'
 import { externalCommandExists } from '../core/ExternalCommand.js'
 import { runGbrainCommandSync } from '../core/GbrainRuntime.js'
 
-export type MemoryProviderKind = 'scale-local' | 'agentmemory' | 'gbrain' | 'memos' | 'generic-http'
-export type MemoryProviderCapability = 'keyword-recall' | 'semantic-recall' | 'graph-recall' | 'session-memory' | 'mcp' | 'write-memory'
-export type MemoryProviderSafetyLevel = 'trusted-local' | 'review-required' | 'blocked'
+export type MemoryProviderKind = 'gbrain'
+export type MemoryProviderCapability = 'semantic-recall' | 'graph-recall' | 'session-memory' | 'mcp' | 'write-memory'
+export type MemoryProviderSafetyLevel = 'review-required' | 'blocked'
 export type MemoryProviderWriteMode = 'disabled' | 'candidate-only' | 'enabled'
 
 export interface MemoryProviderConfig {
@@ -136,30 +135,12 @@ export function defaultMemoryProvidersConfig(): MemoryProvidersConfig {
     version: '1.0',
     routing: {
       mode: 'external-first',
-      defaultOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+      defaultOrder: ['gbrain'],
       allowExternalWrite: false,
       requireEvidence: true,
       maxResultsPerProvider: 5,
     },
     providers: [
-      {
-        id: 'agentmemory',
-        kind: 'agentmemory',
-        enabled: true,
-        priority: 90,
-        endpoint: process.env.AGENTMEMORY_ENDPOINT ?? process.env.AGENTMEMORY_URL ?? 'http://localhost:3111',
-        statusPath: '/health',
-        searchPath: '/search',
-        apiKeyEnv: process.env.AGENTMEMORY_SECRET ? 'AGENTMEMORY_SECRET' : undefined,
-        capabilities: ['semantic-recall', 'session-memory', 'mcp'],
-        safetyLevel: 'review-required',
-        writeMode: 'disabled',
-        attribution: {
-          license: 'Apache-2.0',
-          sourceUrl: 'https://github.com/rohitg00/agentmemory',
-          notice: 'Self-hosted local memory server. Start with: npx @agentmemory/agentmemory. Optional AGENTMEMORY_SECRET for protected deployments.',
-        },
-      },
       {
         id: 'gbrain',
         kind: 'gbrain',
@@ -177,33 +158,6 @@ export function defaultMemoryProvidersConfig(): MemoryProvidersConfig {
           sourceUrl: 'https://github.com/garrytan/gbrain',
           notice: 'Optional graph memory provider. Treat returned knowledge as recall evidence, not final truth.',
         },
-      },
-      {
-        id: 'memos',
-        kind: 'memos',
-        enabled: true,
-        priority: 85,
-        endpoint: process.env.MEMOS_BASE_URL ?? 'http://localhost:8001/api/openmem/v1',
-        statusPath: '/health',
-        searchPath: '/search/memory',
-        apiKeyEnv: 'MEMOS_API_KEY',
-        capabilities: ['semantic-recall', 'graph-recall', 'session-memory', 'mcp'],
-        safetyLevel: 'review-required',
-        writeMode: 'disabled',
-        attribution: {
-          license: 'Apache-2.0',
-          sourceUrl: 'https://github.com/MemTensor/MemOS',
-          notice: 'Memory Operating System — graph-first memory with 3-layer architecture (L1 Trace → L2 Policy → L3 World Model). Self-hosted via Docker or cloud API. Get API key from memos-dashboard.openmem.net or self-host with Docker.',
-        },
-      },
-      {
-        id: 'scale-local',
-        kind: 'scale-local',
-        enabled: true,
-        priority: 10,
-        capabilities: ['keyword-recall'],
-        safetyLevel: 'trusted-local',
-        writeMode: 'candidate-only',
       },
     ],
   }
@@ -246,6 +200,13 @@ export function loadMemoryProvidersConfig(projectDir = process.cwd(), scaleDir =
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<MemoryProvidersConfig>
     const defaults = defaultMemoryProvidersConfig()
+    const providers = normalizeProviders(parsed.providers, defaults.providers)
+    const providerIds = new Set(providers.map(provider => provider.id))
+    const defaultOrder = normalizeProviderOrder(
+      Array.isArray(parsed.routing?.defaultOrder) ? parsed.routing.defaultOrder.map(String) : defaults.routing.defaultOrder,
+      providerIds,
+      defaults.routing.defaultOrder,
+    )
     return {
       path,
       exists: true,
@@ -254,10 +215,11 @@ export function loadMemoryProvidersConfig(projectDir = process.cwd(), scaleDir =
         routing: {
           ...defaults.routing,
           ...(parsed.routing ?? {}),
-          defaultOrder: Array.isArray(parsed.routing?.defaultOrder) ? parsed.routing.defaultOrder.map(String) : defaults.routing.defaultOrder,
+          mode: normalizeRoutingMode(parsed.routing?.mode, defaults.routing.mode),
+          defaultOrder,
           maxResultsPerProvider: positiveInt(parsed.routing?.maxResultsPerProvider, defaults.routing.maxResultsPerProvider),
         },
-        providers: normalizeProviders(parsed.providers, defaults.providers),
+        providers,
       },
     }
   } catch {
@@ -329,8 +291,7 @@ export function useMemoryProvider(options: {
   const nextOrder = [provider, ...config.routing.defaultOrder.filter(item => item !== provider)]
   config.routing.defaultOrder = nextOrder
   if (typeof options.allowExternalWrite === 'boolean') config.routing.allowExternalWrite = options.allowExternalWrite
-  if (options.mode) config.routing.mode = options.mode
-  else if (target.kind === 'scale-local') config.routing.mode = 'local-only'
+  if (options.mode) config.routing.mode = normalizeRoutingMode(options.mode, config.routing.mode)
   else if (config.routing.mode === 'local-only') config.routing.mode = 'external-first'
 
   const path = saveMemoryProvidersConfig(projectDir, options.scaleDir, config)
@@ -371,29 +332,19 @@ export async function recallMemoryProviders(options: {
       continue
     }
     try {
-      const recalled = provider.kind === 'scale-local'
-        ? recallLocal(projectDir, options.scaleDir, provider, options, limit)
-        : await recallExternal(provider, options, limit, projectDir)
+      const recalled = await recallExternal(provider, options, limit, projectDir)
       if (recalled.length > 0) {
         selectedProviders.push(provider.id)
         items.push(...recalled)
       }
-      if (provider.kind === 'scale-local' && providers.some(item => item.kind !== 'scale-local')) fallbackUsed = true
     } catch (error) {
       warnings.push(`${provider.id} recall failed: ${(error as Error).message}`)
     }
     if (items.length >= limit && !options.provider) break
   }
 
-  // Calculate token savings: naive context (all memory nodes) vs. targeted recall
-  const brain = new MemoryBrain({ projectDir, scaleDir: options.scaleDir })
-  let naiveContextTokens = 0
-  try {
-    const allNodes = brain.list()
-    naiveContextTokens = estimateTokens(allNodes.map(n => `${n.title}\n${n.summary}`).join('\n'))
-  } finally {
-    brain.close()
-  }
+  // With gbrain-only routing, local MemoryBrain is not used as an implicit recall fallback.
+  const naiveContextTokens = 0
   const recalledTokens = estimateTokens(items.map(item => `${item.title}\n${item.summary}`).join('\n'))
   const reduction = naiveContextTokens > 0 && recalledTokens > 0
     ? Math.round((naiveContextTokens / recalledTokens) * 100) / 100
@@ -417,38 +368,15 @@ export async function recallMemoryProviders(options: {
 }
 
 function orderedProviders(config: MemoryProvidersConfig, providerId?: string): MemoryProviderConfig[] {
-  const candidates = config.routing.mode === 'local-only'
-    ? config.providers.filter(provider => provider.kind === 'scale-local')
-    : config.providers
+  const candidates = config.providers
   const selected = providerId ? candidates.filter(provider => provider.id === providerId) : candidates
-  const order = config.routing.mode === 'local-only'
-    ? ['scale-local']
-    : config.routing.defaultOrder
+  const order = config.routing.defaultOrder
   return selected.sort((a, b) => {
     const ai = order.indexOf(a.id)
     const bi = order.indexOf(b.id)
     const orderRank = (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
     return orderRank || b.priority - a.priority || a.id.localeCompare(b.id)
   })
-}
-
-function recallLocal(
-  projectDir: string,
-  scaleDir: string | undefined,
-  provider: MemoryProviderConfig,
-  input: MemoryProviderRecallInput,
-  limit: number,
-): MemoryProviderRecallItem[] {
-  const brain = new MemoryBrain({ projectDir, scaleDir })
-  try {
-    const active = brain.query(input.query, { limit, status: 'active' }).nodes
-    const nodes = active.length > 0 || !input.includeCandidates
-      ? active
-      : brain.query(input.query, { limit }).nodes
-    return nodes.map(node => nodeToRecall(provider.id, node))
-  } finally {
-    brain.close()
-  }
 }
 
 async function recallExternal(
@@ -459,9 +387,6 @@ async function recallExternal(
 ): Promise<MemoryProviderRecallItem[]> {
   if (provider.kind === 'gbrain' && commandExists('gbrain')) {
     return recallGbrainCli(provider, input, limit, projectDir)
-  }
-  if (provider.kind === 'memos') {
-    return recallMemos(provider, input, limit)
   }
   if (!provider.endpoint) return []
   const response = await fetch(new URL(provider.searchPath ?? '/search', provider.endpoint), {
@@ -494,58 +419,6 @@ function extractExternalResults(data: unknown): Array<Record<string, unknown>> {
   return []
 }
 
-async function recallMemos(
-  provider: MemoryProviderConfig,
-  input: MemoryProviderRecallInput,
-  limit: number,
-): Promise<MemoryProviderRecallItem[]> {
-  if (!provider.endpoint) return []
-  const apiKey = provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : undefined
-  const userId = process.env.MEMOS_USER_ID ?? 'scale-engine'
-  const conversationId = process.env.MEMOS_CONVERSATION_ID ?? 'default'
-  try {
-    const response = await fetch(new URL('/search/memory', provider.endpoint), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(apiKey ? { authorization: `Token ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        query: input.query,
-        user_id: userId,
-        conversation_id: conversationId,
-        memory_limit_number: limit,
-        include_preference: true,
-        include_tool_memory: true,
-      }),
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!response.ok) throw new Error(`MemOS HTTP ${response.status}`)
-    const data = await response.json() as {
-      code?: number
-      data?: {
-        text_memories?: Array<Record<string, unknown>>
-        preference_memories?: Array<Record<string, unknown>>
-        tool_memories?: Array<Record<string, unknown>>
-      }
-    }
-    if (data.code && data.code !== 200) throw new Error(`MemOS error code ${data.code}`)
-    const items: MemoryProviderRecallItem[] = []
-    const allMemories = [
-      ...(data.data?.text_memories ?? []),
-      ...(data.data?.preference_memories ?? []),
-      ...(data.data?.tool_memories ?? []),
-    ]
-    for (let i = 0; i < Math.min(allMemories.length, limit); i++) {
-      const mem = allMemories[i]
-      items.push(externalToRecall('memos', mem, i))
-    }
-    return items
-  } catch (error) {
-    throw new Error(`MemOS recall failed: ${(error as Error).message}`)
-  }
-}
-
 function externalToRecall(provider: string, item: Record<string, unknown>, index: number): MemoryProviderRecallItem {
   const title = firstString(item.title, item.name, item.summary, item.content, item.text) ?? `${provider} memory ${index + 1}`
   const summary = firstString(item.summary, item.content, item.text, item.body, item.markdown) ?? title
@@ -564,37 +437,12 @@ function externalToRecall(provider: string, item: Record<string, unknown>, index
   }
 }
 
-function nodeToRecall(provider: string, node: MemoryNode): MemoryProviderRecallItem {
-  return {
-    provider,
-    id: node.id,
-    title: node.title,
-    summary: node.summary,
-    confidence: node.confidence,
-    score: node.confidence,
-    evidencePaths: node.evidencePaths,
-    metadata: {
-      type: node.type,
-      scope: node.scope,
-      status: node.status,
-      entities: node.entities,
-    },
-  }
-}
-
 function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderRoutingConfig, projectDir: string): MemoryProviderStatus {
   if (!provider.enabled) {
     return {
       ...providerStatusBase(provider, routing),
       available: false,
       reason: 'disabled by memory provider policy',
-    }
-  }
-  if (provider.kind === 'scale-local') {
-    return {
-      ...providerStatusBase(provider, routing),
-      available: true,
-      reason: 'local MemoryBrain fallback is available',
     }
   }
   if (provider.kind === 'gbrain' && commandExists('gbrain')) {
@@ -614,29 +462,11 @@ function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderR
       }
     }
   }
-  if (provider.kind === 'agentmemory') {
-    const amHealth = inspectAgentmemoryHealth(provider.endpoint)
-    return {
-      ...providerStatusBase(provider, routing),
-      available: amHealth.available,
-      reason: amHealth.reason,
-    }
-  }
-  if (provider.kind === 'memos') {
-    const memosHealth = inspectMemosHealth(provider.endpoint, provider.apiKeyEnv)
-    return {
-      ...providerStatusBase(provider, routing),
-      available: memosHealth.available,
-      reason: memosHealth.reason,
-    }
-  }
   if (!provider.endpoint) {
     return {
       ...providerStatusBase(provider, routing),
       available: false,
-      reason: provider.kind === 'gbrain'
-        ? `${provider.id} requires either a local gbrain CLI install or endpoint configuration before autonomous use`
-        : `${provider.id} requires endpoint configuration before autonomous use`,
+      reason: `${provider.id} requires either a local gbrain CLI install or endpoint configuration before autonomous use`,
     }
   }
   return {
@@ -718,99 +548,6 @@ function gbrainCoreReadyHealth(report: GbrainDoctorReport): GbrainCliHealth {
     reason: `gbrain core recall is available; optional doctor warnings: ${optionalIssues.slice(0, 3).join(', ')}`,
     status,
     healthScore,
-  }
-}
-
-interface AgentmemoryHealth {
-  available: boolean
-  reason: string
-}
-
-function inspectAgentmemoryHealth(endpoint?: string): AgentmemoryHealth {
-  const url = endpoint ?? 'http://localhost:3111'
-  try {
-    // Quick TCP check: try to connect to the agentmemory server
-    const { request } = require('node:http')
-    const req = request(`${url}/health`, { method: 'GET', timeout: 2000 }, () => {
-      // just checking connectivity
-    })
-    req.on('error', () => {})
-    req.end()
-    // Synchronous check via spawn
-    const { spawnSync } = require('node:child_process')
-    const result = spawnSync('node', ['-e', `
-      const http = require('http');
-      const req = http.get('${url}/health', {timeout: 2000}, (res) => {
-        let data = '';
-        res.on('data', (c) => data += c);
-        res.on('end', () => { process.stdout.write(JSON.stringify({status: res.statusCode, body: data})); process.exit(0); });
-      });
-      req.on('error', () => { process.stdout.write('{"error":"connect refused"}'); process.exit(1); });
-      req.on('timeout', () => { req.destroy(); process.stdout.write('{"error":"timeout"}'); process.exit(1); });
-    `], { timeout: 3000, encoding: 'utf8' })
-    if (result.status === 0 && result.stdout) {
-      const parsed = JSON.parse(result.stdout)
-      if (parsed.status === 200) {
-        return { available: true, reason: `agentmemory server responding at ${url}` }
-      }
-    }
-    return {
-      available: false,
-      reason: `agentmemory server not reachable at ${url}. Start with: npx @agentmemory/agentmemory`,
-    }
-  } catch {
-    return {
-      available: false,
-      reason: `agentmemory server not reachable at ${url}. Start with: npx @agentmemory/agentmemory`,
-    }
-  }
-}
-
-interface MemosHealth {
-  available: boolean
-  reason: string
-}
-
-function inspectMemosHealth(endpoint?: string, apiKeyEnv?: string): MemosHealth {
-  const url = endpoint ?? 'http://localhost:8001/api/openmem/v1'
-  const apiKey = apiKeyEnv ? process.env[apiKeyEnv] : undefined
-  // Cloud API requires key; self-hosted may not
-  const isCloud = url.includes('memt.ai') || url.includes('memtensor.cn')
-  if (isCloud && !apiKey) {
-    return { available: false, reason: `MemOS cloud API requires MEMOS_API_KEY. Get one from memos-dashboard.openmem.net` }
-  }
-  try {
-    const { spawnSync } = require('node:child_process')
-    const headers: Record<string, string> = { 'content-type': 'application/json' }
-    if (apiKey) headers['authorization'] = `Token ${apiKey}`
-    const result = spawnSync('node', ['-e', `
-      const http = require('http');
-      const url = new URL('${url}/health');
-      const opts = { hostname: url.hostname, port: url.port || 80, path: url.pathname, method: 'GET', timeout: 3000, headers: ${JSON.stringify(headers)} };
-      const req = http.request(opts, (res) => {
-        let data = '';
-        res.on('data', (c) => data += c);
-        res.on('end', () => { process.stdout.write(JSON.stringify({status: res.statusCode})); process.exit(0); });
-      });
-      req.on('error', () => { process.stdout.write('{"error":"connect refused"}'); process.exit(1); });
-      req.on('timeout', () => { req.destroy(); process.stdout.write('{"error":"timeout"}'); process.exit(1); });
-      req.end();
-    `], { timeout: 5000, encoding: 'utf8' })
-    if (result.status === 0 && result.stdout) {
-      const parsed = JSON.parse(result.stdout)
-      if (parsed.status >= 200 && parsed.status < 400) {
-        return { available: true, reason: `MemOS server responding at ${url}` }
-      }
-    }
-    return {
-      available: false,
-      reason: `MemOS server not reachable at ${url}. Self-host: docker compose up. Cloud: set MEMOS_API_KEY from memos-dashboard.openmem.net`,
-    }
-  } catch {
-    return {
-      available: false,
-      reason: `MemOS server not reachable at ${url}. Self-host: docker compose up. Cloud: set MEMOS_API_KEY from memos-dashboard.openmem.net`,
-    }
   }
 }
 
@@ -961,16 +698,11 @@ function providerStatusBase(provider: MemoryProviderConfig, routing: MemoryProvi
 
 function providerWarnings(statuses: MemoryProviderStatus[], config: MemoryProvidersConfig): string[] {
   const warnings: string[] = []
-  if (!config.routing.allowExternalWrite && statuses.some(status => status.writeMode === 'enabled' && status.kind !== 'scale-local')) {
+  if (!config.routing.allowExternalWrite && statuses.some(status => status.writeMode === 'enabled')) {
     warnings.push('External memory write is configured on a provider while routing.allowExternalWrite is false.')
   }
-  const expectsScaleLocalFallback = config.providers.some(provider => provider.kind === 'scale-local') ||
-    config.routing.defaultOrder.includes('scale-local')
-  if (expectsScaleLocalFallback && !statuses.some(status => status.kind === 'scale-local' && status.available)) {
-    warnings.push('scale-local fallback is unavailable; autonomous recall may fail closed.')
-  }
   for (const status of statuses) {
-    if (status.kind !== 'scale-local' && status.enabled && status.safetyLevel !== 'review-required') {
+    if (status.enabled && status.safetyLevel !== 'review-required') {
       warnings.push(`${status.id} should remain review-required until privacy and retention boundaries are recorded.`)
     }
   }
@@ -1099,20 +831,40 @@ function normalizeProviders(input: unknown, defaults: MemoryProviderConfig[]): M
   const providers = input.filter(isRecord).map(item => {
     const id = String(item.id ?? '')
     const base = byId.get(id)
+    if (!base) return null
     return {
-      ...(base ?? {}),
+      ...base,
       ...item,
       id,
-      kind: normalizeKind(item.kind, base?.kind),
-      enabled: item.enabled !== false && Boolean(item.enabled ?? base?.enabled ?? false),
-      priority: positiveInt(item.priority, base?.priority ?? 0),
-      homeDir: typeof item.homeDir === 'string' ? item.homeDir : base?.homeDir,
-      capabilities: arrayOfStrings(item.capabilities) as MemoryProviderCapability[],
-      safetyLevel: normalizeSafety(item.safetyLevel, base?.safetyLevel),
-      writeMode: normalizeWriteMode(item.writeMode, base?.writeMode),
+      kind: normalizeKind(item.kind, base.kind),
+      enabled: item.enabled !== false && Boolean(item.enabled ?? base.enabled),
+      priority: positiveInt(item.priority, base.priority),
+      homeDir: typeof item.homeDir === 'string' ? item.homeDir : base.homeDir,
+      capabilities: Array.isArray(item.capabilities)
+        ? arrayOfStrings(item.capabilities) as MemoryProviderCapability[]
+        : [...base.capabilities],
+      safetyLevel: normalizeSafety(item.safetyLevel, base.safetyLevel),
+      writeMode: normalizeWriteMode(item.writeMode, base.writeMode),
     } as MemoryProviderConfig
-  }).filter(provider => provider.id)
-  return providers
+  }).filter((provider): provider is MemoryProviderConfig => Boolean(provider?.id))
+  return providers.length > 0 ? providers : defaults
+}
+
+function normalizeProviderOrder(input: string[], providerIds: Set<string>, fallback: string[]): string[] {
+  const ordered = [...new Set(input)].filter(id => providerIds.has(id))
+  for (const id of fallback) {
+    if (providerIds.has(id) && !ordered.includes(id)) ordered.push(id)
+  }
+  for (const id of providerIds) {
+    if (!ordered.includes(id)) ordered.push(id)
+  }
+  return ordered
+}
+
+function normalizeRoutingMode(value: unknown, fallback: MemoryProviderRoutingConfig['mode']): MemoryProviderRoutingConfig['mode'] {
+  if (value === 'auto' || value === 'external-first') return value
+  if (value === 'local-only') return 'external-first'
+  return fallback
 }
 
 function providerGbrainEnv(provider: MemoryProviderConfig, projectDir: string): NodeJS.ProcessEnv | undefined {
@@ -1130,14 +882,12 @@ function resolveProviderPath(value: string, projectDir: string): string {
   return isAbsolute(value) ? value : resolve(projectDir, value)
 }
 
-function normalizeKind(value: unknown, fallback: MemoryProviderKind = 'generic-http'): MemoryProviderKind {
-  return ['scale-local', 'agentmemory', 'gbrain', 'memos', 'generic-http'].includes(String(value))
-    ? value as MemoryProviderKind
-    : fallback
+function normalizeKind(value: unknown, fallback: MemoryProviderKind = 'gbrain'): MemoryProviderKind {
+  return value === 'gbrain' ? 'gbrain' : fallback
 }
 
 function normalizeSafety(value: unknown, fallback: MemoryProviderSafetyLevel = 'review-required'): MemoryProviderSafetyLevel {
-  return ['trusted-local', 'review-required', 'blocked'].includes(String(value))
+  return ['review-required', 'blocked'].includes(String(value))
     ? value as MemoryProviderSafetyLevel
     : fallback
 }

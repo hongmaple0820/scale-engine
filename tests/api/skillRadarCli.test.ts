@@ -125,7 +125,7 @@ describe('skill radar CLI', () => {
       'skill',
       'radar',
       '--task',
-      'Use long-running planning with findings progress and persistent memory knowledge recall through agentmemory',
+      'Use long-running planning with findings progress and persistent memory knowledge recall through gbrain',
       '--json',
     ], scaleDir, projectDir)
 
@@ -143,7 +143,6 @@ describe('skill radar CLI', () => {
     ]))
     expect(report.recommendations).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'planning-with-files', category: 'planning', safetyLevel: 'review-required' }),
-      expect.objectContaining({ id: 'agentmemory', category: 'memory', safetyLevel: 'review-required' }),
       expect.objectContaining({ id: 'gbrain', category: 'memory', safetyLevel: 'review-required' }),
     ]))
     expect(report.requiredEvidence).toEqual(expect.arrayContaining([

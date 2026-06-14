@@ -164,12 +164,13 @@ export function getBootstrapPlanForProfile(profileId: string, governancePack?: s
   const profile = getProfile(profileId)
   const packs = getRecommendedBootstrapPacks(profile.id, governancePack)
   const packArg = packs.join(',')
+  const memoryArgs = packs.includes('memory') ? ' --memory-provider gbrain --memory-mode external-first' : ''
   return {
     profileId: profile.id,
     governancePack,
     packs,
-    inspectCommand: `scale bootstrap deps --pack ${packArg} --json`,
-    applyCommand: `scale bootstrap deps --pack ${packArg} --apply`,
+    inspectCommand: `scale setup --pack ${packArg}${memoryArgs} --json`,
+    applyCommand: `scale setup --pack ${packArg}${memoryArgs} --apply --yes`,
   }
 }
 

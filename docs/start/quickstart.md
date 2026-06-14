@@ -86,22 +86,22 @@ npx -y @hongmaple0820/scale-engine@latest setup --dir .
 只查看计划：
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest setup --pack full --dir .
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --dir .
 ```
 
 确认后执行安装：
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest setup --pack full --apply --yes --dir .
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes --dir .
 ```
 
 机器可读输出：
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest setup --pack full --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
 ```
 
-`setup` 和 `bootstrap deps` 都会输出 `runtimeChecks`。如果机器缺少 `python`、`bun`、`cargo`、`uv/pipx`、`node/npm/npx`，会先显示缺失项和修复建议，再决定是否执行 `--apply`，避免安装中途卡住。
+`setup` 会输出 `runtimeChecks`。如果机器缺少 `python`、`bun`、`cargo`、`uv/pipx`、`node/npm/npx`，会先显示缺失项和修复建议，再决定是否执行 `--apply --yes`，避免安装中途卡住。
 
 记忆供应商在安装入口显式固定为 `gbrain`，不需要手改 `.scale/memory-providers.json`：
 
@@ -130,11 +130,11 @@ npx -y @hongmaple0820/scale-engine@latest setup --pack memory --memory-provider 
 | `graphify` | 知识图谱产物供应商 | `graphify install --platform codex` 和 `graphify-out/graph.json` |
 | `codegraph` | 代码结构索引供应商 | `codegraph init -i` 和 `.codegraph/` |
 
-底层命令仍可直接使用：
+高级维护者可以单独检查安装计划：
 
 ```bash
-scale bootstrap deps --profile advanced --governance-pack frontend-app --lang zh
-scale bootstrap deps --profile advanced --governance-pack frontend-app --apply --lang zh
+npx -y @hongmaple0820/scale-engine@latest setup --pack external-cli,memory,knowledge,ui --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json
 ```
 
 ## 6. 验证闭环
@@ -151,7 +151,7 @@ npx -y @hongmaple0820/scale-engine@latest memory provider status --dir . --json
 npx -y @hongmaple0820/scale-engine@latest codegraph status --dir . --json
 ```
 
-未运行验证，不要声称通过。`setup --json` 和 `bootstrap deps --json` 只代表依赖计划可解析，不等于第三方服务已经可用。
+未运行验证，不要声称通过。`setup --json` 只代表依赖计划可解析，不等于第三方服务已经可用；需要再跑 `setup --verify --pack full --json` 或对应 smoke。
 
 真实第三方能力需要单独跑回放验证。默认命令会把未配置的远端能力标记为 `blocked`，但不会让本地发布门禁误失败；需要作为强制门禁时使用对应 npm script 或加 `--require-*`。
 

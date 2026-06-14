@@ -138,7 +138,7 @@ Provider rules:
 - This repository's checked-in provider routing is intentionally gbrain-only. Additional providers are not part of the default workflow contract unless a project explicitly opts into a separate provider policy.
 - `memory provider use <id>` is the fast path for switching the default route without hand-editing `.scale/memory-providers.json`.
 - External providers are read-only by default. Writes require an explicit provider policy change.
-- `scale-local` remains an explicit local Memory Brain mode for projects that choose it, but it is not the default route for this repository's provider policy.
+- Legacy local memory-provider config is treated as historical/local-only state; the governed workflow route is gbrain-only and reports blocked when gbrain is not ready.
 - `memory pack` automatically includes a `provider-memory` section when provider recall returns relevant active memories.
 - `ai-os plan` includes both the provider recall summary and the Memory Fabric context pack, so agents can route memory before planning without pretending external memory is always available.
 
@@ -163,4 +163,4 @@ npm run smoke:gbrain
 node scripts/workflow/provider-rehearsal.mjs --skip-graphify --require-gbrain
 ```
 
-This is intentionally stronger than `scale memory provider status --json`: it requires a real configured gbrain, writes a temporary page, then reads and queries it through separate CLI processes. If no remote/thin-client brain is configured, the rehearsal must report `blocked` or fail under `--require-gbrain`; falling back to `scale-local` is not a valid substitute for cross-session provider validation.
+This is intentionally stronger than `scale memory provider status --json`: it requires a real configured gbrain, writes a temporary page, then reads and queries it through separate CLI processes. If no remote/thin-client brain is configured, the rehearsal must report `blocked` or fail under `--require-gbrain`; falling back to local memory is not a valid substitute for cross-session provider validation.

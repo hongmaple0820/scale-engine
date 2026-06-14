@@ -36,7 +36,7 @@ function writeTestMemoryProviderConfig(scaleDir: string): void {
   const config = defaultMemoryProvidersConfig()
   config.providers = config.providers.map(provider => ({
     ...provider,
-    enabled: provider.kind === 'scale-local',
+    enabled: provider.kind === 'gbrain',
   }))
   writeFileSync(join(scaleDir, 'memory-providers.json'), JSON.stringify(config, null, 2), 'utf-8')
 }
@@ -133,7 +133,7 @@ describe('ai-os CLI', () => {
     expect(report.task.taskId).toBe('TASK-AI-OS-CLI')
     expect(report.governance.effectiveMode).toBe('critical')
     expect(report.context.compiler?.strategy).toBe('relevance-budget-v1')
-    expect(report.memory.providerOrder).toEqual(['gbrain', 'memos', 'agentmemory', 'scale-local'])
+    expect(report.memory.providerOrder).toEqual(['gbrain'])
     expect(report.skillPlan.executionPlan.steps.length).toBeGreaterThan(0)
     expect(report.agentCollaboration.strategy).toBe('agent-collaboration-v1')
     expect(report.agentCollaboration.roles).toEqual(expect.arrayContaining([

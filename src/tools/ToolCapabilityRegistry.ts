@@ -114,7 +114,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['review'],
     source: 'https://github.com/garrytan/gbrain',
-    installHint: 'scale bootstrap deps --pack memory --apply',
+    installHint: 'scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes',
   },
   {
     id: 'codegraph',
@@ -125,7 +125,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['review'],
     source: 'https://github.com/colbymchenry/codegraph',
-    installHint: 'scale bootstrap deps --pack knowledge --apply',
+    installHint: 'scale setup --pack knowledge --apply --yes',
   },
   {
     id: 'graphify',
@@ -136,7 +136,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['review'],
     source: 'https://github.com/safishamsi/graphify',
-    installHint: 'scale bootstrap deps --pack knowledge --apply',
+    installHint: 'scale setup --pack knowledge --apply --yes',
   },
   {
     id: 'agent-browser',

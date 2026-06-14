@@ -112,13 +112,9 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
     }
 
     if (promptSession && memoryProvider && memoryProvider !== 'skip' && !memoryMode) {
-      if (memoryProvider === 'scale-local') {
-        memoryMode = 'local-only'
-      } else {
-        const question = memoryModeQuestion(lang)
-        prompts.push(question.trim())
-        memoryMode = normalizeMemoryModeChoice(await askLine(promptSession, question))
-      }
+      const question = memoryModeQuestion(lang)
+      prompts.push(question.trim())
+      memoryMode = normalizeMemoryModeChoice(await askLine(promptSession, question))
       interactiveChoices.memoryMode = memoryMode
     }
 
@@ -165,7 +161,7 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
 }
 
 function shouldPromptMemoryProvider(plan: DependencyBootstrapReport): boolean {
-  return plan.packIds.includes('memory') || plan.items.some(item => item.id === 'gbrain' || item.id === 'agentmemory' || item.id === 'memos' || item.id === 'scale-local')
+  return plan.packIds.includes('memory') || plan.items.some(item => item.id === 'gbrain')
 }
 
 function languageQuestion(lang: ScaleLanguage): string {
@@ -184,24 +180,18 @@ function memoryProviderQuestion(lang: ScaleLanguage): string {
   return lang === 'zh'
     ? `选择记忆供应商:
   1=gbrain (图记忆，CLI模式，推荐)
-  2=MemOS (3层记忆架构，图优先，自托管/云API)
-  3=agentmemory (语义搜索，自托管，需启动 npx @agentmemory/agentmemory)
-  4=scale-local (本地SQLite，零依赖)
-  5=skip (跳过)
+  2=skip (跳过)
   默认 1: `
     : `Choose memory provider:
   1=gbrain (graph memory, CLI mode, recommended)
-  2=MemOS (3-layer memory, graph-first, self-hosted/cloud)
-  3=agentmemory (semantic search, self-hosted, run: npx @agentmemory/agentmemory)
-  4=scale-local (local SQLite, zero deps)
-  5=skip
+  2=skip
   Default 1: `
 }
 
 function memoryModeQuestion(lang: ScaleLanguage): string {
   return lang === 'zh'
-    ? '选择记忆路由模式 external-first/auto/local-only，默认 external-first: '
-    : 'Choose memory routing mode external-first/auto/local-only, default external-first: '
+    ? '选择 gbrain 路由模式 external-first/auto，默认 external-first: '
+    : 'Choose gbrain routing mode external-first/auto, default external-first: '
 }
 
 function installQuestion(lang: ScaleLanguage, readyIds: string[]): string {
@@ -240,18 +230,14 @@ function normalizePackChoice(value: string): string[] {
 function normalizeMemoryProviderChoice(value: string): string {
   const normalized = value.trim().toLowerCase()
   if (!normalized || normalized === '1') return 'gbrain'
-  if (normalized === '2' || normalized === 'memos') return 'memos'
-  if (normalized === '3' || normalized === 'agent') return 'agentmemory'
-  if (normalized === '4' || normalized === 'local' || normalized === 'scale') return 'scale-local'
-  if (normalized === '5' || normalized === 'none' || normalized === 'no') return 'skip'
-  if (['gbrain', 'memos', 'scale-local', 'agentmemory', 'skip'].includes(normalized)) return normalized
+  if (normalized === '2' || normalized === 'none' || normalized === 'no' || normalized === 'skip') return 'skip'
+  if (normalized === 'gbrain') return 'gbrain'
   return 'gbrain'
 }
 
 function normalizeMemoryModeChoice(value: string): MemoryProviderRoutingConfig['mode'] {
   const normalized = value.trim().toLowerCase()
   if (normalized === 'auto' || normalized === '2') return 'auto'
-  if (normalized === 'local-only' || normalized === 'local' || normalized === '3') return 'local-only'
   return 'external-first'
 }
 

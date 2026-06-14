@@ -84,9 +84,6 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
       .map(item => item.id),
     versionDrift: dependencyBootstrap.items.filter(item => item.status === 'version-drift').map(item => item.id),
   }
-  if (nonBlockingDependencies.has('gbrain')) {
-    warnings.push('gbrain is unavailable in this runtime, but scale-local fallback remains available for governed memory recall.')
-  }
 
   if (dependencyStatus.failed.length > 0) {
     blockingIssues.push(`Dependency bootstrap failed: ${dependencyStatus.failed.join(', ')}`)
@@ -229,17 +226,10 @@ const ENVIRONMENT_WARNING_TOOL_MAP: Record<string, string[]> = {
 }
 
 function resolveNonBlockingDependencyIds(
-  dependencyBootstrap: DependencyBootstrapReport,
-  memoryProviders: MemoryProviderStatusReport,
+  _dependencyBootstrap: DependencyBootstrapReport,
+  _memoryProviders: MemoryProviderStatusReport,
 ): Set<string> {
-  const ids = new Set<string>()
-  const includesMemory = dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')
-  if (!includesMemory) return ids
-
-  const gbrain = memoryProviders.providers.find(provider => provider.id === 'gbrain')
-  const fallback = memoryProviders.providers.find(provider => provider.kind === 'scale-local' && provider.available)
-  if (gbrain && !gbrain.available && fallback) ids.add('gbrain')
-  return ids
+  return new Set<string>()
 }
 
 function skippedMemoryProvidersReport(projectDir: string, scaleDir: string): MemoryProviderStatusReport {
@@ -251,7 +241,7 @@ function skippedMemoryProvidersReport(projectDir: string, scaleDir: string): Mem
     configExists: existsSync(configPath),
     routing: {
       mode: 'external-first',
-      defaultOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
+      defaultOrder: ['gbrain'],
       allowExternalWrite: false,
       requireEvidence: true,
       maxResultsPerProvider: 5,

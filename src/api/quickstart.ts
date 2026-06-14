@@ -184,12 +184,14 @@ export function governanceNextSteps(options: {
 } = {}): string[] {
   const steps: string[] = []
   const bootstrapPlan = getBootstrapPlanForProfile(options.profileId ?? 'standard', options.governancePack)
+  const setupPackArg = bootstrapPlan.packs.join(',')
   if (options.includeAgentInit) {
     steps.push('scale init --agent <platform>  # optional: add agent-specific hooks later')
   }
   if (options.includeDependencyBootstrap !== false) {
-    steps.push(`${bootstrapPlan.inspectCommand}  # inspect/install third-party skills and CLI dependencies explicitly`)
-    steps.push(`scale init --with-deps  # or use --with-deps to install deps during init`)
+    steps.push(`scale setup --pack ${setupPackArg} --memory-provider gbrain --memory-mode external-first --json  # inspect third-party skills, CLIs, memory, and knowledge providers`)
+    steps.push(`scale setup --pack ${setupPackArg} --memory-provider gbrain --memory-mode external-first --apply --yes  # install and initialize governed third-party capabilities`)
+    steps.push(`scale setup --verify --pack ${setupPackArg} --json  # prove setup is usable before relying on the workflow`)
   }
   steps.push(
     'scale doctor',
@@ -207,12 +209,13 @@ export async function quickStart(projectDir: string = '.', options?: {
   profileId?: string
 }): Promise<QuickStartResult> {
   const bootstrapPlan = getBootstrapPlanForProfile(options?.profileId ?? 'standard', options?.governancePack)
+  const setupPackArg = bootstrapPlan.packs.join(',')
   const result: QuickStartResult = {
     success: false, platform: null, created: [], skipped: [],
     constraintsApplied: 0,
     workflowCapabilities: ['browser', 'search', 'computer'],
     capabilitiesEnabled: ['browser', 'search', 'computer'],
-    dependencyBootstrapCommand: bootstrapPlan.inspectCommand,
+    dependencyBootstrapCommand: `scale setup --pack ${setupPackArg} --memory-provider gbrain --memory-mode external-first --json`,
     nextSteps: [],
   }
   const detection = detectPlatform(projectDir)
@@ -306,8 +309,8 @@ export function checkKnowledgeGraphAvailability(projectDir: string = '.', deps: 
 
   const instructions: string[] = []
   if (!result.codegraphInstalled || !result.graphifyInstalled) {
-    instructions.push('scale bootstrap deps --pack knowledge --json')
-    instructions.push('scale bootstrap deps --pack knowledge --apply')
+    instructions.push('scale setup --pack knowledge --json')
+    instructions.push('scale setup --pack knowledge --apply --yes')
   }
   if (!result.pythonVersion && !result.graphifyInstalled && !result.graphifyArtifactPresent) {
     instructions.push('Install Python 3.10+ to enable Graphify CLI installation.')
@@ -342,6 +345,7 @@ export async function installKnowledgeGraph(projectDir: string = '.', deps: Know
     ...(result.instructions ?? []),
     ...bootstrapReport.recommendations,
     ...bootstrapReport.postCheckCommands,
+    'scale setup --verify --pack knowledge --json',
   ])
   result.instructions = instructions.length > 0 ? instructions : undefined
   return result

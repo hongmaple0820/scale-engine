@@ -16,7 +16,6 @@ This document records external skill projects that SCALE may learn from, recomme
 | Project | License | Upstream | SCALE usage | Redistribution status |
 | --- | --- | --- | --- | --- |
 | Planning with Files | MIT | [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files) | Adapt concepts for file-backed plans, findings, progress logs, active-plan routing, and plan attestation. | Not vendored. |
-| agentmemory | Apache-2.0 | [rohitg00/agentmemory](https://github.com/rohitg00/agentmemory) | Optional external memory provider via REST or MCP for teams that need cross-agent persistent memory beyond local SCALE Memory Brain. | Not vendored. |
 | GBrain | MIT | [garrytan/gbrain](https://github.com/garrytan/gbrain) | Default memory provider route for graph-backed cross-session recall. SCALE verifies that a brain is configured and recall-critical health checks pass; CLI existence alone is not enough. | Not vendored. |
 | awesome-design-md | MIT | [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md) | DESIGN.md catalog for brand, visual language, typography, and design-system direction. `scale setup --pack ui --apply` syncs upstream under `~/.scale/vendor/awesome-design-md` and creates `~/.agents/skills/awesome-design-md/SKILL.md`. | Installed only with explicit setup/apply. |
 | ui-ux-pro-max | Upstream project license | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | UX, UI state, accessibility, responsive, and acceptance-review skill. `scale setup --pack ui --apply` syncs upstream under `~/.scale/vendor/ui-ux-pro-max` and creates `~/.agents/skills/ui-ux-pro-max/SKILL.md`. | Installed only with explicit setup/apply. |
@@ -31,7 +30,6 @@ Other referenced skills, MCP servers, CLIs, discovery candidates, and adapter ta
 SCALE acknowledges these upstream projects and contributors:
 
 - `OthmanAdi/planning-with-files`, Copyright (c) 2026 Ahmad Adi.
-- `rohitg00/agentmemory` and its upstream contributors.
 - `garrytan/gbrain` and its upstream contributors.
 - All upstream projects listed in [External Reference Inventory](EXTERNAL_REFERENCES.md) according to their licenses and contribution histories.
 
@@ -73,13 +71,14 @@ scale setup --pack full --json
 
 Default language is Chinese. Running `scale setup` without `--json` starts the interactive wizard: language, dependency pack, memory provider, memory route, and install scope. Use `--lang en` or `SCALE_LANG=en` for English output.
 
-`setup` and `bootstrap deps` now expose report-level `runtimeChecks` before any install command runs. Missing `python`, `bun`, `cargo`, `uv/pipx`, or `node/npm/npx` is shown with a targeted install hint, so users can fix the environment before `--yes`/`--apply`.
+`setup` exposes report-level `runtimeChecks` before any install command runs. Missing `python`, `bun`, `cargo`, `uv/pipx`, or `node/npm/npx` is shown with a targeted install hint, so users can fix the environment before `--yes`/`--apply`.
 
-Memory provider routing can be configured during setup:
+Memory provider routing is intentionally gbrain-only in the current workflow policy:
 
 ```bash
-scale setup --pack memory --memory-provider scale-local --json
 scale setup --pack memory --memory-provider gbrain --memory-mode external-first --json
+scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --verify --pack memory --json
 ```
 
 Repository maintainers should run the setup smoke before release or after changing installer behavior:

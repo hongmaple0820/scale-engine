@@ -1,5 +1,5 @@
 // SCALE Engine — Memory Intelligence (v0.35.0)
-// Unified memory retrieval quality engine with cross-provider scoring, conflict detection, freshness management
+// Unified memory retrieval quality engine with governed-provider scoring, conflict detection, freshness management
 
 import type { MemoryProviderRecallItem } from './MemoryProviders.js'
 
@@ -65,8 +65,7 @@ export function scoreMemoryQuality(input: MemoryIntelligenceInput): MemoryIntell
   const relevanceScore = avg(items.map(i => i.score))
   const freshnessScore = (freshness.fresh * 1.0 + freshness.stale * 0.5) / items.length
   const evidenceScore = items.filter(i => i.evidencePaths.length > 0).length / items.length
-  const uniqueProviders = new Set(items.map(i => i.provider))
-  const crossProviderScore = Math.min(1, uniqueProviders.size / 2)
+  const governedProviderScore = items.some(item => item.provider === 'gbrain') ? 1 : 0
   const contradictionScore = conflicts.length === 0 ? 1 : Math.max(0, 1 - conflicts.length * 0.2)
 
   const signals: Record<MemoryQualitySignal, number> = {
@@ -74,7 +73,7 @@ export function scoreMemoryQuality(input: MemoryIntelligenceInput): MemoryIntell
     relevance: round(relevanceScore),
     freshness: round(freshnessScore),
     'evidence-backed': round(evidenceScore),
-    'cross-provider': round(crossProviderScore),
+    'cross-provider': round(governedProviderScore),
     'no-contradiction': round(contradictionScore),
   }
 
@@ -83,7 +82,7 @@ export function scoreMemoryQuality(input: MemoryIntelligenceInput): MemoryIntell
     relevanceScore * 0.25 +
     freshnessScore * 0.2 +
     evidenceScore * 0.15 +
-    crossProviderScore * 0.05 +
+    governedProviderScore * 0.05 +
     contradictionScore * 0.1,
   )
 
@@ -97,7 +96,7 @@ export function scoreMemoryQuality(input: MemoryIntelligenceInput): MemoryIntell
   if (overall < 0.5) recommendations.push('Improve memory provider quality or add more evidence-backed memories.')
   if (freshness.expired > items.length * 0.3) recommendations.push('Prune expired memories to improve recall quality.')
   if (conflicts.length > 0) recommendations.push('Resolve memory contradictions to prevent conflicting guidance.')
-  if (uniqueProviders.size < 2) recommendations.push('Add a second memory provider for cross-validation.')
+  if (governedProviderScore < 1) recommendations.push('Route recall through gbrain before claiming governed memory readiness.')
 
   return {
     totalRecalled: items.length,

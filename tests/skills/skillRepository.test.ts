@@ -12,7 +12,6 @@ describe('SkillRepository', () => {
 
     expect(ids).toEqual(expect.arrayContaining([
       'planning-with-files',
-      'agentmemory',
       'gbrain',
       'awesome-design-md',
       'ui-ux-pro-max',
@@ -27,10 +26,9 @@ describe('SkillRepository', () => {
     ]))
   })
 
-  it('records third-party attribution for external planning and memory references', () => {
+  it('records third-party attribution for external planning and gbrain memory references', () => {
     const entries = listSkillRepositoryEntries()
     const planning = entries.find(entry => entry.id === 'planning-with-files')
-    const memory = entries.find(entry => entry.id === 'agentmemory')
     const gbrain = entries.find(entry => entry.id === 'gbrain')
 
     expect(planning?.category).toBe('planning')
@@ -38,13 +36,6 @@ describe('SkillRepository', () => {
     expect(planning?.attribution.copyright).toContain('Ahmad Adi')
     expect(planning?.attribution.usage).toBe('adapted-concept')
     expect(planning?.attribution.modifiedFromUpstream).toBe(false)
-
-    expect(memory?.category).toBe('memory')
-    expect(memory?.attribution.license).toBe('Apache-2.0')
-    expect(memory?.attribution.usage).toBe('external-reference')
-    expect(memory?.attribution.modifiedFromUpstream).toBe(false)
-    expect(memory?.safety.requiresReview).toBe(true)
-    expect(memory?.safety.requiredChecks).toContain('verify-attribution-and-notice')
 
     expect(gbrain?.category).toBe('memory')
     expect(gbrain?.attribution.license).toBe('MIT')
@@ -116,10 +107,8 @@ describe('SkillRepository', () => {
     expect(markdown).toContain('awesome-design-md')
     expect(markdown).toContain('Third-Party Attribution')
     expect(markdown).toContain('planning-with-files')
-    expect(markdown).toContain('agentmemory')
     expect(markdown).toContain('gbrain')
     expect(markdown).toContain('MIT')
-    expect(markdown).toContain('Apache-2.0')
     expect(markdown).toContain('verify-attribution-and-notice')
   })
 })

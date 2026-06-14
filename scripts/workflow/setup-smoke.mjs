@@ -61,6 +61,18 @@ function runSetupSmoke() {
   initProject(baseEnv)
   initIsolatedGbrain(baseEnv)
 
+  const init = runJson('scale-init-json', [
+    'init',
+    '--dir',
+    projectDir,
+    '--governance-pack',
+    'standard',
+    '--json',
+  ], baseEnv)
+  assert(init.ok === true, 'scale init should succeed in a fresh project')
+  assert(init.dependencyBootstrapCommand === 'scale setup --pack external-cli --memory-provider gbrain --memory-mode external-first --json', 'scale init should direct users to governed setup with gbrain')
+  assertArrayContains(init.workflowCapabilities, ['browser', 'search', 'computer'], 'scale init should record workflow capability defaults')
+
   const zh = runCommand('bootstrap-ui-zh', ['bootstrap', 'deps', '--dir', projectDir, '--pack', 'ui', '--lang', 'zh'], baseEnv)
   assertIncludes(zh.stdout, 'SCALE 依赖安装计划', 'Chinese bootstrap output should use Chinese title')
   assertIncludes(zh.stdout, '运行时依赖:', 'Chinese bootstrap output should show runtime dependencies')
@@ -80,30 +92,14 @@ function runSetupSmoke() {
     'external-cli,memory,knowledge',
     '--json',
   ], baseEnv)
-  assertArrayContains(deps.runtimeChecks?.map(check => check.id), ['node', 'npm', 'cargo', 'bun', 'python', 'python-installer'], 'bootstrap deps should report all runtime dependency checks')
-  assertArrayContains(deps.items?.map(item => item.id), ['rtk', 'gbrain', 'graphify', 'codegraph'], 'bootstrap deps should include governed third-party capabilities')
+  assertArrayContains(deps.runtimeChecks?.map(check => check.id), ['node', 'npm', 'cargo', 'bun', 'python', 'python-installer'], 'dependency plan should report all runtime dependency checks')
+  assertArrayContains(deps.items?.map(item => item.id), ['rtk', 'gbrain', 'graphify', 'codegraph'], 'dependency plan should include governed third-party capabilities')
   assert(deps.apply === false, 'bootstrap smoke must not run installers')
 
   const envDoctor = runJson('doctor-env-json', ['doctor', 'env', '--json'], baseEnv)
   assert(envDoctor.ok === true, 'environment doctor should pass when required core commands are available')
   assertArrayContains(envDoctor.checks?.map(check => check.id), ['git', 'npm', 'npx', 'rtk', 'gbrain', 'graphify', 'codegraph'], 'environment doctor should report core and third-party commands')
   assert(envDoctor.checks?.find(check => check.id === 'gbrain')?.status === 'ok', 'environment doctor should validate gbrain when an isolated brain is initialized')
-
-  const localMemory = runJson('setup-memory-scale-local-json', [
-    'setup',
-    '--dir',
-    projectDir,
-    '--pack',
-    'memory',
-    '--memory-provider',
-    'scale-local',
-    '--json',
-  ], baseEnv)
-  assert(localMemory.memoryProviderSwitch?.provider === 'scale-local', 'setup should switch to scale-local provider')
-  assert(localMemory.memoryProviderSwitch?.mode === 'local-only', 'scale-local provider should force local-only mode')
-  assert(localMemory.memoryProviderSwitch?.nextOrder?.[0] === 'scale-local', 'scale-local should become the first provider')
-  assert(existsSync(localMemory.memoryProviderSwitch?.path ?? ''), 'setup should write memory provider config')
-  assert(localMemory.final?.runtimeChecks?.some(check => check.id === 'bun'), 'memory setup should still expose Bun runtime check for gbrain')
 
   const gbrainMemory = runJson('setup-memory-gbrain-json', [
     'setup',
@@ -120,6 +116,10 @@ function runSetupSmoke() {
   assert(gbrainMemory.memoryProviderSwitch?.provider === 'gbrain', 'setup should switch to gbrain provider')
   assert(gbrainMemory.memoryProviderSwitch?.mode === 'external-first', 'gbrain provider should support external-first mode')
   assert(gbrainMemory.memoryProviderSwitch?.nextOrder?.[0] === 'gbrain', 'gbrain should become the first provider')
+  assert(gbrainMemory.memoryProviderSwitch?.previousOrder?.every(provider => provider === 'gbrain'), 'setup memory routing should not include legacy memory providers')
+  assert(gbrainMemory.memoryProviderSwitch?.nextOrder?.every(provider => provider === 'gbrain'), 'setup memory routing should remain gbrain-only')
+  assert(existsSync(gbrainMemory.memoryProviderSwitch?.path ?? ''), 'setup should write memory provider config')
+  assert(gbrainMemory.final?.runtimeChecks?.some(check => check.id === 'bun'), 'memory setup should expose Bun runtime check for gbrain')
 
   const apply = runJson('setup-governed-apply-json', [
     'setup',
@@ -164,9 +164,9 @@ function runSetupSmoke() {
   assert(verify.ok === true, 'setup verify should pass after governed apply in the isolated home')
   assert((verify.summary?.blockingIssues?.length ?? 0) === 0, 'setup verify should not report any blocking dependency issues after apply')
 
-  const codegraph = runJson('codegraph-status-json', ['codegraph', 'status', '--dir', repoRoot, '--json'], baseEnv)
+  const codegraph = runJson('codegraph-status-json', ['codegraph', 'status', '--dir', projectDir, '--json'], baseEnv)
   assertArrayContains(codegraph.providers?.map(provider => provider.id), ['codegraph', 'graphify'], 'codegraph status should expose CodeGraph and Graphify providers')
-  assert(typeof codegraph.projectIndexExists === 'boolean', 'codegraph status should report project index state')
+  assert(codegraph.projectIndexExists === true, 'codegraph status should report the target project index after setup apply')
 }
 
 function initProject(env) {

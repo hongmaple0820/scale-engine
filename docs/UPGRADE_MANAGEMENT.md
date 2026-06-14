@@ -95,11 +95,12 @@ scale skill outdated --dir .
 | 外部 CLI | 只检测版本和来源，不自动改 PATH 或全局包 |
 | 桌面自动化/CUA | 高权限，默认阻断自动升级 |
 
-如果你确认要补齐这些第三方能力，用显式 bootstrap，而不是指望升级流程隐式安装：
+如果你确认要补齐这些第三方能力，用显式 setup，而不是指望升级流程隐式安装：
 
 ```bash
-scale bootstrap deps --profile advanced --json
-scale bootstrap deps --profile advanced --apply
+scale setup --pack full --memory-provider gbrain --memory-mode external-first --json
+scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --verify --pack full --json
 ```
 
 ## 安全应用

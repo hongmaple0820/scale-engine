@@ -334,9 +334,7 @@ function buildReport(
   postActions: string[],
   postChecks: DependencyBootstrapPostCheckResult[],
 ): DependencyBootstrapReport {
-  const nonBlockingItems = new Set(items
-    .filter(item => isNonBlockingOptionalItem(item, postChecks))
-    .map(item => item.id))
+  const nonBlockingItems = new Set<string>()
   const summary = {
     total: items.length,
     installed: items.filter(item => item.status === 'installed').length,
@@ -667,8 +665,6 @@ export function runDependencyBootstrapPostChecks(input: {
     ? inspectMemory({ projectDir: input.projectDir, scaleDir: input.scaleDir })
     : undefined
   const gbrain = memoryReport?.providers.find(provider => provider.id === 'gbrain')
-  const memoryFallback = memoryReport?.providers.find(provider => provider.kind === 'scale-local' && provider.available)
-  const softBlockedGbrain = Boolean(gbrain && !gbrain.available && memoryFallback)
 
   if (toolIds.length > 0) {
     const toolReport = inspectTools({
@@ -677,31 +673,25 @@ export function runDependencyBootstrapPostChecks(input: {
       toolIds,
     })
     const missing = toolReport.tools.filter(tool => !tool.installed).map(tool => tool.id)
-    const degraded = missing.filter(id => id === 'gbrain' && softBlockedGbrain)
-    const blockingMissing = missing.filter(id => !degraded.includes(id))
     results.push({
       id: 'tool-capabilities',
       label: 'Tool Doctor',
       command: `scale tool doctor --tools ${toolIds.join(',')} --json`,
-      status: blockingMissing.length > 0 ? 'failed' : degraded.length > 0 ? 'warn' : 'passed',
+      status: missing.length > 0 ? 'failed' : 'passed',
       summary: [
         `${toolReport.summary.installed}/${toolReport.summary.total} selected tools are available`,
-        blockingMissing.length > 0 ? `missing: ${blockingMissing.join(', ')}` : undefined,
-        degraded.length > 0 ? `degraded: ${degraded.join(', ')} (scale-local fallback active)` : undefined,
+        missing.length > 0 ? `missing: ${missing.join(', ')}` : undefined,
       ].filter(Boolean).join('; '),
       details: {
         toolIds,
-        missing: blockingMissing,
-        degraded,
-        fallbackProvider: memoryFallback?.id,
+        missing,
       },
     })
   }
 
   if (memoryReport) {
     const warnings = [...memoryReport.warnings]
-    if (softBlockedGbrain) warnings.push(`gbrain is unavailable in this runtime; falling back to ${memoryFallback!.id}`)
-    const status = !gbrain?.available ? (softBlockedGbrain ? 'warn' : 'failed') : warnings.length > 0 ? 'warn' : 'passed'
+    const status = !gbrain?.available ? 'failed' : warnings.length > 0 ? 'warn' : 'passed'
     results.push({
       id: 'memory-provider',
       label: 'Memory Provider',
@@ -713,7 +703,6 @@ export function runDependencyBootstrapPostChecks(input: {
       details: {
         warnings,
         gbrainReason: gbrain?.reason,
-        fallbackProvider: memoryFallback?.id,
       },
     })
   }
@@ -727,11 +716,9 @@ export function runDependencyBootstrapPostChecks(input: {
 
     if (input.items.some(item => item.id === 'codegraph')) {
       if (!codegraph?.available) failed = true
-      else if (!codeReport.projectIndexExists) warnings.push('codegraph CLI is installed but the project index (.codegraph/) is not initialized yet')
+      else if (!codeReport.projectIndexExists) failed = true
     }
-    if (input.items.some(item => item.id === 'graphify') && !graphify?.available) {
-      warnings.push('graphify CLI is installed but graphify-out/graph.json is not present yet')
-    }
+    if (input.items.some(item => item.id === 'graphify') && !graphify?.available) failed = true
 
     results.push({
       id: 'code-intelligence',
@@ -744,23 +731,20 @@ export function runDependencyBootstrapPostChecks(input: {
         `projectIndex=${codeReport.projectIndexExists ? 'present' : 'missing'}`,
       ].filter(Boolean).join('; '),
       details: {
-        warnings,
+        warnings: [
+          ...warnings,
+          input.items.some(item => item.id === 'codegraph') && codegraph?.available && !codeReport.projectIndexExists
+            ? 'codegraph CLI is installed but the project index (.codegraph/) is not initialized yet'
+            : undefined,
+          input.items.some(item => item.id === 'graphify') && !graphify?.available
+            ? 'graphify CLI is installed but graphify-out/graph.json is not present yet'
+            : undefined,
+        ].filter(Boolean),
       },
     })
   }
 
   return results
-}
-
-function isNonBlockingOptionalItem(
-  item: DependencyBootstrapItemReport,
-  postChecks: DependencyBootstrapPostCheckResult[],
-): boolean {
-  if (item.id !== 'gbrain' || item.status !== 'needs-init') return false
-  return postChecks.some(check =>
-    check.id === 'memory-provider'
-    && check.status === 'warn'
-    && check.details?.fallbackProvider === 'scale-local')
 }
 
 function inspectDefinition(definition: DependencyBootstrapDefinition, context: BootstrapInstallContext): DependencyBootstrapItemReport {

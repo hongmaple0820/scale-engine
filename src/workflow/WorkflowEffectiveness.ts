@@ -291,16 +291,16 @@ function buildMemoryMetrics(
 ): WorkflowEffectivenessReport['memory'] {
   const providers = memoryProviders.providers.filter(provider => provider.enabled)
   const available = providers.filter(provider => provider.available)
-  const defaultExternal = memoryProviders.routing.defaultOrder
+  const gbrainProvider = memoryProviders.routing.defaultOrder
     .map(id => memoryProviders.providers.find(provider => provider.id === id))
-    .find(provider => provider && provider.kind !== 'scale-local')
-  const fallbackOnly = available.length > 0 && available.every(provider => provider.kind === 'scale-local')
+    .find(provider => provider?.id === 'gbrain')
+  const gbrainAvailable = Boolean(gbrainProvider?.available)
   const recallMetrics = buildMemoryRecallMetrics(memoryRecall)
   return {
     availableProviders: measured(memoryProviders.availableProviderCount, '.scale/memory-providers.json + provider doctor'),
-    defaultExternalProviderAvailable: measured(Boolean(defaultExternal?.available), '.scale/memory-providers.json + provider doctor'),
+    defaultExternalProviderAvailable: measured(gbrainAvailable, '.scale/memory-providers.json + provider doctor'),
     providerReadinessRate: measuredIf(providers.length > 0, available.length / providers.length, '.scale/memory-providers.json + provider doctor'),
-    fallbackRisk: measuredIf(providers.length > 0, fallbackOnly, '.scale/memory-providers.json + provider doctor'),
+    fallbackRisk: measuredIf(providers.length > 0, !gbrainAvailable, '.scale/memory-providers.json + provider doctor'),
     providerRecallHitRate: recallMetrics.hitRate,
     providerRecallItems: recallMetrics.items,
     providerContextSavings: recallMetrics.contextSavings,

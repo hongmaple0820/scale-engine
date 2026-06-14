@@ -114,7 +114,7 @@ describe('verifySetup', () => {
       configExists: true,
       routing: {
         mode: 'external-first',
-        defaultOrder: ['gbrain', 'scale-local'],
+        defaultOrder: ['gbrain'],
         allowExternalWrite: false,
         requireEvidence: true,
         maxResultsPerProvider: 5,
@@ -187,7 +187,7 @@ describe('verifySetup', () => {
     ]))
   })
 
-  it('treats blocked gbrain as non-blocking when scale-local fallback remains available', async () => {
+  it('blocks setup readiness when gbrain is not initialized', async () => {
     bootstrap.bootstrapDependencies.mockResolvedValue({
       ok: true,
       complete: true,
@@ -264,7 +264,7 @@ describe('verifySetup', () => {
       configExists: true,
       routing: {
         mode: 'external-first',
-        defaultOrder: ['gbrain', 'scale-local'],
+        defaultOrder: ['gbrain'],
         allowExternalWrite: false,
         requireEvidence: true,
         maxResultsPerProvider: 5,
@@ -282,20 +282,8 @@ describe('verifySetup', () => {
           writeMode: 'disabled',
           reason: 'gbrain doctor failed in this runtime',
         },
-        {
-          id: 'scale-local',
-          kind: 'scale-local',
-          enabled: true,
-          available: true,
-          selectedByDefault: false,
-          priority: 10,
-          capabilities: ['session-memory'],
-          safetyLevel: 'trusted-local',
-          writeMode: 'candidate-only',
-          reason: 'local MemoryBrain fallback is available',
-        },
       ],
-      availableProviderCount: 1,
+      availableProviderCount: 0,
       warnings: [],
     })
 
@@ -338,13 +326,13 @@ describe('verifySetup', () => {
 
     const report = await verifySetup({ packIds: ['memory'] })
 
-    expect(report.ok).toBe(true)
-    expect(report.summary.blockingIssues).toEqual([])
-    expect(report.summary.dependencyStatus.needsInit).toEqual([])
-    expect(report.warnings).toEqual(expect.arrayContaining([
-      'gbrain is unavailable in this runtime, but scale-local fallback remains available for governed memory recall.',
-      'Optional governed capabilities unavailable in this runtime: gbrain',
+    expect(report.ok).toBe(false)
+    expect(report.summary.blockingIssues).toEqual(expect.arrayContaining([
+      'Initialization required: gbrain',
+      'Missing governed capabilities: gbrain',
+      'No memory provider is currently available',
     ]))
+    expect(report.summary.dependencyStatus.needsInit).toEqual(['gbrain'])
   })
 
   it('skips memory and code provider probes when their packs are not selected', async () => {

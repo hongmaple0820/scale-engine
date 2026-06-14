@@ -108,7 +108,7 @@ describe('WorkflowEffectiveness', () => {
       now: new Date('2026-06-13T00:00:00.000Z'),
       deps: {
         governanceMetrics: governanceMetricsWithRuns(),
-        memoryProviders: memoryReport(projectDir, ['gbrain', 'scale-local']),
+        memoryProviders: memoryReport(projectDir, ['gbrain']),
         memoryRecall: memoryRecallReport(projectDir, {
           selectedProviders: ['gbrain'],
           itemCount: 1,
@@ -126,9 +126,9 @@ describe('WorkflowEffectiveness', () => {
     expect(report.delivery.evalPassAt1Rate.value).toBe(0.5)
     expect(report.stability.gatePassRate.value).toBe(0.9)
     expect(report.hallucination.evalHallucinatedFactFailures.value).toBe(1)
-    expect(report.memory.availableProviders.value).toBe(2)
+    expect(report.memory.availableProviders.value).toBe(1)
     expect(report.memory.defaultExternalProviderAvailable.value).toBe(true)
-    expect(report.memory.providerRecallHitRate.value).toBe(0.5)
+    expect(report.memory.providerRecallHitRate.value).toBe(1)
     expect(report.memory.providerRecallItems.value).toBe(1)
     expect(report.skills.recommendedMissingSkills.value).toEqual(['pr-creator'])
     expect(report.summary.gaps).toEqual(expect.arrayContaining([
@@ -151,7 +151,7 @@ describe('WorkflowEffectiveness', () => {
     const scaleDir = join(projectDir, '.scale')
     const deps = {
       governanceMetrics: governanceMetricsWithRuns(),
-      memoryProviders: memoryReport(projectDir, ['gbrain', 'scale-local']),
+      memoryProviders: memoryReport(projectDir, ['gbrain']),
       memoryRecall: memoryRecallReport(projectDir, {
         selectedProviders: ['gbrain'],
         itemCount: 1,
@@ -252,7 +252,7 @@ describe('WorkflowEffectiveness', () => {
       now: new Date('2026-06-13T00:00:00.000Z'),
       deps: {
         governanceMetrics: governanceMetricsWithRuns(),
-        memoryProviders: memoryReport(projectDir, ['gbrain', 'scale-local']),
+        memoryProviders: memoryReport(projectDir, ['gbrain']),
         memoryRecall: memoryRecallReport(projectDir, {
           selectedProviders: ['gbrain'],
           itemCount: 1,
@@ -292,7 +292,7 @@ describe('WorkflowEffectiveness', () => {
       now: new Date('2026-06-13T00:00:00.000Z'),
       deps: {
         governanceMetrics: governanceMetricsWithRuns(),
-        memoryProviders: memoryReport(projectDir, ['gbrain', 'scale-local']),
+        memoryProviders: memoryReport(projectDir, ['gbrain']),
         memoryRecall: memoryRecallReport(projectDir, {
           selectedProviders: ['gbrain'],
           itemCount: 1,
@@ -356,7 +356,7 @@ describe('WorkflowEffectiveness', () => {
       now: new Date('2026-06-13T00:00:00.000Z'),
       deps: {
         governanceMetrics: governanceMetricsWithRuns(),
-        memoryProviders: memoryReport(projectDir, ['gbrain', 'scale-local']),
+        memoryProviders: memoryReport(projectDir, ['gbrain']),
         memoryRecall: memoryRecallReport(projectDir, {
           selectedProviders: ['gbrain'],
           itemCount: 1,
@@ -397,7 +397,7 @@ describe('WorkflowEffectiveness', () => {
     const report = createWorkflowEffectivenessReport({
       projectDir,
       deps: {
-        memoryProviders: memoryReport(projectDir, ['gbrain', 'scale-local']),
+        memoryProviders: memoryReport(projectDir, ['gbrain']),
         memoryRecall: memoryRecallReport(projectDir, {
           selectedProviders: ['gbrain'],
           itemCount: 1,
@@ -601,18 +601,6 @@ function memoryReport(projectDir: string, availableIds: string[]): MemoryProvide
       writeMode: 'disabled',
       reason: 'test provider',
     },
-    {
-      id: 'scale-local',
-      kind: 'scale-local',
-      enabled: true,
-      available: availableIds.includes('scale-local'),
-      selectedByDefault: true,
-      priority: 10,
-      capabilities: ['keyword-recall'],
-      safetyLevel: 'trusted-local',
-      writeMode: 'candidate-only',
-      reason: 'test fallback',
-    },
   ]
   return {
     projectDir,
@@ -621,7 +609,7 @@ function memoryReport(projectDir: string, availableIds: string[]): MemoryProvide
     configExists: true,
     routing: {
       mode: 'external-first',
-      defaultOrder: ['gbrain', 'scale-local'],
+      defaultOrder: ['gbrain'],
       allowExternalWrite: false,
       requireEvidence: true,
       maxResultsPerProvider: 5,
@@ -641,7 +629,7 @@ function memoryRecallReport(projectDir: string, input: {
     projectDir,
     generatedAt: '2026-06-13T00:00:00.000Z',
     query: 'workflow effectiveness',
-    providerOrder: ['gbrain', 'scale-local'],
+    providerOrder: ['gbrain'],
     selectedProviders: input.selectedProviders,
     fallbackUsed: false,
     items: Array.from({ length: input.itemCount }, (_, index) => ({
@@ -653,7 +641,7 @@ function memoryRecallReport(projectDir: string, input: {
       score: 0.9,
       evidencePaths: ['docs/MEMORY_FABRIC.md'],
     })),
-    providerStatuses: memoryReport(projectDir, ['gbrain', 'scale-local']).providers,
+    providerStatuses: memoryReport(projectDir, ['gbrain']).providers,
     contextSavings: {
       naiveContextTokens: 1000,
       recalledTokens: input.itemCount > 0 ? 100 : 0,

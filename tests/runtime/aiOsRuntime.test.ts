@@ -72,9 +72,10 @@ describe('AI OS runtime planner', () => {
     expect(plan.preamble.cortex.content).toContain('Always run the auth callback product smoke')
     expect(plan.governance.effectiveMode).toBe('critical')
     expect(plan.context.compiler?.strategy).toBe('relevance-budget-v1')
-    expect(plan.memory.providerOrder).toEqual(['gbrain', 'memos', 'agentmemory', 'scale-local'])
-    expect(plan.memory.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'scale-local', id: 'MEM-AI-OS-1' }),
+    expect(plan.memory.providerOrder).toEqual(['gbrain'])
+    expect(plan.memory.items).toEqual([])
+    expect(plan.memory.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('gbrain skipped'),
     ]))
     expect(plan.skillPlan.executionPlan.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'skill', id: 'security-review', required: true }),
@@ -593,17 +594,17 @@ describe('AI OS runtime planner', () => {
       'evolution-shadow',
       'benchmark-intelligence',
     ])
-    expect(status.intelligence.summary.totalMemoryItems).toBeGreaterThan(0)
+    expect(status.intelligence.summary.totalMemoryItems).toBe(0)
     expect(status.intelligence.summary.skillSteps).toBeGreaterThan(0)
-    expect(status.intelligence.summary.selectedProviders).toContain('scale-local')
+    expect(status.intelligence.summary.selectedProviders).toEqual([])
     expect(status.intelligence.summary.memoryQuality).toEqual(expect.objectContaining({
       score: expect.any(Number),
       evidenceBackedItems: expect.any(Number),
       averageConfidence: expect.any(Number),
       averageRelevance: expect.any(Number),
     }))
-    expect(status.intelligence.summary.memoryQuality.score).toBeGreaterThan(0)
-    expect(status.intelligence.summary.memoryQuality.evidenceBackedItems).toBeGreaterThan(0)
+    expect(status.intelligence.summary.memoryQuality.score).toBe(0)
+    expect(status.intelligence.summary.memoryQuality.evidenceBackedItems).toBe(0)
     expect(status.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.fallbackCoverage).toBe(1)
@@ -628,8 +629,9 @@ describe('AI OS runtime planner', () => {
     expect(status.intelligence.signals).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'memory-recall',
-        status: 'ready',
-        evidence: expect.arrayContaining([expect.stringContaining('MEM-AI-OS-INTEL')]),
+        status: 'blocked',
+        summary: 'No memory recall evidence found in AI OS runs or benchmarks.',
+        evidence: [],
       }),
       expect.objectContaining({
         id: 'skill-routing',

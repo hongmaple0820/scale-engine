@@ -28,8 +28,7 @@
 | ID | 类别 | 信任 | 主要用途 | 组合建议 |
 | --- | --- | --- | --- | --- |
 | `planning-with-files` | planning | community | Use persistent planning files, progress logs, findings, active-plan selection, and plan attestation for long-running agent work. | memory-brain, web-access, code-reviewer |
-| `agentmemory` | memory | community | Use as an optional external memory provider via REST or MCP when teams want cross-agent persistent memory beyond SCALE local Memory Brain. | memory-brain, mcp-chrome-devtools, codex-cli |
-| `gbrain` | memory | community | Use as the default graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance. | memory-brain, agentmemory, codegraph |
+| `gbrain` | memory | community | Use as the default graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance. | memory-brain, codegraph |
 | `frontend-design` | ui | official | 在 DESIGN.md 和 UX 验收之后补齐前端实现约束、组件状态和落地方式。 | awesome-design-md, ui-ux-pro-max, webapp-testing |
 | `awesome-design-md` | ui | ecosystem | 建立产品级设计规范、品牌语言和 DESIGN.md。 | ui-ux-pro-max, frontend-design |
 | `ui-ux-pro-max` | ui | ecosystem | 补齐体验策略、交互状态和 UI 验收维度。 | awesome-design-md, webapp-testing |
@@ -53,5 +52,4 @@
 | ID | License | Usage | Notice |
 | --- | --- | --- | --- |
 | `planning-with-files` | MIT | adapted-concept | Inspired by and compatible with OthmanAdi/planning-with-files. SCALE should not copy upstream files unless the MIT license text and attribution are included. |
-| `agentmemory` | Apache-2.0 | external-reference | Optional external integration only. Do not vendor agentmemory code into SCALE without preserving Apache-2.0 license text, modification notices, and any upstream NOTICE obligations. |
 | `gbrain` | MIT | external-reference | Optional external provider only. Do not vendor GBrain code into SCALE without preserving MIT license text, source revision, and modification notices. |

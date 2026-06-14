@@ -25,8 +25,8 @@ describe('setup wizard', () => {
         provider: options.provider,
         mode: options.mode ?? 'auto',
         path: '.scale-test/memory-providers.json',
-        previousOrder: ['gbrain', 'memos', 'agentmemory', 'scale-local'],
-        nextOrder: [options.provider, 'memos', 'agentmemory', 'scale-local'],
+        previousOrder: ['gbrain'],
+        nextOrder: [options.provider],
         warnings: [],
       }) as MemoryProviderUseReport,
     })
@@ -42,7 +42,7 @@ describe('setup wizard', () => {
     expect(report.applied).toBe(false)
     expect(report.prompts).toEqual(expect.arrayContaining([
       expect.stringContaining('memory provider'),
-      expect.stringContaining('memory routing mode'),
+      expect.stringContaining('gbrain routing mode'),
       expect.stringContaining('Ready to install'),
     ]))
     expect(prompts.join('')).toContain('gbrain')
@@ -89,7 +89,7 @@ function makeBootstrapReport(apply: boolean): DependencyBootstrapReport {
         name: 'gbrain',
         kind: 'cli',
         packs: ['memory'],
-        source: 'https://github.com/louis030195/gbrain',
+        source: 'https://github.com/garrytan/gbrain',
         installed: true,
         status: 'ready',
         installSupported: true,

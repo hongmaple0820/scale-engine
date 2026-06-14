@@ -908,13 +908,13 @@ export class Doctor {
   private knowledgeBootstrapApplyCommand(bootstrapPlan: ProfileBootstrapPlan): string {
     return bootstrapPlan.packs.includes('knowledge')
       ? bootstrapPlan.applyCommand
-      : 'scale bootstrap deps --pack knowledge --apply'
+      : 'scale setup --pack knowledge --apply --yes'
   }
 
   private memoryBootstrapApplyCommand(bootstrapPlan: ProfileBootstrapPlan): string {
     return bootstrapPlan.packs.includes('memory')
       ? bootstrapPlan.applyCommand
-      : 'scale bootstrap deps --pack memory --apply'
+      : 'scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes'
   }
 
   formatReport(report: DoctorReport): string {
@@ -1050,14 +1050,14 @@ export class Doctor {
         }
       } else {
         lines.push('  [WARN] Code knowledge graph not available (optional feature)')
-        lines.push(`  -> Bootstrap inspect: ${report.bootstrapPlan?.inspectCommand ?? 'scale bootstrap deps --pack knowledge --json'}`)
-        lines.push(`  -> Bootstrap apply: ${report.bootstrapPlan?.packs.includes('knowledge') ? report.bootstrapPlan.applyCommand : 'scale bootstrap deps --pack knowledge --apply'}`)
+        lines.push(`  -> Bootstrap inspect: ${report.bootstrapPlan?.inspectCommand ?? 'scale setup --pack knowledge --json'}`)
+        lines.push(`  -> Bootstrap apply: ${report.bootstrapPlan?.packs.includes('knowledge') ? report.bootstrapPlan.applyCommand : 'scale setup --pack knowledge --apply --yes'}`)
       }
       lines.push(divider)
     }
 
     if (report.memoryProviders && !report.memoryProviders.gbrainAvailable) {
-      lines.push(`  -> Memory bootstrap: ${report.bootstrapPlan?.packs.includes('memory') ? report.bootstrapPlan.applyCommand : 'scale bootstrap deps --pack memory --apply'}`)
+      lines.push(`  -> Memory bootstrap: ${report.bootstrapPlan?.packs.includes('memory') ? report.bootstrapPlan.applyCommand : 'scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes'}`)
       lines.push(divider)
     }
 
@@ -1069,4 +1069,3 @@ export class Doctor {
     return lines.join('\n')
   }
 }
-

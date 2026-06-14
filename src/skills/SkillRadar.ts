@@ -136,7 +136,7 @@ const DOMAIN_CONFIG: Record<string, {
     fallback: 'Use SCALE task artifacts under .planning/tasks and record plan, progress, findings, and verification manually.',
   },
   memory: {
-    keywords: ['memory', 'recall', 'remember', 'forget', 'mcp memory', 'persistent memory', 'knowledge', 'agentmemory', 'gbrain', '记忆', '知识库', '沉淀'],
+    keywords: ['memory', 'recall', 'remember', 'forget', 'mcp memory', 'persistent memory', 'knowledge', 'gbrain', '记忆', '知识库', '沉淀'],
     filePatterns: [/memory/i, /(^|\/)(knowledge|memories)\//i],
     categories: ['memory'],
     evidence: ['memory-provider-health', 'privacy-boundary', 'data-retention-policy', 'query-result'],
