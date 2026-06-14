@@ -52,6 +52,7 @@
     "smoke:providers": "node scripts/workflow/provider-rehearsal.mjs",
     "smoke:gbrain": "node scripts/workflow/provider-rehearsal.mjs --skip-graphify --require-gbrain",
     "smoke:graphify": "node scripts/workflow/provider-rehearsal.mjs --skip-gbrain --require-graphify",
+    "release:sync-gitee": "node scripts/release/sync-gitee-releases.mjs",
     "release:check": "npm run typecheck && npm run lint && npm test && npm run smoke:setup && npm run smoke:providers -- --write-report && npm run build && npm audit --omit=dev && git diff --check && npm pack --dry-run",
     "mcp": "node dist/api/mcp.js",
     "serve": "node dist/api/http.js"

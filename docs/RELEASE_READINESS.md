@@ -14,6 +14,27 @@ npm run release:check
 安装烟测、build、生产依赖审计、`git diff --check` 和 `npm pack --dry-run`。
 `npm run test:serial` 只用于排查卡死或顺序相关的测试问题，不作为默认发版替代项。
 
+## GitHub/Gitee 发行版同步
+
+Git tag 触发 `.github/workflows/publish.yml` 后，工作流会先创建 GitHub Release。
+如果仓库配置了 GitHub Actions secret `GITEE_TOKEN`，同一流程会继续把 GitHub 上的 release 标题、正文、tag、prerelease 状态同步到 Gitee：
+
+```bash
+npm run release:sync-gitee -- --gitee-owner hongmaple --gitee-repo scale-engine
+```
+
+本地补齐历史 release 前先 dry-run：
+
+```bash
+npm run release:sync-gitee -- --dry-run --json
+```
+
+注意：
+
+- `GITEE_TOKEN` 必须是 Gitee API 可用的私人令牌；普通 Git HTTPS 密码不一定能调用 `https://gitee.com/api/v5`。
+- 当前脚本同步 release 元数据。GitHub release asset 会以下载链接写入 Gitee release notes，不做二进制附件镜像上传。
+- 如果 Gitee release 已存在同名 tag，脚本会跳过，不覆盖用户手工编辑过的 Gitee release。
+
 如果本次改动影响官方 demo、治理模板或 CLI 入口，还必须额外运行：
 
 ```bash
