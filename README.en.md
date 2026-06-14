@@ -32,11 +32,10 @@ Changelog: [CHANGELOG.md](CHANGELOG.md)
 ## See It In 3 Minutes
 
 ```bash
-npm install -g @hongmaple0820/scale-engine
 mkdir scale-demo && cd scale-demo
-scale init --governance-pack standard
-scale preflight --preflight-profile quick
-scale status
+npx -y @hongmaple0820/scale-engine@latest quickstart --dir . --profile standard
+npx -y @hongmaple0820/scale-engine@latest setup --dir .
+npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 ```
 
 This generates governance files you can commit to a project:
@@ -55,9 +54,18 @@ scale diagnose plan --task-id TASK-001 --symptom "callback returns 500 when stat
 scale tdd slice --task-id TASK-001 --behavior "reject expired OAuth state" --failing-test "expired state returns 401"
 ```
 
-Read [Quickstart](docs/start/quickstart.md), [22-Agent Installation Guide](docs/start/agent-installation-guide.md), and [Agent Governance Demo](docs/start/agent-governance-demo.md) for the complete walkthrough. For positioning against other workflows and agent frameworks, see [Workflow Capability and Competitive Comparison](docs/workflow/competitive-comparison.md).
+Read [npx and Interactive Install](docs/start/npx-interactive-install.md), [Quickstart](docs/start/quickstart.md), [22-Agent Installation Guide](docs/start/agent-installation-guide.md), and [Agent Governance Demo](docs/start/agent-governance-demo.md) for the complete walkthrough. For positioning against other workflows and agent frameworks, see [Workflow Capability and Competitive Comparison](docs/workflow/competitive-comparison.md).
 
 ## Installation
+
+For first-time evaluation, use `npx` without global install:
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest onboard --lang en
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
+```
+
+For frequent use, install the global CLI:
 
 ```bash
 npm install -g @hongmaple0820/scale-engine
@@ -110,6 +118,7 @@ See [AI OS Runtime docs](docs/AI_ENGINEERING_OS_POSITIONING.md) for the full com
 
 | Goal | Entry point | What you learn |
 | --- | --- | --- |
+| Try without global install | [npx and Interactive Install](docs/start/npx-interactive-install.md) | Run `onboard`, `init --interactive`, and `setup` with `npx` |
 | Get running | [Quickstart](docs/start/quickstart.md) | Install CLI, init governance files, run preflight |
 | Connect an agent | [22-Agent Installation Guide](docs/start/agent-installation-guide.md) | Initialize and verify Codex, Claude Code, Cursor, Cline, Windsurf, and other adapters |
 | See full loop | [Demo Walkthrough](docs/start/agent-governance-demo.md) | Context, diagnosis, TDD, artifact, and verification evidence |

@@ -6,24 +6,24 @@
 
 ## Level 1: 体验者 (Explorer)
 
-**目标**: 跑通第一个 gate，理解 SCALE 是什么  
-**耗时**: 15 分钟  
-**前置**: 已安装 Node.js 18+
+**目标**: 跑通第一个 gate，理解 SCALE 是什么
+**耗时**: 15 分钟
+**前置**: 已安装 Node.js 20+
 
 ### 步骤
 
 ```bash
-# 1. 安装 SCALE Engine
-npm install -g @hongmaple0820/scale-engine
+# 1. 无全局安装试用 SCALE Engine
+npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
 
 # 2. 进入你的项目
 cd your-project
 
-# 3. 一键初始化
-scale init --quick
+# 3. 交互式初始化
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
 
 # 4. 跑一次 preflight
-scale preflight
+npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 ```
 
 ### 你会学到
@@ -32,15 +32,15 @@ scale preflight
 - `preflight` 和 `verify` 的区别
 
 ### 通关标准
-- [ ] `scale preflight` 输出 PASS
+- [ ] `npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .` 输出 PASS
 - [ ] 能解释 G0/G4/G5 分别检查什么
 
 ---
 
 ## Level 2: 使用者 (User)
 
-**目标**: 日常开发中使用 SCALE 管理任务和门禁  
-**耗时**: 30 分钟  
+**目标**: 日常开发中使用 SCALE 管理任务和门禁
+**耗时**: 30 分钟
 **前置**: 完成 Level 1
 
 ### 步骤
@@ -74,8 +74,8 @@ make gate-quality
 
 ## Level 3: 配置者 (Configurator)
 
-**目标**: 自定义 SCALE 行为，适配项目需求  
-**耗时**: 45 分钟  
+**目标**: 自定义 SCALE 行为，适配项目需求
+**耗时**: 45 分钟
 **前置**: 完成 Level 2
 
 ### 步骤
@@ -92,10 +92,10 @@ scale config profile standard
 # 添加自定义 services 和 commands
 
 # 4. 设置第三方能力
-scale setup --pack full --apply
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
 
 # 5. 运行 doctor 检查配置健康
-scale doctor
+npx -y @hongmaple0820/scale-engine@latest doctor --dir .
 ```
 
 ### 你会学到
@@ -106,15 +106,15 @@ scale doctor
 
 ### 通关标准
 - [ ] 修改 verification.json 添加自定义 service
-- [ ] `scale doctor` 输出 healthy
+- [ ] `npx -y @hongmaple0820/scale-engine@latest doctor --dir .` 输出 healthy
 - [ ] 理解 profile 和 governance pack 的关系
 
 ---
 
 ## Level 4: 治理者 (Governor)
 
-**目标**: 掌握高级治理功能，包括 meta-governance 和 evolution  
-**耗时**: 60 分钟  
+**目标**: 掌握高级治理功能，包括 meta-governance 和 evolution
+**耗时**: 60 分钟
 **前置**: 完成 Level 3
 
 ### 步骤
@@ -155,8 +155,8 @@ bash scripts/gates/all.sh --all
 
 ## Level 5: 贡献者 (Contributor)
 
-**目标**: 为 SCALE Engine 本身贡献代码  
-**耗时**: 60 分钟  
+**目标**: 为 SCALE Engine 本身贡献代码
+**耗时**: 60 分钟
 **前置**: 完成 Level 4
 
 ### 步骤

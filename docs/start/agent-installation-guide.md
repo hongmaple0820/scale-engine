@@ -16,24 +16,24 @@ SCALE 接入 Agent 分三层：
 
 不同 Agent 的 hook 能力不完全一致。支持 hooks 的 Agent 可以更强地拦截工具调用；只支持规则文件的 Agent 仍然能通过项目 instructions、显式命令和 preflight 形成闭环。
 
-## 0. 全局安装 SCALE
+## 0. 先用 npx 运行 SCALE
 
 ```bash
-npm install -g @hongmaple0820/scale-engine
-scale --version
+npx -y @hongmaple0820/scale-engine@latest --version
+npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
 ```
 
-要求 Node.js 20+。Agent 本体仍按各自官方方式安装，SCALE 负责把项目接入该 Agent 的治理入口。
+要求 Node.js 20+。Agent 本体仍按各自官方方式安装，SCALE 负责把项目接入该 Agent 的治理入口。长期高频使用时再执行 `npm install -g @hongmaple0820/scale-engine`。
 
 ## 1. 新项目 3 分钟接入
 
 ```bash
 mkdir scale-demo
 cd scale-demo
-scale init --agent codex --governance-pack standard
-scale setup --pack memory,knowledge,external-cli --memory-provider gbrain --memory-mode external-first --json
-scale preflight --preflight-profile quick
-scale status
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
+npx -y @hongmaple0820/scale-engine@latest setup --pack memory,knowledge,external-cli --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
+npx -y @hongmaple0820/scale-engine@latest status --dir .
 ```
 
 关键点：
@@ -75,6 +75,8 @@ scale doctor --dir . --json
 scale preflight --preflight-profile quick
 ```
 
+下表为了可读性使用 `scale ...` 简写。没有全局安装时，把 `scale` 替换为 `npx -y @hongmaple0820/scale-engine@latest` 即可。
+
 | Agent id | 面向工具 | SCALE 初始化命令 | 主要生成/维护文件 | 使用方式 |
 | --- | --- | --- | --- | --- |
 | `claude-code` | Claude Code | `scale init --agent claude-code --dir .` | `.claude/settings.json`、`CLAUDE.md`、`~/.claude/skills` | 在项目目录运行 `claude`，让 Claude 读取项目规则和 hooks |
@@ -109,7 +111,7 @@ scale preflight --preflight-profile quick
 ```bash
 scale init --agent codex --dir .
 scale init --agent cursor --dir .
-scale setup --pack memory,knowledge,external-cli --memory-provider gbrain --memory-mode external-first --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack memory,knowledge,external-cli --memory-provider gbrain --memory-mode external-first --dir . --json
 ```
 
 结果：Codex 读取 `AGENTS.md` 和 `.codex/hooks.json`；Cursor 读取 `.cursor/settings.json` 和 `.cursorrules`；两者共享 `.scale/` 证据、知识库、token 和 gate 配置。

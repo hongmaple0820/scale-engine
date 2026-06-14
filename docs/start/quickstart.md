@@ -11,7 +11,16 @@
 
 Python、Bun、Rust/Cargo、uv/pipx 不是启动 SCALE 的硬要求。只有启用 Graphify、GBrain、RTK 等第三方能力时，安装器才会提示缺少哪些运行时以及可执行的修复命令。
 
-## 1. 安装 CLI
+## 1. 选择运行方式
+
+首次试用推荐 `npx`，不需要全局安装：
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest --version
+npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
+```
+
+长期高频使用再安装全局 CLI：
 
 ```bash
 npm install -g @hongmaple0820/scale-engine
@@ -29,7 +38,7 @@ node --import tsx E:/project/scale-engine/src/api/cli.ts --help
 ```bash
 mkdir scale-demo
 cd scale-demo
-scale init --governance-pack standard
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
 ```
 
 初始化会生成 `.scale/`、`docs/`、`scripts/` 以及对应 Agent 入口文件。已有项目升级不要盲目重复 `init`，优先使用升级向导：
@@ -37,9 +46,9 @@ scale init --governance-pack standard
 如果你已经确定主要 Agent，建议显式指定，避免 auto-detect 选错入口：
 
 ```bash
-scale init --agent codex --governance-pack standard
-scale init --agent claude-code --governance-pack standard
-scale init --agent cursor --governance-pack standard
+npx -y @hongmaple0820/scale-engine@latest init --agent codex --governance-pack standard --dir .
+npx -y @hongmaple0820/scale-engine@latest init --agent claude-code --governance-pack standard --dir .
+npx -y @hongmaple0820/scale-engine@latest init --agent cursor --governance-pack standard --dir .
 ```
 
 22 个 adapter 的逐项说明见 [22 种 Agent 安装与使用教程](agent-installation-guide.md)。
@@ -63,51 +72,52 @@ scale upgrade apply --dir . --confirm --lang zh
 直接进入交互式安装：
 
 ```bash
-scale setup
+npx -y @hongmaple0820/scale-engine@latest setup --dir .
 ```
 
 交互式安装会询问：
 
 - 语言：默认中文。
 - 安装包：标准、前端/UI、AI OS、完整、自定义。
-- 记忆供应商：默认 `gbrain`，也可切换到 `scale-local`。
+- 记忆供应商：默认且推荐只使用 `gbrain`。
 - 记忆路由模式：默认 `external-first`。
 - 是否执行安装：可跳过、全量安装、或只安装选中的第三方项。
 
 只查看计划：
 
 ```bash
-scale setup --pack full
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --dir .
 ```
 
 确认后执行安装：
 
 ```bash
-scale setup --pack full --apply --yes
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --apply --yes --dir .
 ```
 
 机器可读输出：
 
 ```bash
-scale setup --pack full --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --dir . --json
 ```
 
 `setup` 和 `bootstrap deps` 都会输出 `runtimeChecks`。如果机器缺少 `python`、`bun`、`cargo`、`uv/pipx`、`node/npm/npx`，会先显示缺失项和修复建议，再决定是否执行 `--apply`，避免安装中途卡住。
 
-记忆供应商可在安装入口直接切换，不需要手改 `.scale/memory-providers.json`：
+记忆供应商在安装入口显式固定为 `gbrain`，不需要手改 `.scale/memory-providers.json`：
 
 ```bash
-scale setup --pack memory --memory-provider scale-local --json
-scale setup --pack memory --memory-provider gbrain --memory-mode external-first --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack memory --memory-provider gbrain --memory-mode external-first --dir . --json
 ```
+
+更多 `npx`、固定版本、国内镜像和 CI 用法见 [npx 与交互式安装指南](npx-interactive-install.md)。
 
 ## 4. UI Skills 默认策略
 
 | 能力 | 默认定位 | 安装方式 | 关键验证 |
 | --- | --- | --- | --- |
-| `awesome-design-md` | 品牌、视觉语言、`DESIGN.md` 来源 | `scale setup --pack ui --include awesome-design-md --apply` | 生成 `~/.agents/skills/awesome-design-md/SKILL.md`，同步 `~/.scale/vendor/awesome-design-md` |
-| `ui-ux-pro-max` | UX、状态、可访问性、响应式验收 | `scale setup --pack ui --include ui-ux-pro-max --apply` | 生成 `~/.agents/skills/ui-ux-pro-max/SKILL.md`，同步 `~/.scale/vendor/ui-ux-pro-max` |
-| `frontend-design` | 可选实现陪跑，不再是 UI 默认必装项 | `scale setup --pack ui --include frontend-design --apply` | 需要时显式安装 |
+| `awesome-design-md` | 品牌、视觉语言、`DESIGN.md` 来源 | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include awesome-design-md --apply --dir .` | 生成 `~/.agents/skills/awesome-design-md/SKILL.md`，同步 `~/.scale/vendor/awesome-design-md` |
+| `ui-ux-pro-max` | UX、状态、可访问性、响应式验收 | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include ui-ux-pro-max --apply --dir .` | 生成 `~/.agents/skills/ui-ux-pro-max/SKILL.md`，同步 `~/.scale/vendor/ui-ux-pro-max` |
+| `frontend-design` | 可选实现陪跑，不再是 UI 默认必装项 | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include frontend-design --apply --dir .` | 需要时显式安装 |
 
 安装器优先使用 `git clone --depth 1` 同步上游仓库；如果没有 Git 但有 npx，会退回 `npx degit`。缺少两者时不会硬跑失败，会在安装计划里标记为需要人工处理并给出下一步。
 
@@ -130,15 +140,15 @@ scale bootstrap deps --profile advanced --governance-pack frontend-app --apply -
 ## 6. 验证闭环
 
 ```bash
-scale doctor
-scale setup --verify --pack full --json
-scale preflight --preflight-profile quick
-scale status
-scale assets scan --dir .
-scale standards scan --dir .
-scale runtime doctor --level S
-scale memory provider status --json
-scale codegraph status --json
+npx -y @hongmaple0820/scale-engine@latest doctor --dir .
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json
+npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
+npx -y @hongmaple0820/scale-engine@latest status --dir .
+npx -y @hongmaple0820/scale-engine@latest assets scan --dir .
+npx -y @hongmaple0820/scale-engine@latest standards scan --dir .
+npx -y @hongmaple0820/scale-engine@latest runtime doctor --level S --dir .
+npx -y @hongmaple0820/scale-engine@latest memory provider status --dir . --json
+npx -y @hongmaple0820/scale-engine@latest codegraph status --dir . --json
 ```
 
 未运行验证，不要声称通过。`setup --json` 和 `bootstrap deps --json` 只代表依赖计划可解析，不等于第三方服务已经可用。
@@ -183,7 +193,7 @@ scale memory settle --task-id 2026-05-18-oauth-hardening --session-id 2026-05-18
 多仓项目使用：
 
 ```bash
-scale init --governance-pack moe-workspace
+npx -y @hongmaple0820/scale-engine@latest init --governance-pack moe-workspace --dir .
 ```
 
 MOE 默认把子工程配置为兄弟仓库或绝对路径，不建议把独立 Git 子工程放在主工程根目录下。`.scale/workspace.json` 中的典型写法：

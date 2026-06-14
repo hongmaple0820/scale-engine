@@ -16,7 +16,7 @@ SCALE 把更新分成三层：
 
 | 层级 | 命令支持 | 默认行为 |
 | --- | --- | --- |
-| SCALE CLI | `npm install -g @hongmaple0820/scale-engine@latest` | 用户显式安装或升级 |
+| SCALE CLI | `npx -y @hongmaple0820/scale-engine@latest ...` 或 `npm install -g @hongmaple0820/scale-engine@latest` | 用户显式试用、安装或升级 |
 | 生成的工作流文件 | `scale upgrade check/plan/apply/rollback` | 先安全检查和生成计划；干净的受管文件可自动刷新，有本地改动则进入人工审阅 |
 | 项目级验证 | 仓库 `make` 目标和 `scripts/workflow/*` | 必须保留项目语义；SCALE 不猜业务路由、凭据和服务拓扑 |
 
@@ -24,15 +24,26 @@ SCALE 把更新分成三层：
 
 ## 首次安装
 
+首次试用推荐 npx：
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
+```
+
+长期高频使用再安装全局 CLI：
+
 ```bash
 npm install -g @hongmaple0820/scale-engine
 scale --version
 ```
 
+下文的 `scale ...` 是全局安装后的简写；未全局安装时，用 `npx -y @hongmaple0820/scale-engine@latest ...` 替换 `scale ...`。
+
 已有项目可以用交互式初始化选择最接近的 governance pack：
 
 ```bash
-scale init --interactive
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
 ```
 
 也可以直接指定：

@@ -4,28 +4,31 @@
 
 ## 推荐阅读顺序
 
-1. [3 分钟快速开始](quickstart.md)
+1. [npx 与交互式安装指南](npx-interactive-install.md)
+   先用 `npx` 临时执行 SCALE，不全局安装也能跑 `onboard`、`init --interactive` 和 `setup`。
+
+2. [3 分钟快速开始](quickstart.md)
    从空目录初始化治理工作流，看到 `.scale`、模板、验证 profile 和状态输出。
 
-2. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
+3. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
    按 Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 学会初始化、验证、开面板和多 Agent 使用。
 
-3. [Artifact 生命周期](artifact-lifecycle.md)
+4. [Artifact 生命周期](artifact-lifecycle.md)
    完整走一遍 Need → Spec → Plan → Task → Change → Evidence → Release，理解 FSM 和 Guard 如何用物理约束替代提示词建议。
 
-4. [官方 Demo Walkthrough](agent-governance-demo.md)
+5. [官方 Demo Walkthrough](agent-governance-demo.md)
    用一个 OAuth state 加固任务演示：上下文对齐、诊断计划、TDD 切片、HTML artifact、资源治理和工程规范扫描。
 
-5. [工作流能力与横向对比](../workflow/competitive-comparison.md)
+6. [工作流能力与横向对比](../workflow/competitive-comparison.md)
    对比 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC、GitHub Agentic Workflows，理解 SCALE 的定位、优势和短板。
 
-6. 回到根目录 [README](../../README.md)
+7. 回到根目录 [README](../../README.md)
    理解 SCALE Engine 的核心能力和 governance pack 选择。
 
-7. [工作流升级指南](workflow-upgrade.md)
+8. [工作流升级指南](workflow-upgrade.md)
    理解工作流更新、第三方 skills/MCP/CLI 更新时如何先检查、生成计划、自动刷新干净受管文件，并避免覆盖本地改动。
 
-8. 查看 [文档地图](../README.md)
+9. 查看 [文档地图](../README.md)
    区分哪些文档是用户指南、哪些是参考资料、哪些是历史规划和过程记录。
 
 如果你要开发的是 `scale-engine` 仓库本身，而不是把 SCALE 接入别的项目，改看：
@@ -37,12 +40,10 @@
 ## 15 分钟学习路径
 
 ```bash
-npm install -g @hongmaple0820/scale-engine
-scale --version
 mkdir scale-demo && cd scale-demo
-scale init --governance-pack standard
-scale preflight --preflight-profile quick
-scale status
+npx -y @hongmaple0820/scale-engine@latest quickstart --dir . --profile standard
+npx -y @hongmaple0820/scale-engine@latest setup --dir .
+npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 ```
 
 跑完后先回答三个问题：
@@ -57,8 +58,8 @@ scale status
 
 跑完 quickstart 后，至少应该能看到：
 
-- `scale preflight --preflight-profile quick` 可以执行。
-- `scale status` 能告诉你当前项目下一步该做什么。
+- `preflight --preflight-profile quick` 可以执行。
+- `status` 能告诉你当前项目下一步该做什么。
 - `.scale/verification.json` 存在，并描述本地验证 profile。
 - `docs/workflow/templates/` 存在，并包含 Mini-PRD、plan、verification、review、summary 等模板。
 - `scale artifact render` 可以把任务 Markdown 证据渲染成 HTML。
@@ -67,8 +68,11 @@ scale status
 
 ## 场景选择
 
+下表的 `scale ...` 是全局安装后的简写；未全局安装时，用 `npx -y @hongmaple0820/scale-engine@latest ...` 替换 `scale ...`。
+
 | 场景 | 推荐入口 |
 | --- | --- |
+| 不想全局安装，先试用 | [npx 与交互式安装指南](npx-interactive-install.md) |
 | 第一次试用 | [3 分钟快速开始](quickstart.md) |
 | 不知道自己的 Agent 怎么接入 | [22 种 Agent 安装与使用教程](agent-installation-guide.md) |
 | 想看 Agent 治理闭环 | [官方 Demo Walkthrough](agent-governance-demo.md) |

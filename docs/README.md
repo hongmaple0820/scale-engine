@@ -7,6 +7,7 @@
 | 文档 | 说明 |
 | --- | --- |
 | [start/README.md](start/README.md) | 入门路径总览 |
+| [start/npx-interactive-install.md](start/npx-interactive-install.md) | npx 临时执行、交互式安装、固定版本和国内镜像 fallback |
 | [start/quickstart.md](start/quickstart.md) | 3 分钟快速开始 |
 | [start/agent-installation-guide.md](start/agent-installation-guide.md) | 22 种 Agent 安装、初始化、验证、面板和多 Agent 使用教程 |
 | [start/agent-governance-demo.md](start/agent-governance-demo.md) | 官方 demo walkthrough |

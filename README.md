@@ -32,12 +32,10 @@ npm：https://www.npmjs.com/package/@hongmaple0820/scale-engine
 ## 3 分钟看到效果
 
 ```bash
-npm install -g @hongmaple0820/scale-engine
 mkdir scale-demo && cd scale-demo
-scale init --governance-pack standard
-scale bootstrap deps --pack external-cli --json
-scale preflight --preflight-profile quick
-scale status
+npx -y @hongmaple0820/scale-engine@latest quickstart --dir . --profile standard
+npx -y @hongmaple0820/scale-engine@latest setup --dir .
+npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 ```
 
 你会得到一套可提交到项目里的治理文件：
@@ -56,9 +54,18 @@ scale diagnose plan --task-id TASK-001 --symptom "callback 在 state 过期时�
 scale tdd slice --task-id TASK-001 --behavior "拒绝过期 OAuth state" --failing-test "expired state returns 401"
 ```
 
-完整教程见 [3 分钟快速开始](docs/start/quickstart.md)、[22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
+完整教程见 [npx 与交互式安装指南](docs/start/npx-interactive-install.md)、[3 分钟快速开始](docs/start/quickstart.md)、[22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
 
 ## 安装
+
+首次试用推荐 `npx`，不需要全局安装：
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
+npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
+```
+
+长期高频使用再安装全局 CLI：
 
 ```bash
 npm install -g @hongmaple0820/scale-engine
@@ -165,6 +172,7 @@ scale ai-os plan \
 
 | 目标 | 入口 | 你应该学会什么 |
 | --- | --- | --- |
+| 无全局安装试用 | [npx 与交互式安装指南](docs/start/npx-interactive-install.md) | 用 `npx` 跑 `onboard`、`init --interactive`、`setup` |
 | 先跑起来 | [3 分钟快速开始](docs/start/quickstart.md) | 安装 CLI、初始化治理文件、运行 preflight |
 | 接入具体 Agent | [22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) | Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 的初始化、验证和面板入口 |
 | 看完整闭环 | [官方 Demo Walkthrough](docs/start/agent-governance-demo.md) | 任务上下文、诊断、TDD、artifact 和验证证据如何串起来 |
