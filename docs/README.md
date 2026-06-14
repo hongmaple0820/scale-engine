@@ -8,6 +8,7 @@
 | --- | --- |
 | [start/README.md](start/README.md) | 入门路径总览 |
 | [start/quickstart.md](start/quickstart.md) | 3 分钟快速开始 |
+| [start/agent-installation-guide.md](start/agent-installation-guide.md) | 22 种 Agent 安装、初始化、验证、面板和多 Agent 使用教程 |
 | [start/agent-governance-demo.md](start/agent-governance-demo.md) | 官方 demo walkthrough |
 | [start/artifact-lifecycle.md](start/artifact-lifecycle.md) | Artifact 生命周期完整 walkthrough |
 | [../README.md](../README.md) | 项目主页和能力总览 |
@@ -50,6 +51,7 @@
 | [SKILL-REPOSITORY.md](SKILL-REPOSITORY.md) | 受治理 skill repository 和安装安全策略 |
 | [VIBE-TEMPLATES.md](VIBE-TEMPLATES.md) | 可复制的 Vibe Coding 提示词模板 |
 | [LEADERSHIP-PRESETS.md](LEADERSHIP-PRESETS.md) | CEO、CTO、PM、Architect 等内置领导者角色预设 |
+| [workflow/competitive-comparison.md](workflow/competitive-comparison.md) | 工作流能力、实际效果、短板和与 LangGraph/AutoGen/CrewAI/gstack/Superpowers/ECC 等横向对比 |
 
 ## 当前规划与执行蓝图
 

@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.50.3-orange?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
-  <img src="https://img.shields.io/badge/agents-12-blue?style=flat-square" alt="agents" />
+  <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
   <img src="https://img.shields.io/badge/npm-0.50.3-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
@@ -55,7 +55,7 @@ scale diagnose plan --task-id TASK-001 --symptom "callback returns 500 when stat
 scale tdd slice --task-id TASK-001 --behavior "reject expired OAuth state" --failing-test "expired state returns 401"
 ```
 
-Read [Quickstart](docs/start/quickstart.md) and [Agent Governance Demo](docs/start/agent-governance-demo.md) for the complete walkthrough.
+Read [Quickstart](docs/start/quickstart.md), [22-Agent Installation Guide](docs/start/agent-installation-guide.md), and [Agent Governance Demo](docs/start/agent-governance-demo.md) for the complete walkthrough. For positioning against other workflows and agent frameworks, see [Workflow Capability and Competitive Comparison](docs/workflow/competitive-comparison.md).
 
 ## Installation
 
@@ -111,7 +111,9 @@ See [AI OS Runtime docs](docs/AI_ENGINEERING_OS_POSITIONING.md) for the full com
 | Goal | Entry point | What you learn |
 | --- | --- | --- |
 | Get running | [Quickstart](docs/start/quickstart.md) | Install CLI, init governance files, run preflight |
+| Connect an agent | [22-Agent Installation Guide](docs/start/agent-installation-guide.md) | Initialize and verify Codex, Claude Code, Cursor, Cline, Windsurf, and other adapters |
 | See full loop | [Demo Walkthrough](docs/start/agent-governance-demo.md) | Context, diagnosis, TDD, artifact, and verification evidence |
+| Compare workflows | [Competitive Comparison](docs/workflow/competitive-comparison.md) | Position SCALE against LangGraph, AutoGen, CrewAI, gstack, Superpowers, ECC, and GitHub Agentic Workflows |
 | Adopt in existing project | [Workflow Upgrade Guide](docs/start/workflow-upgrade.md) | `init`, `upgrade check/plan/apply`, local `make` wrappers |
 | Choose governance pack | [Governance Pack docs](docs/start/README.md) | Which pack fits your project shape |
 | Maintain or extend SCALE | [docs/README.md](docs/README.md) | Documentation map, internal modules, long-term maintenance |

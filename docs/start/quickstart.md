@@ -34,6 +34,16 @@ scale init --governance-pack standard
 
 初始化会生成 `.scale/`、`docs/`、`scripts/` 以及对应 Agent 入口文件。已有项目升级不要盲目重复 `init`，优先使用升级向导：
 
+如果你已经确定主要 Agent，建议显式指定，避免 auto-detect 选错入口：
+
+```bash
+scale init --agent codex --governance-pack standard
+scale init --agent claude-code --governance-pack standard
+scale init --agent cursor --governance-pack standard
+```
+
+22 个 adapter 的逐项说明见 [22 种 Agent 安装与使用教程](agent-installation-guide.md)。
+
 ```bash
 scale upgrade --dir .
 ```

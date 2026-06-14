@@ -62,7 +62,7 @@ $ bun src/examples/event-demo.ts
 - [ ] 类型在 IDE 内完整提示
 
 ### 风险
-- **风险**: 类型设计错了，后期改成本巨大  
+- **风险**: 类型设计错了，后期改成本巨大
   **缓解**: W1 末邀请同事 review 类型设计
 
 ---
@@ -273,8 +273,10 @@ $ scale lesson recall "JPA 性能优化" --top-k 3
 ### Demo
 ```bash
 $ cd /tmp/test-project && git init && touch package.json
-$ scale init --agents claude,codex
-✓ All hooks configured
+$ scale init --agent claude-code --dir .
+$ scale init --agent codex --dir .
+✓ Claude Code settings/rules configured
+✓ Codex hooks/rules configured
 ✓ CLAUDE.md and AGENTS.md generated
 
 $ cat .claude/settings.json | jq '.hooks | keys'
@@ -479,4 +481,3 @@ v0.1 ready 后再考虑：
 - **v0.2** (Q3): Web UI 看板、团队协作、PostgreSQL 多机
 - **v0.3** (Q4): 模型路由完善、本地小模型集成、更多 Adapter
 - **v1.0** (来年): Eval-driven 自演化、Lesson 数据集微调
-

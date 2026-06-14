@@ -57,6 +57,15 @@ The inventory is intentionally conservative:
 | [hermes-ai/hermes](https://github.com/hermes-ai/hermes) | Hermes adapter target | adapter target reference | review-required | `HermesAdapter` |
 | [Hmbown/deepseek-tui](https://github.com/Hmbown/deepseek-tui) | DeepSeek TUI adapter target | adapter target reference | review-required | `DeepSeekTuiAdapter` |
 | [Aider-AI/aider](https://github.com/Aider-AI/aider) | Aider adapter target | adapter target reference | review-required | `AiderAdapter` |
+| [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) | Competitive reference for durable, stateful agent orchestration | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [Microsoft AutoGen](https://microsoft.github.io/autogen/stable/) | Competitive reference for event-driven multi-agent application frameworks | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [CrewAI](https://docs.crewai.com/) | Competitive reference for crews, flows, memory, knowledge, and observability | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [SWE-agent](https://swe-agent.com/latest/) | Research and workflow reference for autonomous software-engineering agents | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [SWE-bench](https://www.swebench.com/) | Benchmark reference for software-engineering agent evaluation | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [GitHub Agentic Workflows](https://githubnext.com/projects/agentic-workflows/) | Competitive reference for natural-language workflows compiled to GitHub Actions | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [garrytan/gstack](https://github.com/garrytan/gstack) | Competitive reference for role-based Claude Code workflow tooling | comparison reference, not integrated | MIT | `docs/workflow/competitive-comparison.md` |
+| [obra/superpowers](https://github.com/obra/superpowers) | Competitive reference for agentic skills and software-development methodology | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
+| [affaan-m/ECC](https://github.com/affaan-m/ecc) | Competitive reference for cross-harness operator workflow systems | comparison reference, not integrated | review-required | `docs/workflow/competitive-comparison.md` |
 
 ## Required Maintenance
 

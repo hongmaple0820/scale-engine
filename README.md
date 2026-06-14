@@ -8,7 +8,7 @@
 
 [![RepoStars](https://repostars.dev/api/embed?repo=hongmaple0820%2Fscale-engine&theme=copper)](https://repostars.dev/?repos=hongmaple0820%2Fscale-engine&theme=copper)
 
-# SCALE Engine 
+# SCALE Engine
 
 SCALE Engine 让 AI Agent 不再只靠"自觉"遵守工程规范。它把探索、规划、实现、验证、评审、发版这些要求变成可执行的命令、门禁和证据文件，让人类可以看见 Agent 做了什么、跳过了什么、为什么能交付或不能交付。
 
@@ -56,7 +56,7 @@ scale diagnose plan --task-id TASK-001 --symptom "callback 在 state 过期时�
 scale tdd slice --task-id TASK-001 --behavior "拒绝过期 OAuth state" --failing-test "expired state returns 401"
 ```
 
-完整教程见 [3 分钟快速开始](docs/start/quickstart.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。
+完整教程见 [3 分钟快速开始](docs/start/quickstart.md)、[22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
 
 ## 安装
 
@@ -166,7 +166,9 @@ scale ai-os plan \
 | 目标 | 入口 | 你应该学会什么 |
 | --- | --- | --- |
 | 先跑起来 | [3 分钟快速开始](docs/start/quickstart.md) | 安装 CLI、初始化治理文件、运行 preflight |
+| 接入具体 Agent | [22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) | Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 的初始化、验证和面板入口 |
 | 看完整闭环 | [官方 Demo Walkthrough](docs/start/agent-governance-demo.md) | 任务上下文、诊断、TDD、artifact 和验证证据如何串起来 |
+| 横向评估 | [工作流能力与横向对比](docs/workflow/competitive-comparison.md) | 与 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC、GitHub Agentic Workflows 的定位差异 |
 | 接入已有项目 | [SCALE 工作流升级指南](docs/start/workflow-upgrade.md) | `init`、`upgrade check/plan/apply`、本地 `make` 包装入口 |
 | 选择治理包 | [Governance Pack 文档](docs/start/README.md) | 不同项目形态应该选哪个 pack |
 | 维护或扩展 SCALE | [docs/README.md](docs/README.md) | 文档地图、内部模块和长期维护资料 |

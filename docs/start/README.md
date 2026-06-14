@@ -7,19 +7,25 @@
 1. [3 分钟快速开始](quickstart.md)
    从空目录初始化治理工作流，看到 `.scale`、模板、验证 profile 和状态输出。
 
-2. [Artifact 生命周期](artifact-lifecycle.md)
+2. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
+   按 Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 学会初始化、验证、开面板和多 Agent 使用。
+
+3. [Artifact 生命周期](artifact-lifecycle.md)
    完整走一遍 Need → Spec → Plan → Task → Change → Evidence → Release，理解 FSM 和 Guard 如何用物理约束替代提示词建议。
 
-3. [官方 Demo Walkthrough](agent-governance-demo.md)
+4. [官方 Demo Walkthrough](agent-governance-demo.md)
    用一个 OAuth state 加固任务演示：上下文对齐、诊断计划、TDD 切片、HTML artifact、资源治理和工程规范扫描。
 
-4. 回到根目录 [README](../../README.md)
+5. [工作流能力与横向对比](../workflow/competitive-comparison.md)
+   对比 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC、GitHub Agentic Workflows，理解 SCALE 的定位、优势和短板。
+
+6. 回到根目录 [README](../../README.md)
    理解 SCALE Engine 的核心能力和 governance pack 选择。
 
-4. [工作流升级指南](workflow-upgrade.md)
+7. [工作流升级指南](workflow-upgrade.md)
    理解工作流更新、第三方 skills/MCP/CLI 更新时如何先检查、生成计划、自动刷新干净受管文件，并避免覆盖本地改动。
 
-5. 查看 [文档地图](../README.md)
+8. 查看 [文档地图](../README.md)
    区分哪些文档是用户指南、哪些是参考资料、哪些是历史规划和过程记录。
 
 如果你要开发的是 `scale-engine` 仓库本身，而不是把 SCALE 接入别的项目，改看：
@@ -64,7 +70,9 @@ scale status
 | 场景 | 推荐入口 |
 | --- | --- |
 | 第一次试用 | [3 分钟快速开始](quickstart.md) |
+| 不知道自己的 Agent 怎么接入 | [22 种 Agent 安装与使用教程](agent-installation-guide.md) |
 | 想看 Agent 治理闭环 | [官方 Demo Walkthrough](agent-governance-demo.md) |
+| 想知道 SCALE 和其他工作流差异 | [工作流能力与横向对比](../workflow/competitive-comparison.md) |
 | 前端项目 | `scale init --governance-pack frontend-app` |
 | Node/TypeScript 包 | `scale init --governance-pack node-library` |
 | Go 多服务后端 | `scale init --governance-pack go-service-matrix` |
