@@ -46,6 +46,53 @@ function parseJson<T>(stdout: string): T {
 }
 
 describe('ai-os CLI', () => {
+  it('prints a direct agent collaboration plan as JSON', async () => {
+    const scaleDir = makeDir('scale-agent-plan-cli-scale-')
+    const projectDir = makeDir('scale-agent-plan-cli-project-')
+
+    const result = await runScale([
+      'agent',
+      'plan',
+      '--task-id',
+      'TASK-AGENT-PLAN-CLI',
+      '--task',
+      'Implement Vue dashboard knowledge graph zoom and security reviewed export flow',
+      '--level',
+      'L',
+      '--files',
+      'dashboard/web/src/App.vue,src/dashboard/DashboardServer.ts',
+      '--budget',
+      '3600',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(result.exitCode).toBe(0)
+    const report = parseJson<{
+      task: { taskId: string }
+      governance: { effectiveMode: string; workflowProfile: string; evaluatorRisk: string }
+      agentCollaboration: {
+        strategy: string
+        mode: string
+        roles: Array<{ profileId: string; responsibility: string; required: boolean }>
+        reviewGates: Array<{ id: string; owner: string; required: boolean }>
+        budget: { totalTokens: number; assignedTokens: number; reserveTokens: number }
+        summary: { totalRoles: number; reviewGateCount: number; multiAgentRecommended: boolean }
+      }
+    }>(result.stdout)
+
+    expect(report.task.taskId).toBe('TASK-AGENT-PLAN-CLI')
+    expect(report.agentCollaboration.strategy).toBe('agent-collaboration-v1')
+    expect(report.agentCollaboration.mode).toMatch(/multi-agent|review-escalated/)
+    expect(report.agentCollaboration.roles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ profileId: 'frontend-agent', required: true }),
+      expect.objectContaining({ profileId: 'security-agent', required: true }),
+      expect.objectContaining({ profileId: 'test-agent', required: true }),
+    ]))
+    expect(report.agentCollaboration.reviewGates.length).toBeGreaterThan(0)
+    expect(report.agentCollaboration.budget.assignedTokens).toBeGreaterThan(0)
+    expect(report.agentCollaboration.summary.multiAgentRecommended).toBe(true)
+  }, 120_000)
+
   it('prints a unified AI OS runtime plan as JSON', async () => {
     const scaleDir = makeDir('scale-ai-os-cli-scale-')
     const projectDir = makeDir('scale-ai-os-cli-project-')
@@ -74,6 +121,12 @@ describe('ai-os CLI', () => {
       context: { compiler?: { strategy: string } }
       memory: { providerOrder: string[] }
       skillPlan: { executionPlan: { steps: Array<{ kind: string; id: string }> } }
+      agentCollaboration: {
+        strategy: string
+        roles: Array<{ profileId: string; required: boolean }>
+        reviewGates: Array<{ id: string; required: boolean }>
+        summary: { totalRoles: number; reviewGateCount: number }
+      }
       roi: { modules: Array<{ module: string }> }
     }>(result.stdout)
     expect(report.version).toBe(SCALE_ENGINE_VERSION)
@@ -82,6 +135,13 @@ describe('ai-os CLI', () => {
     expect(report.context.compiler?.strategy).toBe('relevance-budget-v1')
     expect(report.memory.providerOrder).toEqual(['gbrain', 'memos', 'agentmemory', 'scale-local'])
     expect(report.skillPlan.executionPlan.steps.length).toBeGreaterThan(0)
+    expect(report.agentCollaboration.strategy).toBe('agent-collaboration-v1')
+    expect(report.agentCollaboration.roles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ profileId: 'security-agent', required: true }),
+      expect.objectContaining({ profileId: 'test-agent', required: true }),
+    ]))
+    expect(report.agentCollaboration.summary.totalRoles).toBeGreaterThan(0)
+    expect(report.agentCollaboration.summary.reviewGateCount).toBeGreaterThan(0)
     expect(report.roi.modules).toEqual(expect.arrayContaining([
       expect.objectContaining({ module: 'context-compiler' }),
       expect.objectContaining({ module: 'skill-routing-engine' }),
@@ -114,7 +174,8 @@ describe('ai-os CLI', () => {
       mode: string
       dryRun: boolean
       status: string
-      plan: { task: { taskId: string } }
+      plan: { task: { taskId: string }; agentCollaboration: { summary: { totalRoles: number } } }
+      agentExecution: { status: string; summary: { totalRoles: number; settledRoles: number; settledReviewGates: number }; evidence: { pending: string[] } }
       steps: Array<{ id: string; status: string; kind: string }>
       evidence: { required: string[] }
       artifacts: { runReport: string }
@@ -126,8 +187,16 @@ describe('ai-os CLI', () => {
     expect(report.plan.task.taskId).toBe('TASK-AI-OS-RUN-CLI')
     expect(report.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'runtime-plan', status: 'passed' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', status: 'passed', kind: 'agent' }),
       expect.objectContaining({ id: 'runtime-evidence', status: 'planned' }),
     ]))
+    expect(report.plan.agentCollaboration.summary.totalRoles).toBeGreaterThan(0)
+    expect(report.agentExecution.status).toBe('planned')
+    expect(report.agentExecution.summary.totalRoles).toBe(report.plan.agentCollaboration.summary.totalRoles)
+    expect(report.agentExecution.summary.settledRoles).toBe(0)
+    expect(report.agentExecution.summary.settledReviewGates).toBe(0)
+    expect(report.agentExecution.evidence.pending.length).toBeGreaterThan(0)
+    expect(report.evidence.required).toContain('agent-collaboration')
     expect(report.evidence.required).toContain('skill-routing-engine')
     expect(report.artifacts.runReport).toContain('TASK-AI-OS-RUN-CLI')
     expect(report.nextActions.length).toBeGreaterThan(0)
@@ -161,6 +230,7 @@ describe('ai-os CLI', () => {
     const report = parseJson<{
       mode: string
       status: string
+      agentExecution: { status: string; summary: { totalRoles: number; settledRoles: number; producedEvidence: number }; evidence: { produced: string[] } }
       verification: { commands: Array<{ status: string; exitCode: number; evidenceId: string }> }
       evidence: { produced: string[] }
       steps: Array<{ id: string; status: string }>
@@ -171,7 +241,12 @@ describe('ai-os CLI', () => {
       expect.objectContaining({ status: 'passed', exitCode: 0 }),
     ])
     expect(report.verification.commands[0].evidenceId).toMatch(/^RTE-/)
+    expect(report.agentExecution.status).toBe('settled')
+    expect(report.agentExecution.summary.settledRoles).toBe(report.agentExecution.summary.totalRoles)
+    expect(report.agentExecution.summary.producedEvidence).toBeGreaterThan(0)
+    expect(report.agentExecution.evidence.produced[0]).toMatch(/^RTE-/)
     expect(report.evidence.produced).toContain('runtime-evidence')
+    expect(report.evidence.produced).toContain('agent-collaboration')
     expect(report.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'verify-command:1', status: 'passed' }),
     ]))
@@ -202,10 +277,14 @@ describe('ai-os CLI', () => {
     expect(result.exitCode).toBe(1)
     const report = parseJson<{
       status: string
+      agentExecution: { status: string; summary: { blockedRoles: number; settledRoles: number } }
       verification: { commands: Array<{ status: string; exitCode: number }> }
       failureLearning: { status: string; candidates: unknown[] }
     }>(result.stdout)
     expect(report.status).toBe('blocked')
+    expect(report.agentExecution.status).toBe('blocked')
+    expect(report.agentExecution.summary.blockedRoles).toBeGreaterThan(0)
+    expect(report.agentExecution.summary.settledRoles).toBe(0)
     expect(report.verification.commands[0]).toEqual(expect.objectContaining({ status: 'failed', exitCode: 7 }))
     expect(report.failureLearning.status).toBe('candidate-created')
     expect(report.failureLearning.candidates.length).toBeGreaterThan(0)
@@ -305,15 +384,21 @@ describe('ai-os CLI', () => {
         scenarios: number
         totalEstimatedTokens: number
         totalSkillSteps: number
+        totalAgentRoles: number
+        totalAgentReviewGates: number
+        multiAgentScenarios: number
         governanceModes: string[]
       }
       dashboard: { summary: { totalRuns: number } }
       artifacts: { benchmarkReport: string }
-      scenarios: Array<{ id: string; metrics: { skillSteps: number } }>
+      scenarios: Array<{ id: string; metrics: { skillSteps: number; agentRoles: number; agentReviewGates: number } }>
     }>(result.stdout)
     expect(benchmark.summary.scenarios).toBeGreaterThanOrEqual(3)
     expect(benchmark.summary.totalEstimatedTokens).toBeGreaterThanOrEqual(0)
     expect(benchmark.summary.totalSkillSteps).toBeGreaterThan(0)
+    expect(benchmark.summary.totalAgentRoles).toBeGreaterThan(0)
+    expect(benchmark.summary.totalAgentReviewGates).toBeGreaterThan(0)
+    expect(benchmark.summary.multiAgentScenarios).toBeGreaterThan(0)
     expect(benchmark.summary.governanceModes.length).toBeGreaterThan(0)
     expect(benchmark.dashboard.summary.totalRuns).toBe(1)
     expect(benchmark.artifacts.benchmarkReport).toContain('benchmarks')
@@ -542,6 +627,7 @@ describe('ai-os CLI', () => {
           contextQuality: { compressionRisk: string }
           evaluatorQuality: { requiredGates: number; averageUncertainty: number }
           toolStrategyQuality: { totalSteps: number; fallbackCoverage: number }
+          agentCollaborationQuality: { totalRoles: number; reviewGates: number; settledRoles: number; settledReviewGates: number; settledRuns: number; multiAgentRuns: number }
           agentLoopQuality: { status: string; score: number; readySignals: number }
         }
       }
@@ -555,6 +641,7 @@ describe('ai-os CLI', () => {
       'skill-routing',
       'evaluator-intelligence',
       'tool-strategy',
+      'agent-collaboration',
       'agent-loop-readiness',
       'adaptive-workflow',
       'evolution-shadow',
@@ -566,6 +653,11 @@ describe('ai-os CLI', () => {
     expect(readyReport.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(readyReport.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
     expect(readyReport.intelligence.summary.toolStrategyQuality.fallbackCoverage).toBe(1)
+    expect(readyReport.intelligence.summary.agentCollaborationQuality.totalRoles).toBeGreaterThan(0)
+    expect(readyReport.intelligence.summary.agentCollaborationQuality.reviewGates).toBeGreaterThan(0)
+    expect(readyReport.intelligence.summary.agentCollaborationQuality.settledRoles).toBeGreaterThan(0)
+    expect(readyReport.intelligence.summary.agentCollaborationQuality.settledReviewGates).toBeGreaterThan(0)
+    expect(readyReport.intelligence.summary.agentCollaborationQuality.settledRuns).toBeGreaterThan(0)
     expect(readyReport.intelligence.summary.agentLoopQuality.status).toBe('ready')
     expect(readyReport.intelligence.summary.agentLoopQuality.readySignals).toBe(6)
     expect(readyReport.nextActions).toContain('AI OS closed loop is ready for guarded project work.')
@@ -578,11 +670,13 @@ describe('ai-os CLI', () => {
     expect(readyHuman.stdout).toContain('Context risk:')
     expect(readyHuman.stdout).toContain('Evaluator gates:')
     expect(readyHuman.stdout).toContain('Tool strategy:')
+    expect(readyHuman.stdout).toContain('Agent collaboration:')
     expect(readyHuman.stdout).toContain('Agent Loop:')
     expect(readyHuman.stdout).toContain('memory-recall')
     expect(readyHuman.stdout).toContain('skill-routing')
     expect(readyHuman.stdout).toContain('evaluator-intelligence')
     expect(readyHuman.stdout).toContain('tool-strategy')
+    expect(readyHuman.stdout).toContain('agent-collaboration')
     expect(readyHuman.stdout).toContain('agent-loop-readiness')
     expect(readyHuman.stdout).toContain('[ready] verification-evidence')
   }, 120_000)

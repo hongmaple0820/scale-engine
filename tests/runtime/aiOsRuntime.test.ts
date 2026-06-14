@@ -100,6 +100,21 @@ describe('AI OS runtime planner', () => {
         cost: expect.objectContaining({ timeRisk: 'medium' }),
       }),
     ]))
+    expect(plan.agentCollaboration.strategy).toBe('agent-collaboration-v1')
+    expect(plan.agentCollaboration.mode).toBe('review-escalated')
+    expect(plan.agentCollaboration.roles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ profileId: 'architect-agent', responsibility: 'orchestrator', required: true }),
+      expect.objectContaining({ profileId: 'security-agent', responsibility: 'reviewer', required: true }),
+      expect.objectContaining({ profileId: 'frontend-agent', responsibility: 'implementer', required: true }),
+      expect.objectContaining({ profileId: 'test-agent', responsibility: 'verifier', required: true }),
+      expect.objectContaining({ profileId: 'code-review-agent', responsibility: 'reviewer', required: true }),
+    ]))
+    expect(plan.agentCollaboration.reviewGates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'security-review', owner: 'security-agent', required: true }),
+      expect.objectContaining({ id: 'verification-review', owner: 'test-agent', required: true }),
+    ]))
+    expect(plan.agentCollaboration.summary.multiAgentRecommended).toBe(true)
+    expect(plan.agentCollaboration.budget.reserveTokens).toBeGreaterThanOrEqual(0)
     expect(plan.adaptiveWorkflow.gates).toEqual(expect.arrayContaining([
       'security-threat-model',
       'uncertainty-decision-log',
@@ -135,6 +150,9 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({ id: 'runtime-plan', status: 'passed' }),
       expect.objectContaining({ id: 'context-compiler', status: 'passed' }),
       expect.objectContaining({ id: 'memory-provider-recall', status: 'passed' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
+      expect.objectContaining({ id: 'agent:security-agent', kind: 'agent', status: 'planned', required: true }),
+      expect.objectContaining({ id: 'agent-review:security-review', kind: 'agent', status: 'planned', required: true }),
       expect.objectContaining({ id: 'skill-evidence', status: 'planned' }),
       expect.objectContaining({ id: 'runtime-evidence', status: 'planned' }),
     ]))
@@ -146,14 +164,29 @@ describe('AI OS runtime planner', () => {
     expect(report.evidence.required).toEqual(expect.arrayContaining([
       'context-compiler',
       'memory-provider-recall',
+      'agent-collaboration',
       'skill-routing-engine',
       'runtime-evidence',
       'gate:security-threat-model',
+    ]))
+    expect(report.agentExecution).toEqual(expect.objectContaining({
+      strategy: 'agent-execution-settlement-v1',
+      status: 'planned',
+      summary: expect.objectContaining({
+        totalRoles: expect.any(Number),
+        settledRoles: 0,
+        settledReviewGates: 0,
+      }),
+    }))
+    expect(report.agentExecution?.evidence.pending).toEqual(expect.arrayContaining([
+      'agent:security-agent',
+      'agent-review:security-review',
     ]))
     expect(report.failureLearning.candidates).toEqual([])
     expect(report.artifacts.runReport).toContain('TASK-AI-OS-RUN')
     expect(existsSync(report.artifacts.runReport)).toBe(true)
     expect(report.nextActions).toEqual(expect.arrayContaining([
+      expect.stringContaining('Execute agent collaboration'),
       expect.stringContaining('Execute required skill'),
     ]))
   })
@@ -181,7 +214,23 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({ id: 'runtime-evidence', status: 'passed' }),
       expect.objectContaining({ id: 'verify-command:1', status: 'passed', kind: 'evidence' }),
     ]))
+    expect(report.agentExecution).toEqual(expect.objectContaining({
+      strategy: 'agent-execution-settlement-v1',
+      status: 'settled',
+      summary: expect.objectContaining({
+        settledRoles: expect.any(Number),
+        settledReviewGates: expect.any(Number),
+        producedEvidence: expect.any(Number),
+      }),
+    }))
+    expect(report.agentExecution?.summary.settledRoles).toBe(report.agentExecution?.summary.totalRoles)
+    expect(report.agentExecution?.summary.settledReviewGates).toBe(report.agentExecution?.summary.reviewGates)
+    expect(report.agentExecution?.evidence.produced[0]).toMatch(/^RTE-/)
+    expect(report.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
+    ]))
     expect(report.evidence.produced).toContain('runtime-evidence')
+    expect(report.evidence.produced).toContain('agent-collaboration')
     expect(report.verification.commands).toEqual([
       expect.objectContaining({ command: 'node -e "process.stdout.write(\'ok\')"', status: 'passed', exitCode: 0 }),
     ])
@@ -210,6 +259,14 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({ id: 'runtime-evidence', status: 'blocked' }),
       expect.objectContaining({ id: 'verify-command:1', status: 'blocked' }),
     ]))
+    expect(report.agentExecution).toEqual(expect.objectContaining({
+      strategy: 'agent-execution-settlement-v1',
+      status: 'blocked',
+      summary: expect.objectContaining({
+        blockedRoles: expect.any(Number),
+        settledRoles: 0,
+      }),
+    }))
     expect(report.verification.commands[0]).toEqual(expect.objectContaining({ status: 'failed', exitCode: 7 }))
     expect(report.failureLearning.status).toBe('candidate-created')
     expect(report.failureLearning.candidates).toEqual(expect.arrayContaining([
@@ -288,6 +345,10 @@ describe('AI OS runtime planner', () => {
     expect(benchmark.summary.totalEvaluatorGates).toBeGreaterThan(0)
     expect(benchmark.summary.totalToolStrategySteps).toBeGreaterThan(0)
     expect(benchmark.summary.totalToolStrategyCostUnits).toBeGreaterThan(0)
+    expect(benchmark.summary.totalAgentRoles).toBeGreaterThan(0)
+    expect(benchmark.summary.totalAgentReviewerRoles).toBeGreaterThan(0)
+    expect(benchmark.summary.totalAgentReviewGates).toBeGreaterThan(0)
+    expect(benchmark.summary.multiAgentScenarios).toBeGreaterThan(0)
     expect(benchmark.summary.governanceModes.length).toBeGreaterThan(0)
     expect(benchmark.scenarios).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -298,6 +359,9 @@ describe('AI OS runtime planner', () => {
           evaluatorGates: expect.any(Number),
           toolStrategySteps: expect.any(Number),
           toolStrategyCostUnits: expect.any(Number),
+          agentRoles: expect.any(Number),
+          agentReviewerRoles: expect.any(Number),
+          agentReviewGates: expect.any(Number),
         }),
       }),
       expect.objectContaining({ id: 'security-code-change' }),
@@ -502,6 +566,17 @@ describe('AI OS runtime planner', () => {
       budget: 2400,
       mode: 'dry-run',
     })
+    await createAiOsRun({
+      projectDir,
+      scaleDir,
+      taskId: 'TASK-AI-OS-INTEL-GUARDED',
+      task: 'Settle agent collaboration execution after guarded verification',
+      level: 'L',
+      files: ['src/auth/oauth.ts', 'src/ui/callback.tsx'],
+      budget: 2400,
+      mode: 'guarded',
+      verificationCommands: ['node -v'],
+    })
     await createAiOsBenchmark({ projectDir, scaleDir })
 
     const status = createAiOsStatus({ projectDir, scaleDir, lang: 'en' })
@@ -512,6 +587,7 @@ describe('AI OS runtime planner', () => {
       'skill-routing',
       'evaluator-intelligence',
       'tool-strategy',
+      'agent-collaboration',
       'agent-loop-readiness',
       'adaptive-workflow',
       'evolution-shadow',
@@ -531,6 +607,19 @@ describe('AI OS runtime planner', () => {
     expect(status.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.fallbackCoverage).toBe(1)
+    expect(status.intelligence.summary.agentCollaborationQuality).toEqual(expect.objectContaining({
+      totalRoles: expect.any(Number),
+      reviewGates: expect.any(Number),
+      settledRoles: expect.any(Number),
+      settledReviewGates: expect.any(Number),
+      settledRuns: expect.any(Number),
+      multiAgentRuns: expect.any(Number),
+    }))
+    expect(status.intelligence.summary.agentCollaborationQuality.totalRoles).toBeGreaterThan(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.reviewGates).toBeGreaterThan(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.settledRoles).toBeGreaterThan(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.settledReviewGates).toBeGreaterThan(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.settledRuns).toBeGreaterThan(0)
     expect(status.intelligence.summary.agentLoopQuality).toEqual(expect.objectContaining({
       status: 'ready',
       score: 100,
@@ -553,6 +642,13 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({
         id: 'tool-strategy',
         status: 'ready',
+      }),
+      expect.objectContaining({
+        id: 'agent-collaboration',
+        status: 'ready',
+        evidence: expect.arrayContaining([
+          expect.stringContaining('agent:security-agent'),
+        ]),
       }),
       expect.objectContaining({
         id: 'agent-loop-readiness',
@@ -581,9 +677,10 @@ describe('AI OS runtime planner', () => {
       files: ['src/auth/token.ts', 'CHANGELOG.md'],
       mode: 'dry-run',
     })
-    const persisted = JSON.parse(readFileSync(run.artifacts.runReport, 'utf-8')) as { plan: { evaluator?: unknown; toolStrategy?: unknown } }
+    const persisted = JSON.parse(readFileSync(run.artifacts.runReport, 'utf-8')) as { plan: { evaluator?: unknown; toolStrategy?: unknown; agentCollaboration?: unknown } }
     delete persisted.plan.evaluator
     delete persisted.plan.toolStrategy
+    delete persisted.plan.agentCollaboration
     writeFileSync(run.artifacts.runReport, JSON.stringify(persisted, null, 2), 'utf-8')
 
     const status = createAiOsStatus({ projectDir, scaleDir, lang: 'en' })
@@ -603,12 +700,19 @@ describe('AI OS runtime planner', () => {
         ]),
       }),
       expect.objectContaining({
+        id: 'agent-collaboration',
+        evidence: expect.arrayContaining([
+          expect.stringContaining('agent:security-agent'),
+        ]),
+      }),
+      expect.objectContaining({
         id: 'agent-loop-readiness',
         status: 'warning',
       }),
     ]))
     expect(status.intelligence.summary.evaluatorQuality.requiredGates).toBeGreaterThan(0)
     expect(status.intelligence.summary.toolStrategyQuality.totalSteps).toBeGreaterThan(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.totalRoles).toBeGreaterThan(0)
     expect(status.intelligence.summary.agentLoopQuality.status).toBe('warning')
   }, 120_000)
 

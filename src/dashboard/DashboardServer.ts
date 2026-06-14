@@ -5,8 +5,8 @@
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { basename, join, dirname, extname, resolve } from 'node:path'
+import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import { basename, join, dirname, extname, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import type { ServerType } from '@hono/node-server'
@@ -35,8 +35,10 @@ import {
   type PromptOptimizationLanguageInput,
   type PromptOptimizationResult,
 } from '../prompts/PromptOptimizer.js'
-import { PhasePromptRegistry, type PromptPack, type PromptTemplate } from '../prompts/PhasePromptRegistry.js'
-import { listVisualVibeTemplates, type VisualVibeTemplate } from '../prompts/VibeTemplateGallery.js'
+import { PhasePromptRegistry, type PromptTemplate } from '../prompts/PhasePromptRegistry.js'
+import { listVisualVibePacks, listVisualVibeTemplates, type VisualVibeTemplate } from '../prompts/VibeTemplateGallery.js'
+import { createAiOsPlan, type AiOsRuntimePlan } from '../runtime/AiOsRuntime.js'
+import type { SkillTaskLevel } from '../skills/routing/index.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MEMORY_REVIEW_ACTIONS = ['approve', 'reject', 'stale', 'restore'] as const
@@ -126,6 +128,7 @@ export interface DashboardDocumentSummary {
   path: string
   type: string
   size: number
+  updatedAt?: number
 }
 
 export interface DashboardDocumentTreeNode {
@@ -207,9 +210,14 @@ export interface DashboardPromptTemplateSummary extends PromptTemplate {
   command?: string
 }
 
-export interface DashboardPromptPackSummary extends Omit<PromptPack, 'templates'> {
+export interface DashboardPromptPackSummary {
+  id: string
+  name: string
+  description: string
+  phases: string[]
   templateIds: string[]
   command: string
+  source?: 'phase' | 'vibe'
 }
 
 export interface DashboardVisualVibeTemplateSummary extends VisualVibeTemplate {
@@ -241,6 +249,20 @@ export interface DashboardPromptOptimizationReport {
   project: DashboardProjectSummary
   generatedAt: number
   result: PromptOptimizationResult
+}
+
+export interface DashboardAgentPlanReport {
+  project: DashboardProjectSummary
+  generatedAt: number
+  task: AiOsRuntimePlan['task']
+  governance: {
+    effectiveMode: AiOsRuntimePlan['governance']['effectiveMode']
+    workflowProfile: AiOsRuntimePlan['adaptiveWorkflow']['profile']
+    evaluatorRisk: AiOsRuntimePlan['evaluator']['riskLevel']
+  }
+  toolStrategy: AiOsRuntimePlan['toolStrategy']['summary']
+  agentCollaboration: AiOsRuntimePlan['agentCollaboration']
+  recommendations: string[]
 }
 
 export interface DashboardProjectsSummaryReport {
@@ -300,6 +322,8 @@ export interface DashboardCapabilityReport {
     artifactTransitions: boolean
     memoryReview: boolean
     promptOptimization: boolean
+    documentEditing: boolean
+    knowledgeImport: boolean
   }
   dataSources: DashboardDataSourceSignal[]
   warnings: string[]
@@ -434,8 +458,8 @@ export class DashboardServer {
       })
     }
 
-    const serveVueSpa = (c: Context) => {
-      if (existsSync(vueSpaDir)) return serveStatic(c, '/', vueSpaDir, true)
+    const serveVueSpa = async (c: Context) => {
+      if (existsSync(vueSpaDir)) return this.serveVueSpaIndex(vueSpaDir)
       return c.html('<!doctype html><html><head><title>SCALE Engine Dashboard</title></head><body><main id="app">Run npm run build to generate the Vue dashboard.</main></body></html>', 503)
     }
 
@@ -485,6 +509,94 @@ export class DashboardServer {
   }
 
   // ── API Routes ───────────────────────────────────────────────────────
+
+  private async serveVueSpaIndex(vueSpaDir: string): Promise<Response> {
+    const indexPath = join(vueSpaDir, 'index.html')
+    if (!existsSync(indexPath)) return new Response(null, { status: 404 })
+    const html = readFileSync(indexPath, 'utf-8')
+    const bootstrap = await this.getDashboardBootstrapSnapshot()
+    const script = `<script>window.__SCALE_DASHBOARD_BOOTSTRAP__=${escapeJsonForHtml(bootstrap)};</script>`
+    const content = html.includes('</body>')
+      ? html.replace('</body>', `    ${script}\n  </body>`)
+      : `${html}\n${script}`
+    return new Response(content, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+    })
+  }
+
+  private async getDashboardBootstrapSnapshot(): Promise<Record<string, unknown>> {
+    const failures: Record<string, string> = {}
+    const read = async <T>(key: string, producer: () => T | Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await producer()
+      } catch (error) {
+        failures[key] = error instanceof Error ? error.message : String(error)
+        return fallback
+      }
+    }
+
+    const topology = await read('topology', () => this.getTopology(), {
+      nodes: [],
+      edges: [],
+      generatedAt: new Date().toISOString(),
+      provider: 'dashboard-bootstrap-fallback',
+      projectDir: this.projectDir,
+    } satisfies TopologyGraph)
+    return {
+      generatedAt: Date.now(),
+      endpoints: {
+        '/api/projects': await read('projects', () => this.projects, []),
+        '/api/dashboard/capabilities': await read('capabilities', () => this.getDashboardCapabilityReport(), null),
+        '/api/capabilities': await read('capabilities-alias', () => this.getDashboardCapabilityReport(), null),
+        '/api/metrics': await read('metrics', () => aggregateGovernanceMetrics({
+          projectDir: this.projectDir,
+          scaleDir: this.scaleDir,
+          sinceDays: 7,
+        }), null),
+        '/api/state': await read('state', () => this.getDashboardState(), null),
+        '/api/topology': topology,
+        '/api/topology/domains': await read('domains', () => mapDomains(topology), null),
+        '/api/documents': await read('documents', () => this.listDocuments(), []),
+        '/api/knowledge-base': await read('knowledge-base', () => this.getKnowledgeBaseReport(), null),
+        '/api/prompts': await read('prompts', () => this.getPromptStudioReport(), null),
+        '/api/knowledge?providers=true&limit=80': await read('knowledge', () => this.getKnowledgeReport({
+          query: '',
+          limit: 80,
+          includeProviders: true,
+          runRecall: false,
+          provider: undefined,
+        }), null),
+      },
+      failures,
+    }
+  }
+
+  private async createDashboardAgentPlanReport(body: Record<string, unknown>): Promise<DashboardAgentPlanReport> {
+    const task = String(body.task ?? body.scenario ?? '').trim()
+    const plan = await createAiOsPlan({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+      taskId: typeof body.taskId === 'string' && body.taskId.trim() ? body.taskId.trim() : undefined,
+      task,
+      level: normalizeDashboardTaskLevel(body.level),
+      files: toStringArray(body.files),
+      services: toStringArray(body.services ?? body.service),
+      budget: parsePositiveIntFromUnknown(body.budget, 3600),
+    })
+    return {
+      project: this.currentProject,
+      generatedAt: Date.now(),
+      task: plan.task,
+      governance: {
+        effectiveMode: plan.governance.effectiveMode,
+        workflowProfile: plan.adaptiveWorkflow.profile,
+        evaluatorRisk: plan.evaluator.riskLevel,
+      },
+      toolStrategy: plan.toolStrategy.summary,
+      agentCollaboration: plan.agentCollaboration,
+      recommendations: plan.agentCollaboration.recommendations,
+    } satisfies DashboardAgentPlanReport
+  }
 
   private setupAPI(): void {
     // Project metadata for multi-project dashboard launchers
@@ -595,6 +707,30 @@ export class DashboardServer {
       }
     })
 
+    const serveAgentPlan = async (c: Context, body: Record<string, unknown>) => {
+      const task = String(body.task ?? body.scenario ?? '').trim()
+      if (!task) return c.json({ error: 'Task is required.' }, 400)
+      try {
+        return c.json(await this.createDashboardAgentPlanReport({ ...body, task }))
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+      }
+    }
+
+    this.app.get('/api/agent/plan', async (c) => serveAgentPlan(c, {
+      task: c.req.query('task') ?? c.req.query('scenario') ?? '',
+      taskId: c.req.query('taskId'),
+      level: c.req.query('level'),
+      files: c.req.query('files'),
+      services: c.req.query('services') ?? c.req.query('service'),
+      budget: c.req.query('budget'),
+    }))
+
+    this.app.post('/api/agent/plan', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      return serveAgentPlan(c, body)
+    })
+
     // Available FSM actions for artifact
     this.app.get('/api/artifacts/:id/actions', async (c) => {
       if (!this.fsm) return c.json({ error: 'FSM not available' }, 503)
@@ -665,6 +801,30 @@ export class DashboardServer {
   // ── Write Operations ─────────────────────────────────────────────────
 
   private setupWriteOps(): void {
+    this.app.put('/api/documents/*', async (c) => {
+      const docPath = c.req.path.replace('/api/documents/', '')
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      if (typeof body.content !== 'string') return c.json({ error: 'Missing required field: content' }, 400)
+
+      const result = this.writeDashboardDocument(docPath, body.content)
+      if (!result.ok) return c.json({ error: result.error }, result.status)
+      const evidence = this.recordDashboardDocumentEvidence('edit', result.document)
+      return c.json({ success: true, document: result.document, evidence })
+    })
+
+    this.app.post('/api/knowledge-base/documents/import', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const name = typeof body.name === 'string' ? body.name : ''
+      const content = typeof body.content === 'string' ? body.content : ''
+      const type = typeof body.type === 'string' ? body.type : undefined
+      if (!content.trim()) return c.json({ error: 'Missing required field: content' }, 400)
+
+      const result = this.importKnowledgeDocument({ name, content, type })
+      if (!result.ok) return c.json({ error: result.error }, result.status)
+      const evidence = this.recordDashboardDocumentEvidence('knowledge-import', result.document)
+      return c.json({ success: true, document: result.document, evidence })
+    })
+
     // Artifact transition
     this.app.post('/api/artifacts/:id/transition', async (c) => {
       if (!this.fsm || !this.store) return c.json({ error: 'FSM or store not available' }, 503)
@@ -813,6 +973,30 @@ export class DashboardServer {
         reason: input.reason,
         source: 'dashboard',
         resolutionKey: `memory-review:${input.node.id}`,
+      },
+    })
+  }
+
+  private recordDashboardDocumentEvidence(
+    action: 'edit' | 'knowledge-import',
+    document: DashboardDocumentSummary,
+  ): RuntimeEvidenceRecord {
+    const ledger = new RuntimeEvidenceLedger({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+    })
+    return ledger.record({
+      taskId: 'dashboard-document-maintenance',
+      kind: 'manual',
+      status: 'passed',
+      title: `Dashboard ${action}: ${document.path}`,
+      summary: `Dashboard ${action} wrote ${document.path}.`,
+      artifacts: [document.path],
+      metadata: {
+        action,
+        path: document.path,
+        source: 'dashboard',
+        resolutionKey: `dashboard-document:${document.path}`,
       },
     })
   }
@@ -981,10 +1165,12 @@ export class DashboardServer {
     const modelUsageFile = join(this.scaleDir, 'model-usage', 'usage.jsonl')
     const runtimeEvidenceDir = join(this.scaleDir, 'evidence', 'runtime')
     const commandRunsDir = join(this.scaleDir, 'evidence', 'command-runs')
+    const aiOsRunsDir = join(this.scaleDir, 'ai-os', 'runs')
     const promptReport = this.getPromptStudioReport()
     const knowledgeBaseReport = this.getKnowledgeBaseReport()
     const runtimeEvidenceCount = countMatchingFiles(runtimeEvidenceDir, file => file.endsWith('.json'))
     const commandRunCount = metrics?.commandRuns.total ?? countMatchingFiles(commandRunsDir, file => file.endsWith('.json'))
+    const agentCollaborationRuns = inspectAiOsAgentCollaborationReports(aiOsRunsDir)
     const modelUsageCount = metrics?.modelUsage.totalRecords ?? 0
     const memoryCount = this.getLocalKnowledgeSummary(this.currentProject, warnings).total
     const busAvailable = Boolean(this.bus)
@@ -1092,6 +1278,28 @@ export class DashboardServer {
         action: promptReport.summary.vibeTemplates + promptReport.summary.phasePrompts > 0 ? undefined : 'Add project prompts under .scale/prompts or use built-in templates.',
       },
       {
+        id: 'agent-collaboration',
+        title: 'Agent collaboration plans',
+        description: 'Machine-readable AI OS agent role selection, DAG handoffs, review gates, token budgets, and guarded execution settlement.',
+        status: agentCollaborationRuns.settledAgentExecution > 0 ? 'ready' : agentCollaborationRuns.withAgentCollaboration > 0 ? 'partial' : agentCollaborationRuns.totalReports > 0 ? 'partial' : 'missing',
+        refreshMode: 'polling',
+        source: aiOsRunsDir,
+        count: agentCollaborationRuns.withAgentCollaboration,
+        lastUpdated: agentCollaborationRuns.lastUpdated,
+        emptyReason: agentCollaborationRuns.settledAgentExecution > 0
+          ? undefined
+          : agentCollaborationRuns.withAgentCollaboration > 0
+            ? `${agentCollaborationRuns.withAgentCollaboration} AI OS run report(s) include agentCollaboration, but none have settled agentExecution evidence yet.`
+            : agentCollaborationRuns.totalReports > 0
+            ? 'AI OS run reports exist, but none include agentCollaboration yet. Re-run scale ai-os plan/run with the current runtime.'
+            : 'No AI OS run reports with agent collaboration plans were found.',
+        action: agentCollaborationRuns.settledAgentExecution > 0
+          ? undefined
+          : agentCollaborationRuns.withAgentCollaboration > 0
+            ? 'Run scale ai-os run --mode guarded --verify "<command>" --task "<task>" --json to settle agent execution evidence.'
+            : 'Run scale agent plan --task "<task>" --json or scale ai-os run --dry-run --task "<task>" --json.',
+      },
+      {
         id: 'event-stream',
         title: 'Realtime event stream',
         description: 'Server-sent events used to refresh live runtime changes.',
@@ -1130,6 +1338,8 @@ export class DashboardServer {
         artifactTransitions,
         memoryReview: existsSync(memoryDb),
         promptOptimization: true,
+        documentEditing: true,
+        knowledgeImport: true,
       },
       dataSources,
       warnings: [...warnings, ...promptReport.warnings, ...knowledgeBaseReport.warnings],
@@ -1204,7 +1414,7 @@ export class DashboardServer {
       const fullPath = join(projectDir, path)
       if (!existsSync(fullPath) || !statSync(fullPath).isFile()) return
       const stat = statSync(fullPath)
-      docs.push({ name: basename(path), path, type: extname(path).slice(1), size: stat.size })
+      docs.push({ name: basename(path), path, type: extname(path).slice(1), size: stat.size, updatedAt: stat.mtimeMs })
     }
     const scanDir = (dir: string, prefix: string) => {
       if (!existsSync(dir)) return
@@ -1215,7 +1425,7 @@ export class DashboardServer {
           scanDir(fullPath, relPath)
         } else if (entry.isFile() && /\.(html|md|json)$/.test(entry.name)) {
           const stat = statSync(fullPath)
-          docs.push({ name: entry.name, path: relPath, type: extname(entry.name).slice(1), size: stat.size })
+          docs.push({ name: entry.name, path: relPath, type: extname(entry.name).slice(1), size: stat.size, updatedAt: stat.mtimeMs })
         }
       }
     }
@@ -1232,21 +1442,118 @@ export class DashboardServer {
   }
 
   private serveDocument(docPath: string, c: Context): Response {
-    // docPath already includes prefix (e.g., 'docs/foo.md' or '.scale/docs/foo.md')
-    // Try direct resolution from project root and scale root
-    const searchDirs = [
-      this.projectDir,
-      this.scaleDir,
-    ]
-    for (const dir of searchDirs) {
-      const fullPath = join(dir, docPath)
-      if (existsSync(fullPath) && statSync(fullPath).isFile()) {
-        const ext = extname(fullPath)
-        const contentType = ext === '.html' ? 'text/html; charset=utf-8' : ext === '.json' ? 'application/json' : 'text/plain; charset=utf-8'
-        return new Response(readFileSync(fullPath), { headers: { 'Content-Type': contentType } })
+    const resolved = this.resolveExistingDocument(docPath)
+    if (resolved) {
+      const ext = extname(resolved.fullPath)
+      const contentType = ext === '.html' ? 'text/html; charset=utf-8' : ext === '.json' ? 'application/json' : 'text/plain; charset=utf-8'
+      const headers: Record<string, string> = { 'Content-Type': contentType, 'Cache-Control': 'no-cache' }
+      if (c.req.query('download') === '1' || c.req.query('download') === 'true') {
+        headers['Content-Disposition'] = contentDispositionAttachment(basename(resolved.documentPath))
       }
+      return new Response(readFileSync(resolved.fullPath), { headers })
     }
     return c.json({ error: 'Document not found' }, 404)
+  }
+
+  private writeDashboardDocument(
+    rawDocPath: string,
+    content: string,
+  ): { ok: true; document: DashboardDocumentSummary } | { ok: false; status: 400 | 404 | 413; error: string } {
+    if (content.length > 2_000_000) return { ok: false, status: 413, error: 'Document content exceeds 2MB.' }
+    const documentPath = normalizeDashboardDocumentPath(rawDocPath)
+    if (!documentPath) return { ok: false, status: 400, error: 'Invalid document path.' }
+    if (!this.isEditableDocumentPath(documentPath)) {
+      return { ok: false, status: 400, error: 'Document is not editable from the dashboard.' }
+    }
+    const resolved = this.resolveExistingDocument(documentPath)
+    if (!resolved) return { ok: false, status: 404, error: 'Document not found.' }
+    const validation = validateEditableDocumentContent(documentPath, content)
+    if (validation) return { ok: false, status: 400, error: validation }
+
+    writeFileSync(resolved.fullPath, content, 'utf-8')
+    return { ok: true, document: this.createDocumentSummary(documentPath, resolved.fullPath) }
+  }
+
+  private importKnowledgeDocument(input: {
+    name: string
+    content: string
+    type?: string
+  }): { ok: true; document: DashboardDocumentSummary } | { ok: false; status: 400 | 413; error: string } {
+    if (input.content.length > 2_000_000) return { ok: false, status: 413, error: 'Knowledge document content exceeds 2MB.' }
+    const fileName = sanitizeKnowledgeImportName(input.name, input.type)
+    const documentPath = this.nextKnowledgeImportPath(fileName)
+    const validation = validateEditableDocumentContent(documentPath, input.content)
+    if (validation) return { ok: false, status: 400, error: validation }
+    const resolved = this.resolveWritableDocument(documentPath)
+    if (!resolved) return { ok: false, status: 400, error: 'Invalid knowledge import path.' }
+
+    mkdirSync(dirname(resolved.fullPath), { recursive: true })
+    writeFileSync(resolved.fullPath, input.content, 'utf-8')
+    return { ok: true, document: this.createDocumentSummary(documentPath, resolved.fullPath) }
+  }
+
+  private nextKnowledgeImportPath(fileName: string): string {
+    const ext = extname(fileName)
+    const base = fileName.slice(0, fileName.length - ext.length)
+    for (let index = 0; index < 1000; index += 1) {
+      const suffix = index === 0 ? '' : `-${index + 1}`
+      const candidate = `.scale/knowledge/imports/${base}${suffix}${ext}`
+      if (!this.resolveExistingDocument(candidate)) return candidate
+    }
+    return `.scale/knowledge/imports/${base}-${Date.now()}${ext}`
+  }
+
+  private resolveExistingDocument(rawDocPath: string): { documentPath: string; fullPath: string } | null {
+    const documentPath = normalizeDashboardDocumentPath(rawDocPath)
+    if (!documentPath) return null
+    for (const candidate of this.documentPathCandidates(documentPath)) {
+      if (existsSync(candidate.fullPath) && statSync(candidate.fullPath).isFile()) return candidate
+    }
+    return null
+  }
+
+  private resolveWritableDocument(rawDocPath: string): { documentPath: string; fullPath: string } | null {
+    const documentPath = normalizeDashboardDocumentPath(rawDocPath)
+    if (!documentPath) return null
+    return this.documentPathCandidates(documentPath)[0] ?? null
+  }
+
+  private documentPathCandidates(documentPath: string): Array<{ documentPath: string; fullPath: string }> {
+    const candidates: Array<{ root: string; relativePath: string }> = []
+    if (documentPath.startsWith('.scale/')) {
+      candidates.push({ root: this.scaleDir, relativePath: documentPath.slice('.scale/'.length) })
+    }
+    candidates.push({ root: this.projectDir, relativePath: documentPath })
+    return candidates
+      .map(candidate => ({
+        documentPath,
+        fullPath: resolve(candidate.root, candidate.relativePath),
+        root: resolve(candidate.root),
+      }))
+      .filter(candidate => isPathInside(candidate.fullPath, candidate.root))
+      .map(({ documentPath: path, fullPath }) => ({ documentPath: path, fullPath }))
+  }
+
+  private isEditableDocumentPath(documentPath: string): boolean {
+    const ext = extname(documentPath).toLowerCase()
+    if (!['.md', '.json', '.html'].includes(ext)) return false
+    if (documentPath.startsWith('.scale/knowledge/imports/')) return true
+    const editable = new Set([
+      ...this.listDocuments().map(document => document.path),
+      ...this.listKnowledgeDocuments().map(document => document.path),
+    ])
+    return editable.has(documentPath)
+  }
+
+  private createDocumentSummary(documentPath: string, fullPath: string): DashboardDocumentSummary {
+    const stat = statSync(fullPath)
+    return {
+      name: basename(documentPath),
+      path: documentPath,
+      type: extname(documentPath).slice(1),
+      size: stat.size,
+      updatedAt: stat.mtimeMs,
+    }
   }
 
   private async getKnowledgeReport(options: {
@@ -1375,6 +1682,7 @@ export class DashboardServer {
         path,
         type: extname(path).slice(1),
         size: stat.size,
+        updatedAt: stat.mtimeMs,
       })
     }
 
@@ -1574,6 +1882,7 @@ export class DashboardServer {
         phases: pack.phases,
         templateIds: pack.templates.map(template => template.id),
         command: `scale vibe --pack ${pack.id}`,
+        source: 'phase' as const,
       }))
     } catch (error) {
       warnings.push(`phase prompt registry failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -1583,6 +1892,19 @@ export class DashboardServer {
       ...template,
       command: `scale vibe --template ${template.id}`,
     }))
+    const existingPackIds = new Set(packs.map(pack => pack.id))
+    for (const pack of listVisualVibePacks()) {
+      if (existingPackIds.has(pack.id)) continue
+      packs.push({
+        id: pack.id,
+        name: pack.name,
+        description: pack.description,
+        phases: [],
+        templateIds: pack.templateIds,
+        command: `scale vibe --pack ${pack.id}`,
+        source: 'vibe',
+      })
+    }
 
     return {
       project: this.currentProject,
@@ -1691,6 +2013,11 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function parsePositiveIntFromUnknown(value: unknown, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
 function classifyPromptSource(id: string): DashboardPromptSource {
   if (id.startsWith('project:')) return 'project'
   if (id.startsWith('global:')) return 'global'
@@ -1708,9 +2035,82 @@ function toStringArray(value: unknown): string[] {
   return []
 }
 
+function normalizeDashboardTaskLevel(value: unknown): SkillTaskLevel {
+  const normalized = String(value ?? 'M').trim().toUpperCase()
+  if (normalized === 'S' || normalized === 'M' || normalized === 'L' || normalized === 'CRITICAL') return normalized
+  return 'M'
+}
+
+function escapeJsonForHtml(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
 function normalizeMemoryReviewAction(value: string | undefined): MemoryReviewAction | null {
   if (!value) return null
   return (MEMORY_REVIEW_ACTIONS as readonly string[]).includes(value) ? value as MemoryReviewAction : null
+}
+
+function normalizeDashboardDocumentPath(rawPath: string): string | null {
+  try {
+    const decoded = rawPath
+      .split('/')
+      .map(segment => decodeURIComponent(segment))
+      .join('/')
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+    if (!decoded || decoded.includes('\0')) return null
+    if (decoded.startsWith('../') || decoded.includes('/../') || decoded === '..') return null
+    if (/^[a-zA-Z]:\//.test(decoded)) return null
+    return decoded
+  } catch {
+    return null
+  }
+}
+
+function validateEditableDocumentContent(documentPath: string, content: string): string | null {
+  if (extname(documentPath).toLowerCase() !== '.json') return null
+  try {
+    JSON.parse(content)
+    return null
+  } catch (error) {
+    return `Invalid JSON: ${error instanceof Error ? error.message : String(error)}`
+  }
+}
+
+function sanitizeKnowledgeImportName(name: string, type?: string): string {
+  const requestedExt = extname(name).toLowerCase()
+  const typeExt = typeof type === 'string' ? `.${type.replace(/^\./, '').toLowerCase()}` : ''
+  const ext = ['.md', '.json', '.html'].includes(requestedExt)
+    ? requestedExt
+    : ['.md', '.json', '.html'].includes(typeExt)
+      ? typeExt
+      : '.md'
+  const withoutExt = requestedExt ? name.slice(0, name.length - requestedExt.length) : name
+  const safeBase = withoutExt
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/-+/g, '-')
+    .slice(0, 80)
+  return `${safeBase || 'knowledge-note'}${ext}`
+}
+
+function contentDispositionAttachment(fileName: string): string {
+  const asciiName = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
+  return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+}
+
+function isPathInside(fullPath: string, root: string): boolean {
+  const normalizedFullPath = resolve(fullPath)
+  const normalizedRoot = resolve(root)
+  const rel = relative(normalizedRoot, normalizedFullPath)
+  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel))
 }
 
 interface KnowledgeEntryRow {
@@ -1922,6 +2322,49 @@ function countMatchingFiles(dir: string, predicate: (file: string) => boolean): 
     if (entry.isFile() && predicate(entry.name)) count += 1
   }
   return count
+}
+
+function inspectAiOsAgentCollaborationReports(dir: string): {
+  totalReports: number
+  withAgentCollaboration: number
+  settledAgentExecution: number
+  lastUpdated?: number
+} {
+  if (!existsSync(dir)) return { totalReports: 0, withAgentCollaboration: 0, settledAgentExecution: 0 }
+  let totalReports = 0
+  let withAgentCollaboration = 0
+  let settledAgentExecution = 0
+  let lastUpdated: number | undefined
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const absolute = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      const nested = inspectAiOsAgentCollaborationReports(absolute)
+      totalReports += nested.totalReports
+      withAgentCollaboration += nested.withAgentCollaboration
+      settledAgentExecution += nested.settledAgentExecution
+      if (nested.lastUpdated && (!lastUpdated || nested.lastUpdated > lastUpdated)) lastUpdated = nested.lastUpdated
+      continue
+    }
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+    totalReports += 1
+    const modified = statSync(absolute).mtimeMs
+    if (!lastUpdated || modified > lastUpdated) lastUpdated = modified
+    try {
+      const parsed = JSON.parse(readFileSync(absolute, 'utf-8')) as {
+        plan?: { agentCollaboration?: unknown }
+        agentExecution?: { status?: unknown }
+      }
+      if (parsed.plan?.agentCollaboration && typeof parsed.plan.agentCollaboration === 'object') {
+        withAgentCollaboration += 1
+      }
+      if (parsed.agentExecution?.status === 'settled') {
+        settledAgentExecution += 1
+      }
+    } catch {
+      // Invalid historical reports should not break dashboard capability discovery.
+    }
+  }
+  return { totalReports, withAgentCollaboration, settledAgentExecution, lastUpdated }
 }
 
 function latestMtime(path: string): number | undefined {

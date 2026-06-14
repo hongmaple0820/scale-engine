@@ -1158,6 +1158,7 @@ const aiOsPlanCommand = defineCommand({
     console.log(`  Context: ${plan.context.totalEstimatedTokens}/${plan.context.task.budget} tokens; saved ${plan.context.compiler?.estimatedTokenSavings ?? 0}`)
     console.log(`  Memory: ${plan.memory.items.length} item(s); providers ${plan.memory.providerOrder.join(' -> ')}`)
     console.log(`  Skill steps: ${plan.skillPlan.executionPlan.steps.length}`)
+    console.log(`  Agent collaboration: ${plan.agentCollaboration.mode}; ${plan.agentCollaboration.summary.totalRoles} role(s), ${plan.agentCollaboration.summary.reviewGateCount} review gate(s), reserve ${plan.agentCollaboration.budget.reserveTokens} tokens`)
     console.log(`  ROI: ${plan.roi.summary.recommendation}`)
     for (const recommendation of plan.recommendations) console.log(`  recommendation: ${recommendation}`)
   },
@@ -1212,6 +1213,10 @@ const aiOsRunCommand = defineCommand({
     console.log(`  Steps: ${report.steps.filter(step => step.status === 'passed').length} passed, ${report.steps.filter(step => step.status === 'planned').length} planned, ${report.steps.filter(step => step.status === 'blocked').length} blocked`)
     console.log(`  Verification: ${report.verification.commands.filter(command => command.status === 'passed').length}/${report.verification.commands.length} passed`)
     console.log(`  Evidence: ${report.evidence.produced.length} produced, ${report.evidence.pending.length} pending`)
+    console.log(`  Agent collaboration: ${report.plan.agentCollaboration.mode}; ${report.plan.agentCollaboration.summary.totalRoles} role(s), ${report.plan.agentCollaboration.summary.handoffCount} handoff(s), ${report.plan.agentCollaboration.summary.reviewGateCount} review gate(s)`)
+    if (report.agentExecution) {
+      console.log(`  Agent execution: ${report.agentExecution.status}; ${report.agentExecution.summary.settledRoles}/${report.agentExecution.summary.totalRoles} role(s) settled, ${report.agentExecution.summary.settledReviewGates}/${report.agentExecution.summary.reviewGates} review gate(s) settled`)
+    }
     console.log(`  Report: ${report.artifacts.runReport}`)
     for (const action of report.nextActions.slice(0, 6)) console.log(`  next: ${action}`)
     if (report.status === 'blocked') process.exitCode = 1
@@ -1274,6 +1279,7 @@ const aiOsBenchmarkCommand = defineCommand({
     console.log(`  Tokens: ${benchmark.summary.totalEstimatedTokens}/${benchmark.summary.totalBudget}; saved ${benchmark.summary.totalEstimatedTokenSavings}`)
     console.log(`  Memory items: ${benchmark.summary.totalMemoryItems}`)
     console.log(`  Skill steps: ${benchmark.summary.totalSkillSteps} (${benchmark.summary.requiredSkillSteps} required)`)
+    console.log(`  Agent roles: ${benchmark.summary.totalAgentRoles}; review gates ${benchmark.summary.totalAgentReviewGates}; multi-agent scenarios ${benchmark.summary.multiAgentScenarios}`)
     console.log(`  Governance modes: ${benchmark.summary.governanceModes.join(', ') || 'none'}`)
     console.log(`  Dashboard health: ${benchmark.dashboard.health.status}`)
     for (const scenario of benchmark.scenarios) {
@@ -1438,6 +1444,7 @@ const aiOsStatusCommand = defineCommand({
       console.log(`  Context risk: ${report.intelligence.summary.contextQuality.compressionRisk}; omitted ${report.intelligence.summary.contextQuality.omittedSections} section(s), evidence warnings ${report.intelligence.summary.contextQuality.evidenceLossWarnings.length}`)
       console.log(`  Evaluator gates: ${report.intelligence.summary.evaluatorQuality.requiredGates}; uncertainty ${report.intelligence.summary.evaluatorQuality.averageUncertainty}`)
       console.log(`  Tool strategy: ${report.intelligence.summary.toolStrategyQuality.totalSteps} step(s), cost ${report.intelligence.summary.toolStrategyQuality.estimatedCostUnits}, fallback ${report.intelligence.summary.toolStrategyQuality.fallbackCoverage}`)
+      console.log(`  Agent collaboration: ${report.intelligence.summary.agentCollaborationQuality.totalRoles} role(s), ${report.intelligence.summary.agentCollaborationQuality.settledRoles} settled, ${report.intelligence.summary.agentCollaborationQuality.reviewGates} review gate(s), ${report.intelligence.summary.agentCollaborationQuality.settledRuns} settled guarded run(s)`)
       console.log(`  Agent Loop: ${report.intelligence.summary.agentLoopQuality.status}; ${report.intelligence.summary.agentLoopQuality.readySignals}/6 ready, score ${report.intelligence.summary.agentLoopQuality.score}/100`)
       for (const signal of report.intelligence.signals) console.log(`  [${signal.status}] ${signal.id}: ${signal.summary}`)
       for (const check of report.checks) console.log(`  [${check.status}] ${check.id}: ${check.summary}`)
@@ -1459,6 +1466,7 @@ const aiOsStatusCommand = defineCommand({
       console.log(`  Context risk: ${report.intelligence.summary.contextQuality.compressionRisk}; omitted ${report.intelligence.summary.contextQuality.omittedSections} section(s), evidence warnings ${report.intelligence.summary.contextQuality.evidenceLossWarnings.length}`)
       console.log(`  Evaluator gates: ${report.intelligence.summary.evaluatorQuality.requiredGates}; uncertainty ${report.intelligence.summary.evaluatorQuality.averageUncertainty}`)
       console.log(`  Tool strategy: ${report.intelligence.summary.toolStrategyQuality.totalSteps} step(s), cost ${report.intelligence.summary.toolStrategyQuality.estimatedCostUnits}, fallback ${report.intelligence.summary.toolStrategyQuality.fallbackCoverage}`)
+      console.log(`  Agent collaboration: ${report.intelligence.summary.agentCollaborationQuality.totalRoles} role(s), ${report.intelligence.summary.agentCollaborationQuality.settledRoles} settled, ${report.intelligence.summary.agentCollaborationQuality.reviewGates} review gate(s), ${report.intelligence.summary.agentCollaborationQuality.settledRuns} settled guarded run(s)`)
       console.log(`  Agent Loop: ${report.intelligence.summary.agentLoopQuality.status}; ${report.intelligence.summary.agentLoopQuality.readySignals}/6 ready, score ${report.intelligence.summary.agentLoopQuality.score}/100`)
       for (const signal of report.intelligence.signals) console.log(`  [${signal.status}] ${signal.id}: ${signal.summary}`)
       for (const check of report.checks) console.log(`  [${check.status}] ${check.id}: ${check.summary}`)

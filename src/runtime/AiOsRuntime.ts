@@ -46,6 +46,10 @@ import { RuntimeEvidenceLedger } from './RuntimeEvidenceLedger.js'
 import { loadRelevantLearnings, type LearningEntry } from '../evolution/SessionLearnings.js'
 import { collectSessionPreamble, type SessionPreamble } from '../workflow/SessionPreamble.js'
 import { assessAgentLoopReadiness, type AgentLoopReadinessReport } from '../workflow/AgentLoopReadiness.js'
+import {
+  createAgentCollaborationPlan,
+  type AgentCollaborationPlan,
+} from '../workflow/AgentCollaborationPlanner.js'
 
 export interface AiOsRuntimeInput {
   projectDir?: string
@@ -63,7 +67,7 @@ export interface AiOsRuntimeInput {
 
 export type AiOsRunMode = 'dry-run' | 'guarded'
 export type AiOsRunStatus = 'ready' | 'blocked'
-export type AiOsRunStepKind = 'plan' | 'context' | 'memory' | 'skill' | 'gate' | 'evidence' | 'learning'
+export type AiOsRunStepKind = 'plan' | 'context' | 'memory' | 'skill' | 'agent' | 'gate' | 'evidence' | 'learning'
 export type AiOsRunStepStatus = 'passed' | 'planned' | 'blocked' | 'skipped'
 
 export interface AiOsRunInput extends AiOsRuntimeInput {
@@ -173,6 +177,7 @@ export interface AiOsRuntimePlan {
   adaptiveWorkflow: AiOsAdaptiveWorkflow
   evaluator: AiOsEvaluatorIntelligence
   toolStrategy: AiOsToolStrategyPlan
+  agentCollaboration: AgentCollaborationPlan
   evolutionShadow: EvolutionShadowReport
   context: BudgetedContextPack
   memory: AiOsMemoryRuntimeSummary
@@ -212,6 +217,64 @@ export interface AiOsVerificationCommandReport {
   evidenceId: string
 }
 
+export type AiOsAgentExecutionStatus = 'planned' | 'settled' | 'blocked'
+
+export interface AiOsAgentRoleExecutionSettlement {
+  profileId: string
+  responsibility: string
+  required: boolean
+  status: AiOsAgentExecutionStatus
+  budgetTokens: number
+  summary: string
+  evidence: string[]
+}
+
+export interface AiOsAgentHandoffExecutionSettlement {
+  id: string
+  from: string
+  to: string
+  required: boolean
+  status: AiOsAgentExecutionStatus
+  artifact: string
+  summary: string
+  evidence: string[]
+}
+
+export interface AiOsAgentReviewExecutionSettlement {
+  id: string
+  owner: string
+  required: boolean
+  status: AiOsAgentExecutionStatus
+  summary: string
+  evidence: string[]
+}
+
+export interface AiOsAgentExecutionReport {
+  strategy: 'agent-execution-settlement-v1'
+  generatedAt: string
+  mode: AiOsRunMode
+  status: AiOsAgentExecutionStatus
+  roles: AiOsAgentRoleExecutionSettlement[]
+  handoffs: AiOsAgentHandoffExecutionSettlement[]
+  reviewGates: AiOsAgentReviewExecutionSettlement[]
+  evidence: {
+    required: string[]
+    produced: string[]
+    pending: string[]
+  }
+  summary: {
+    totalRoles: number
+    settledRoles: number
+    blockedRoles: number
+    totalHandoffs: number
+    settledHandoffs: number
+    reviewGates: number
+    settledReviewGates: number
+    producedEvidence: number
+  }
+  recommendations: string[]
+}
+
 export interface AiOsRunReport {
   version: string
   generatedAt: string
@@ -220,6 +283,7 @@ export interface AiOsRunReport {
   status: AiOsRunStatus
   plan: AiOsRuntimePlan
   steps: AiOsRunStep[]
+  agentExecution?: AiOsAgentExecutionReport
   evidence: {
     required: string[]
     produced: string[]
@@ -316,6 +380,9 @@ export interface AiOsBenchmarkScenarioResult {
     evaluatorGates: number
     toolStrategySteps: number
     toolStrategyCostUnits: number
+    agentRoles: number
+    agentReviewerRoles: number
+    agentReviewGates: number
     evolutionProposals: number
     gates: number
     roiModules: number
@@ -337,6 +404,10 @@ export interface AiOsBenchmarkReport {
     totalEvaluatorGates: number
     totalToolStrategySteps: number
     totalToolStrategyCostUnits: number
+    totalAgentRoles: number
+    totalAgentReviewerRoles: number
+    totalAgentReviewGates: number
+    multiAgentScenarios: number
     totalEvolutionProposals: number
     governanceModes: GovernanceMode[]
     workflowProfiles: WorkflowProfile[]
@@ -507,6 +578,7 @@ export type AiOsIntelligenceSignalId =
   | 'skill-routing'
   | 'evaluator-intelligence'
   | 'tool-strategy'
+  | 'agent-collaboration'
   | 'adaptive-workflow'
   | 'evolution-shadow'
   | 'agent-loop-readiness'
@@ -532,6 +604,7 @@ export interface AiOsIntelligenceReport {
     contextQuality: AiOsContextQualitySummary
     evaluatorQuality: AiOsEvaluatorQualitySummary
     toolStrategyQuality: AiOsToolStrategyQualitySummary
+    agentCollaborationQuality: AiOsAgentCollaborationQualitySummary
     agentLoopQuality: AiOsAgentLoopQualitySummary
     evolutionQuality: AiOsEvolutionQualitySummary
     estimatedTokenSavings: number
@@ -571,6 +644,21 @@ export interface AiOsToolStrategyQualitySummary {
   highRiskSteps: number
   estimatedCostUnits: number
   fallbackCoverage: number
+}
+
+export interface AiOsAgentCollaborationQualitySummary {
+  totalRoles: number
+  requiredRoles: number
+  reviewerRoles: number
+  reviewGates: number
+  handoffs: number
+  settledRoles: number
+  settledReviewGates: number
+  settledRuns: number
+  blockedExecutionRuns: number
+  multiAgentRuns: number
+  reviewEscalatedRuns: number
+  averageBudgetReserve: number
 }
 
 export interface AiOsAgentLoopQualitySummary {
@@ -658,6 +746,18 @@ export async function createAiOsPlan(input: AiOsRuntimeInput): Promise<AiOsRunti
   })
   const toolStrategy = createToolStrategyPlan(skillPlan)
   const adaptiveWorkflow = createAdaptiveWorkflow(governance, skillPlan, evaluator, toolStrategy)
+  const agentCollaboration = createAgentCollaborationPlan({
+    task: input.task,
+    level,
+    files,
+    services,
+    budget,
+    governance,
+    workflowProfile: adaptiveWorkflow.profile,
+    evaluator,
+    skillPlan,
+    toolStrategy,
+  })
   const evolutionShadow = createEvolutionShadowProposals(governance, evaluator)
   const roi = createGovernanceRoiReport({
     taskId,
@@ -683,6 +783,7 @@ export async function createAiOsPlan(input: AiOsRuntimeInput): Promise<AiOsRunti
     adaptiveWorkflow,
     evaluator,
     toolStrategy,
+    agentCollaboration,
     evolutionShadow,
     context,
     memory: {
@@ -696,7 +797,7 @@ export async function createAiOsPlan(input: AiOsRuntimeInput): Promise<AiOsRunti
     skillPlan,
     sessionLearnings,
     roi,
-    recommendations: recommendations({ governance, context, memoryRecall, skillPlan, evaluator, toolStrategy }),
+    recommendations: recommendations({ governance, context, memoryRecall, skillPlan, evaluator, toolStrategy, agentCollaboration }),
   }
 }
 
@@ -718,6 +819,16 @@ export async function createAiOsRun(input: AiOsRunInput): Promise<AiOsRunReport>
     allowShell: input.allowShell,
     enabled: mode === 'guarded',
   })
+  const agentExecution = settleAgentExecution({
+    projectDir,
+    scaleDir,
+    mode,
+    plan,
+    steps,
+    verification,
+    runReportPath,
+    generatedAt,
+  })
   const failureCandidates = buildFailureLearningCandidates(plan, steps)
   const evidence = summarizeRunEvidence(steps)
   const status: AiOsRunStatus = steps.some(step => step.status === 'blocked') ? 'blocked' : 'ready'
@@ -729,6 +840,7 @@ export async function createAiOsRun(input: AiOsRunInput): Promise<AiOsRunReport>
     status,
     plan,
     steps,
+    agentExecution,
     evidence,
     verification,
     failureLearning: {
@@ -813,6 +925,9 @@ export async function createAiOsBenchmark(input: AiOsBenchmarkInput = {}): Promi
         evaluatorGates: plan.evaluator.gates.length,
         toolStrategySteps: plan.toolStrategy.summary.totalSteps,
         toolStrategyCostUnits: plan.toolStrategy.summary.estimatedCostUnits,
+        agentRoles: plan.agentCollaboration.summary.totalRoles,
+        agentReviewerRoles: plan.agentCollaboration.summary.reviewerRoles,
+        agentReviewGates: plan.agentCollaboration.summary.reviewGateCount,
         evolutionProposals: plan.evolutionShadow.summary.totalProposals,
         gates: plan.adaptiveWorkflow.gates.length,
         roiModules: plan.roi.modules.length,
@@ -1185,6 +1300,7 @@ function buildAiOsIntelligenceReport(input: {
   const contextQuality = summarizeContextQuality(input.runReports)
   const evaluatorQuality = summarizeEvaluatorQuality(input.runReports, input.benchmark)
   const toolStrategyQuality = summarizeToolStrategyQuality(input.runReports, input.benchmark)
+  const agentCollaborationQuality = summarizeAgentCollaborationQuality(input.runReports, input.benchmark)
   const agentLoop = assessAgentLoopReadiness({
     projectDir: input.projectDir,
     scaleDir: input.scaleDir,
@@ -1215,6 +1331,17 @@ function buildAiOsIntelligenceReport(input: {
   const toolStrategyEvidence = [
     ...input.runReports.flatMap(report => resolveRunToolStrategy(report).nodes.map(node => `${report.artifacts.runReport}:${node.id}`)),
     ...(input.benchmark ? [`${input.benchmarkReport}:tool-strategy=${input.benchmark.summary.totalToolStrategySteps}`] : []),
+  ]
+  const agentCollaborationEvidence = [
+    ...input.runReports.flatMap(report => {
+      const plan = resolveRunAgentCollaboration(report)
+      return [
+        ...plan.roles.map(role => `${report.artifacts.runReport}:agent:${role.profileId}`),
+        ...plan.reviewGates.map(gate => `${report.artifacts.runReport}:agent-review:${gate.id}`),
+        ...(report.agentExecution?.evidence.produced ?? []).map(evidence => `${report.artifacts.runReport}:${evidence}`),
+      ]
+    }),
+    ...(input.benchmark ? [`${input.benchmarkReport}:agent-roles=${input.benchmark.summary.totalAgentRoles}`] : []),
   ]
   const evolutionEvidence = [
     ...input.runReports.flatMap(report =>
@@ -1298,6 +1425,21 @@ function buildAiOsIntelligenceReport(input: {
         : ['Create a task that triggers skill routing so the AI OS can build a tool strategy graph.'],
     },
     {
+      id: 'agent-collaboration',
+      status: agentCollaborationQuality.totalRoles > 0
+        ? agentCollaborationQuality.reviewGates === 0 || agentCollaborationQuality.settledRuns === 0 ? 'warning' : 'ready'
+        : input.runReports.length > 0 || input.benchmark ? 'warning' : 'blocked',
+      summary: agentCollaborationQuality.totalRoles > 0
+        ? `${agentCollaborationQuality.totalRoles} agent role assignment(s); ${agentCollaborationQuality.settledRoles} settled role(s); ${agentCollaborationQuality.reviewGates} review gate(s); ${agentCollaborationQuality.settledRuns} settled guarded run(s).`
+        : 'No machine-readable agent collaboration plan found in AI OS runs or benchmarks.',
+      evidence: agentCollaborationEvidence.length > 0 ? agentCollaborationEvidence : [resolveScaleRoot(input.projectDir, input.scaleDir)],
+      recommendations: agentCollaborationQuality.totalRoles > 0
+        ? agentCollaborationQuality.settledRuns > 0
+          ? ['Use agent collaboration roles, handoffs, review gates, token budget, and agent execution settlement evidence as the delegation contract before release.']
+          : ['Run a guarded AI OS task with verification commands so agent collaboration moves from planned contract to settled execution evidence.']
+        : ['Run `scale ai-os plan --task "<task>" --json` to generate agentCollaboration roles, DAG, handoffs, review gates, and budget.'],
+    },
+    {
       id: 'agent-loop-readiness',
       status: agentLoop.status === 'ready' ? 'ready' : 'warning',
       summary: `Agent Loop readiness ${agentLoop.status}; ${agentLoop.summary.readySignals}/6 signal(s) ready; score ${agentLoop.score}/100.`,
@@ -1355,6 +1497,7 @@ function buildAiOsIntelligenceReport(input: {
     contextQuality,
     evaluatorQuality,
     toolStrategyQuality,
+    agentCollaborationQuality,
     agentLoopQuality,
     evolutionQuality,
     estimatedTokenSavings,
@@ -1473,6 +1616,81 @@ function summarizeToolStrategyQuality(
 function resolveRunToolStrategy(report: AiOsRunReport): AiOsToolStrategyPlan {
   const plan = report.plan as AiOsRuntimePlan & { toolStrategy?: AiOsToolStrategyPlan }
   return plan.toolStrategy ?? createToolStrategyPlan(report.plan.skillPlan)
+}
+
+function summarizeAgentCollaborationQuality(
+  runReports: AiOsRunReport[],
+  benchmark?: AiOsBenchmarkReport,
+): AiOsAgentCollaborationQualitySummary {
+  const runPlans = runReports.map(resolveRunAgentCollaboration)
+  const runExecutions = runReports
+    .map(report => report.agentExecution)
+    .filter((execution): execution is AiOsAgentExecutionReport => Boolean(execution))
+  const runSummary = runPlans.reduce((summary, plan) => ({
+    totalRoles: summary.totalRoles + plan.summary.totalRoles,
+    requiredRoles: summary.requiredRoles + plan.summary.requiredRoles,
+    reviewerRoles: summary.reviewerRoles + plan.summary.reviewerRoles,
+    reviewGates: summary.reviewGates + plan.summary.reviewGateCount,
+    handoffs: summary.handoffs + plan.summary.handoffCount,
+    multiAgentRuns: summary.multiAgentRuns + (plan.summary.multiAgentRecommended ? 1 : 0),
+    reviewEscalatedRuns: summary.reviewEscalatedRuns + (plan.summary.reviewEscalated ? 1 : 0),
+    reserveTokens: summary.reserveTokens + plan.budget.reserveTokens,
+  }), {
+    totalRoles: 0,
+    requiredRoles: 0,
+    reviewerRoles: 0,
+    reviewGates: 0,
+    handoffs: 0,
+    multiAgentRuns: 0,
+    reviewEscalatedRuns: 0,
+    reserveTokens: 0,
+  })
+  const executionSummary = runExecutions.reduce((summary, execution) => ({
+    settledRoles: summary.settledRoles + execution.summary.settledRoles,
+    settledReviewGates: summary.settledReviewGates + execution.summary.settledReviewGates,
+    settledRuns: summary.settledRuns + (execution.status === 'settled' ? 1 : 0),
+    blockedExecutionRuns: summary.blockedExecutionRuns + (execution.status === 'blocked' ? 1 : 0),
+  }), {
+    settledRoles: 0,
+    settledReviewGates: 0,
+    settledRuns: 0,
+    blockedExecutionRuns: 0,
+  })
+  const benchmarkAgentRoles = benchmark?.summary.totalAgentRoles ?? 0
+  const benchmarkReviewerRoles = benchmark?.summary.totalAgentReviewerRoles ?? 0
+  const benchmarkReviewGates = benchmark?.summary.totalAgentReviewGates ?? 0
+  const benchmarkMultiAgentScenarios = benchmark?.summary.multiAgentScenarios ?? 0
+  const planCount = runPlans.length
+  return {
+    totalRoles: runSummary.totalRoles + benchmarkAgentRoles,
+    requiredRoles: runSummary.requiredRoles,
+    reviewerRoles: runSummary.reviewerRoles + benchmarkReviewerRoles,
+    reviewGates: runSummary.reviewGates + benchmarkReviewGates,
+    handoffs: runSummary.handoffs,
+    settledRoles: executionSummary.settledRoles,
+    settledReviewGates: executionSummary.settledReviewGates,
+    settledRuns: executionSummary.settledRuns,
+    blockedExecutionRuns: executionSummary.blockedExecutionRuns,
+    multiAgentRuns: runSummary.multiAgentRuns + benchmarkMultiAgentScenarios,
+    reviewEscalatedRuns: runSummary.reviewEscalatedRuns,
+    averageBudgetReserve: planCount > 0 ? roundMetric(runSummary.reserveTokens / planCount) : 0,
+  }
+}
+
+function resolveRunAgentCollaboration(report: AiOsRunReport): AgentCollaborationPlan {
+  const plan = report.plan as AiOsRuntimePlan & { agentCollaboration?: AgentCollaborationPlan }
+  return plan.agentCollaboration ?? createAgentCollaborationPlan({
+    task: report.plan.task.task,
+    level: report.plan.task.level,
+    files: report.plan.task.files,
+    services: report.plan.task.services,
+    budget: report.plan.context.task.budget,
+    governance: report.plan.governance,
+    workflowProfile: report.plan.adaptiveWorkflow.profile,
+    evaluator: resolveRunEvaluator(report),
+    skillPlan: report.plan.skillPlan,
+    toolStrategy: resolveRunToolStrategy(report),
+  })
 }
 
 function summarizeAgentLoopQuality(report: AgentLoopReadinessReport): AiOsAgentLoopQualitySummary {
@@ -1619,6 +1837,56 @@ function buildRunSteps(plan: AiOsRuntimePlan): AiOsRunStep[] {
     dependsOn: ['runtime-plan'],
   })
 
+  upsert({
+    id: 'agent-collaboration-plan',
+    kind: 'agent',
+    title: 'Plan agent collaboration',
+    status: 'passed',
+    required: true,
+    summary: `${plan.agentCollaboration.summary.totalRoles} role(s), ${plan.agentCollaboration.summary.reviewGateCount} review gate(s), mode ${plan.agentCollaboration.mode}.`,
+    evidence: ['agentCollaboration.roles', 'agentCollaboration.edges', 'agentCollaboration.budget'],
+    dependsOn: ['runtime-plan'],
+  })
+
+  for (const role of plan.agentCollaboration.roles) {
+    upsert({
+      id: `agent:${role.profileId}`,
+      kind: 'agent',
+      title: `${role.responsibility}: ${role.name}`,
+      status: 'planned',
+      required: role.required,
+      summary: `${role.reason} Budget ${role.budgetTokens}/${plan.agentCollaboration.budget.totalTokens} tokens.`,
+      evidence: role.evidence.length > 0 ? role.evidence : [`agent-profile:${role.profileId}`],
+      dependsOn: ['agent-collaboration-plan'],
+    })
+  }
+
+  for (const handoff of plan.agentCollaboration.handoffs) {
+    upsert({
+      id: `agent-handoff:${handoff.from}->${handoff.to}`,
+      kind: 'agent',
+      title: `Handoff ${handoff.from} to ${handoff.to}`,
+      status: 'planned',
+      required: true,
+      summary: `${handoff.artifact}; exit criteria: ${handoff.exitCriteria.join(' ')}`,
+      evidence: handoff.evidence,
+      dependsOn: [`agent:${handoff.from}`, `agent:${handoff.to}`],
+    })
+  }
+
+  for (const gate of plan.agentCollaboration.reviewGates) {
+    upsert({
+      id: `agent-review:${gate.id}`,
+      kind: 'agent',
+      title: `Agent review gate: ${gate.id}`,
+      status: 'planned',
+      required: gate.required,
+      summary: `${gate.owner}: ${gate.reason}`,
+      evidence: gate.evidence.length > 0 ? gate.evidence : [`agent-review:${gate.id}`],
+      dependsOn: [`agent:${gate.owner}`],
+    })
+  }
+
   const profile = plan.adaptiveWorkflow.profile
   for (const gate of plan.adaptiveWorkflow.gates) {
     if (steps.has(gate)) continue
@@ -1756,6 +2024,197 @@ async function runGuardedVerification(options: {
   }
 }
 
+function settleAgentExecution(options: {
+  projectDir: string
+  scaleDir: string
+  mode: AiOsRunMode
+  plan: AiOsRuntimePlan
+  steps: AiOsRunStep[]
+  verification: AiOsRunReport['verification']
+  runReportPath: string
+  generatedAt: string
+}): AiOsAgentExecutionReport {
+  const canSettle = options.mode === 'guarded'
+    && options.verification.commands.length > 0
+    && options.verification.allPassed
+  const blocked = options.mode === 'guarded'
+    && options.verification.commands.some(command => command.status === 'failed')
+  const status: AiOsAgentExecutionStatus = canSettle ? 'settled' : blocked ? 'blocked' : 'planned'
+  const ledger = canSettle
+    ? new RuntimeEvidenceLedger({ projectDir: options.projectDir, scaleDir: options.scaleDir })
+    : null
+  const producedEvidence: string[] = []
+
+  const recordSettlementEvidence = (input: {
+    id: string
+    title: string
+    summary: string
+    metadata: Record<string, unknown>
+  }): string[] => {
+    if (!ledger) return []
+    const evidence = ledger.record({
+      taskId: options.plan.task.taskId,
+      kind: 'manual',
+      title: input.title,
+      status: 'passed',
+      summary: input.summary,
+      artifacts: [options.runReportPath],
+      metadata: {
+        aiOsRun: true,
+        agentExecution: true,
+        strategy: 'agent-execution-settlement-v1',
+        stepId: input.id,
+        resolutionKey: input.id,
+        ...input.metadata,
+      },
+    })
+    producedEvidence.push(evidence.id)
+    return [evidence.id]
+  }
+
+  const updateStep = (id: string, evidence: string[], summary: string): void => {
+    if (!canSettle) return
+    const step = options.steps.find(candidate => candidate.id === id)
+    if (!step) return
+    step.status = 'passed'
+    step.evidence = evidence
+    step.summary = summary
+  }
+
+  const roles: AiOsAgentRoleExecutionSettlement[] = options.plan.agentCollaboration.roles.map(role => {
+    const id = `agent:${role.profileId}`
+    const evidence = canSettle
+      ? recordSettlementEvidence({
+          id,
+          title: `AI OS agent role settlement: ${role.profileId}`,
+          summary: `Settled ${role.responsibility} role ${role.profileId} after guarded verification passed.`,
+          metadata: {
+            role: role.profileId,
+            responsibility: role.responsibility,
+            required: role.required,
+            budgetTokens: role.budgetTokens,
+          },
+        })
+      : role.evidence.length > 0 ? role.evidence : [`agent-profile:${role.profileId}`]
+    const summary = canSettle
+      ? `Role ${role.profileId} settled by guarded verification evidence.`
+      : blocked
+        ? `Role ${role.profileId} blocked until failed guarded verification is resolved.`
+        : `Role ${role.profileId} is contracted but not executed in dry-run mode.`
+    updateStep(id, evidence, summary)
+    return {
+      profileId: role.profileId,
+      responsibility: role.responsibility,
+      required: role.required,
+      status,
+      budgetTokens: role.budgetTokens,
+      summary,
+      evidence,
+    }
+  })
+
+  const handoffs: AiOsAgentHandoffExecutionSettlement[] = options.plan.agentCollaboration.handoffs.map(handoff => {
+    const id = `agent-handoff:${handoff.from}->${handoff.to}`
+    const evidence = canSettle
+      ? recordSettlementEvidence({
+          id,
+          title: `AI OS agent handoff settlement: ${handoff.from} -> ${handoff.to}`,
+          summary: `Settled handoff ${handoff.from} -> ${handoff.to} for ${handoff.artifact}.`,
+          metadata: {
+            from: handoff.from,
+            to: handoff.to,
+            artifact: handoff.artifact,
+            exitCriteria: handoff.exitCriteria,
+          },
+        })
+      : handoff.evidence
+    const summary = canSettle
+      ? `Handoff ${handoff.from} -> ${handoff.to} settled for ${handoff.artifact}.`
+      : blocked
+        ? `Handoff ${handoff.from} -> ${handoff.to} blocked until guarded verification passes.`
+        : `Handoff ${handoff.from} -> ${handoff.to} is planned; execute after role outputs exist.`
+    updateStep(id, evidence, summary)
+    return {
+      id,
+      from: handoff.from,
+      to: handoff.to,
+      required: true,
+      status,
+      artifact: handoff.artifact,
+      summary,
+      evidence,
+    }
+  })
+
+  const reviewGates: AiOsAgentReviewExecutionSettlement[] = options.plan.agentCollaboration.reviewGates.map(gate => {
+    const id = `agent-review:${gate.id}`
+    const evidence = canSettle
+      ? recordSettlementEvidence({
+          id,
+          title: `AI OS agent review settlement: ${gate.id}`,
+          summary: `Settled agent review gate ${gate.id} owned by ${gate.owner}.`,
+          metadata: {
+            gate: gate.id,
+            owner: gate.owner,
+            required: gate.required,
+          },
+        })
+      : gate.evidence.length > 0 ? gate.evidence : [`agent-review:${gate.id}`]
+    const summary = canSettle
+      ? `Review gate ${gate.id} settled by guarded verification evidence.`
+      : blocked
+        ? `Review gate ${gate.id} blocked until guarded verification passes.`
+        : `Review gate ${gate.id} is planned; attach reviewer evidence before ship.`
+    updateStep(id, evidence, summary)
+    return {
+      id,
+      owner: gate.owner,
+      required: gate.required,
+      status,
+      summary,
+      evidence,
+    }
+  })
+
+  const required = [
+    ...roles.filter(role => role.required).map(role => `agent:${role.profileId}`),
+    ...handoffs.filter(handoff => handoff.required).map(handoff => handoff.id),
+    ...reviewGates.filter(gate => gate.required).map(gate => gate.id),
+  ]
+  const pending = canSettle ? [] : required
+  const recommendations = canSettle
+    ? ['Use agent execution settlement evidence as the delegation contract for final review and release notes.']
+    : blocked
+      ? ['Resolve failed guarded verification before settling agent role, handoff, or review evidence.']
+      : ['Run `scale ai-os run --mode guarded --verify "<command>"` after reviewing the dry-run plan to settle agent execution evidence.']
+
+  return {
+    strategy: 'agent-execution-settlement-v1',
+    generatedAt: options.generatedAt,
+    mode: options.mode,
+    status,
+    roles,
+    handoffs,
+    reviewGates,
+    evidence: {
+      required,
+      produced: producedEvidence,
+      pending,
+    },
+    summary: {
+      totalRoles: roles.length,
+      settledRoles: roles.filter(role => role.status === 'settled').length,
+      blockedRoles: roles.filter(role => role.status === 'blocked').length,
+      totalHandoffs: handoffs.length,
+      settledHandoffs: handoffs.filter(handoff => handoff.status === 'settled').length,
+      reviewGates: reviewGates.length,
+      settledReviewGates: reviewGates.filter(gate => gate.status === 'settled').length,
+      producedEvidence: producedEvidence.length,
+    },
+    recommendations,
+  }
+}
+
 function summarizeRunEvidence(steps: AiOsRunStep[]): AiOsRunReport['evidence'] {
   const required = new Set<string>()
   const produced = new Set<string>()
@@ -1781,6 +2240,7 @@ function evidenceCategory(step: AiOsRunStep): string[] {
   if (step.id === 'runtime-plan') return ['ai-os-plan']
   if (step.id === 'context-compiler') return ['context-compiler']
   if (step.id === 'memory-provider-recall') return ['memory-provider-recall']
+  if (step.id === 'agent-collaboration-plan' || step.kind === 'agent') return ['agent-collaboration']
   if (step.id === 'skill-evidence' || step.kind === 'skill') return ['skill-routing-engine']
   if (step.id === 'runtime-evidence' || step.kind === 'evidence') return ['runtime-evidence']
   if (step.kind === 'gate') return [`gate:${step.id}`]
@@ -1809,6 +2269,7 @@ function buildRunNextActions(steps: AiOsRunStep[], mode: AiOsRunMode): string[] 
   for (const step of steps) {
     if (step.status !== 'planned' || !step.required) continue
     if (step.kind === 'skill') actions.push(`Execute required skill step "${step.title}" and attach evidence: ${step.evidence.join(', ')}.`)
+    else if (step.kind === 'agent') actions.push(`Execute agent collaboration step "${step.title}" and attach evidence: ${step.evidence.join(', ')}.`)
     else if (step.kind === 'evidence') actions.push(`Record runtime evidence for "${step.id}" before claiming completion.`)
     else if (step.kind === 'gate') actions.push(`Satisfy gate "${step.id}" before ship.`)
   }
@@ -2212,6 +2673,10 @@ function summarizeBenchmark(results: AiOsBenchmarkScenarioResult[]): AiOsBenchma
     totalEvaluatorGates: results.reduce((sum, result) => sum + result.metrics.evaluatorGates, 0),
     totalToolStrategySteps: results.reduce((sum, result) => sum + result.metrics.toolStrategySteps, 0),
     totalToolStrategyCostUnits: results.reduce((sum, result) => sum + result.metrics.toolStrategyCostUnits, 0),
+    totalAgentRoles: results.reduce((sum, result) => sum + result.metrics.agentRoles, 0),
+    totalAgentReviewerRoles: results.reduce((sum, result) => sum + result.metrics.agentReviewerRoles, 0),
+    totalAgentReviewGates: results.reduce((sum, result) => sum + result.metrics.agentReviewGates, 0),
+    multiAgentScenarios: results.filter(result => result.metrics.agentRoles > 2).length,
     totalEvolutionProposals: results.reduce((sum, result) => sum + result.metrics.evolutionProposals, 0),
     governanceModes: [...new Set(results.map(result => result.governanceMode))],
     workflowProfiles: [...new Set(results.map(result => result.workflowProfile))],
@@ -2224,6 +2689,8 @@ function benchmarkRecommendations(summary: AiOsBenchmarkReport['summary']): stri
   if (summary.totalSkillSteps === 0) recommendations.push('Skill routing did not produce steps; inspect skill policy detection.')
   if (summary.totalEvaluatorGates === 0) recommendations.push('Evaluator intelligence did not require any critique gate; add reasoning-heavy benchmark scenarios before claiming evaluator coverage.')
   if (summary.totalToolStrategySteps === 0) recommendations.push('Tool strategy did not build a cost/retry/fallback graph; inspect skill execution plan coverage.')
+  if (summary.totalAgentRoles === 0) recommendations.push('Agent collaboration planner did not assign any roles; inspect agent profile mapping and task intent detection.')
+  if (summary.totalAgentReviewGates === 0) recommendations.push('Agent collaboration planner did not create review gates; add review-heavy benchmark scenarios before claiming multi-agent governance.')
   if (summary.averageTokenUtilization > 0.9) recommendations.push('Context utilization is high; lower budgets or improve relevance filtering before scaling.')
   if (!summary.governanceModes.includes('critical') && !summary.governanceModes.includes('expanded')) {
     recommendations.push('Add at least one high-risk benchmark scenario before claiming adaptive governance coverage.')
@@ -2543,6 +3010,7 @@ function recommendations(options: {
   skillPlan: SkillPlan
   evaluator: AiOsEvaluatorIntelligence
   toolStrategy: AiOsToolStrategyPlan
+  agentCollaboration: AgentCollaborationPlan
 }): string[] {
   const output: string[] = []
   if (options.context.compiler?.estimatedTokenSavings) {
@@ -2562,6 +3030,9 @@ function recommendations(options: {
   }
   if (options.toolStrategy.summary.totalSteps > 0) {
     output.push(`Tool strategy planner created ${options.toolStrategy.summary.totalSteps} cost/retry/fallback node(s); execute required nodes with evidence.`)
+  }
+  if (options.agentCollaboration.summary.totalRoles > 0) {
+    output.push(`Agent collaboration planner selected ${options.agentCollaboration.summary.totalRoles} role(s), ${options.agentCollaboration.summary.reviewGateCount} review gate(s), and ${options.agentCollaboration.summary.handoffCount} handoff(s); use them as the delegation contract.`)
   }
   return output
 }

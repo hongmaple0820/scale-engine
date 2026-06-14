@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.50.2-orange?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.50.3-orange?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
   <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
-  <img src="https://img.shields.io/badge/npm-0.50.2-cb3837?style=flat-square&logo=npm" alt="npm" />
+  <img src="https://img.shields.io/badge/npm-0.50.3-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
 
 [![RepoStars](https://repostars.dev/api/embed?repo=hongmaple0820%2Fscale-engine&theme=copper)](https://repostars.dev/?repos=hongmaple0820%2Fscale-engine&theme=copper)
@@ -144,6 +144,8 @@ scale cortex inject --minimal
 ```
 
 ## AI OS Runtime
+
+Agent role planning is available through `scale agent plan --task "<task>" --json` and the dashboard Prompt Studio; the generated `agentCollaboration` plan includes selected agent profiles, DAG edges, handoff contracts, review gates, and per-role token budget. The same plan is embedded in `scale ai-os plan/run`; guarded runs with verification commands now add `agentExecution` settlement evidence, and `scale ai-os status --json` reports both through the `agent-collaboration` intelligence signal.
 
 AI OS Runtime 是 SCALE 的核心运行时规划层。`scale ai-os plan` 在一次命令里生成风险治理模式、Context Compiler 预算、Memory Provider 召回、Skill Routing 执行计划和 Governance ROI，让 Agent 在开始任务前就知道应该加载什么上下文、调用什么能力、补什么证据。
 

@@ -16,6 +16,7 @@ The project is no longer best described as a prompt toolbox. Its durable value i
 - context budgets
 - memory provider routing
 - skill, MCP, CLI, and adapter orchestration
+- machine-readable agent collaboration plans for role selection, handoffs, review gates, and token budgets
 - Agent Loop readiness evidence for observe-decide-act-recover-stop workflows
 
 The core thesis is:
@@ -167,6 +168,7 @@ SCALE can already claim:
 - structured workflow execution with phase and artifact state
 - hard verification gates for delivery claims
 - evidence-based runtime reporting
+- machine-readable `agentCollaboration` plans in `scale ai-os plan/run`, direct `scale agent plan` output, and dashboard Prompt Studio, plus guarded `agentExecution` settlement evidence in run reports
 - Agent Loop readiness reporting from local execution, recovery, guardrail, budget, delegation, and termination evidence
 - dashboard Prompt Studio for built-in and custom prompt assets plus deterministic optimization
 - first-class supply-chain audit direction
@@ -207,14 +209,14 @@ Current advantages:
 Current disadvantages:
 
 - fewer polished public examples and demo projects than mature workflow ecosystems
-- Prompt Studio is now visible, but not yet connected to guided task creation or one-click plan/run flows
+- Prompt Studio is visible and now has a safe one-click handoff from selected prompt context to `agentCollaboration` plan generation, while guarded execution intentionally remains in CLI/runtime evidence flow
 - the Vue dashboard now explains partial/missing sources, but the normal HTTP serve path is still read-mostly until EventBus, artifact store, and FSM wiring are completed
 - comparative quality claims still need repeatable eval datasets and release-to-release trend reports
 - external skill ecosystems may have broader community templates, even when they lack hard gates
 
 Highest-leverage improvements:
 
-- add guided "prompt -> plan -> verify" handoff from Prompt Studio into `scale ai-os plan` or the normal workflow commands
+- add guided "prompt -> plan -> verify" handoff from Prompt Studio into safe plan generation and the normal guarded workflow commands
 - publish a small benchmark corpus for hallucination, recovery, memory recall, long-task handling, and gate effectiveness
 - add dashboard baseline trends for prompt optimizer use, token usage, verification pass rate, and memory recall usefulness
 - keep interop adapters for gstack/OMC/ECC, but avoid letting adapter breadth outrank native governance quality
@@ -512,6 +514,12 @@ Current first slice:
 - `scale ai-os status` now includes an `evaluator-intelligence` signal plus evaluator gate count and average uncertainty for release and milestone review.
 - `scale ai-os plan` now emits `toolStrategy` with strategy `tool-strategy-v1`, converting skill, artifact, and verification steps into a cost, retry, fallback, side-effect, and evidence graph.
 - `scale ai-os status` now includes a `tool-strategy` signal plus tool step count, estimated cost units, high-risk step count, and fallback coverage.
+- `scale ai-os plan` now emits `agentCollaboration` with strategy `agent-collaboration-v1`, selected agent profile roles, DAG edges, handoff contracts, review gates, and per-role token budget.
+- Dashboard Prompt Studio can generate the same `agentCollaboration` plan through `/api/agent/plan` without executing shell commands, then copy or download the plan JSON.
+- `scale ai-os run` carries agent collaboration into the executable step list, so required agent roles, handoffs, and review gates become pending evidence instead of hidden prompt instructions.
+- `scale ai-os run --mode guarded --verify "<command>" --json` now writes `agentExecution` with role, handoff, review-gate, and runtime evidence settlement when verification passes.
+- `scale ai-os status --json` now includes an `agent-collaboration` intelligence signal plus `agentCollaborationQuality` summary for total roles, settled roles, reviewer roles, review gates, settled runs, handoffs, multi-agent runs, and budget reserve.
+- `scale agent plan --task "<task>" --json` exposes the same planner directly for users who want role prediction and multi-agent orchestration before running the full AI OS loop.
 
 Exit criteria:
 

@@ -14,6 +14,8 @@ import { createSkillPlan, loadSkillRoutingPolicy } from '../skills/routing/index
 import { listLeadershipPresets, renderLeadershipPresetsMarkdown } from '../agents/LeadershipPresets.js'
 import { AgentPool } from '../agents/AgentPool.js'
 import { PROFESSIONAL_AGENTS, getProfile, listProfiles } from '../agents/profiles.js'
+import { createAiOsPlan } from '../runtime/AiOsRuntime.js'
+import type { GovernanceMode } from '../governance/ProgressiveGovernance.js'
 import { createThirdPartyUpdateReport } from '../workflow/UpgradeManager.js'
 import { removeWorkflowOpenTask, toolEvidenceRunCompletesOpenTask } from '../workflow/WorkflowOpenTasks.js'
 import { WorkflowArtifactWriter } from '../workflow/WorkflowArtifactWriter.js'
@@ -45,6 +47,20 @@ function parseToolIds(value: unknown): string[] | undefined {
 
 function parseCommaList(value: unknown): string[] {
   return parseToolIds(value) ?? []
+}
+
+function parsePositiveInt(value: unknown, name: string): number | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') return undefined
+  const parsed = Number.parseInt(String(value), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`Invalid ${name}: expected a positive integer.`)
+  return parsed
+}
+
+function normalizeAgentGovernanceMode(value: unknown): GovernanceMode | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') return undefined
+  const normalized = String(value).trim()
+  if (normalized === 'minimal' || normalized === 'standard' || normalized === 'expanded' || normalized === 'critical') return normalized
+  throw new Error(`Invalid --requested-mode "${String(value)}"; expected minimal, standard, expanded, or critical.`)
 }
 
 function uniqueStrings(items: string[]): string[] {
@@ -383,9 +399,67 @@ const agentLeaders = defineCommand({
   },
 })
 
+const agentPlan = defineCommand({
+  meta: { name: 'plan', description: 'Predict agent roles, DAG handoffs, review gates, and token budget for a task' },
+  args: {
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    'task-id': { type: 'string', description: 'Task id' },
+    task: { type: 'string', required: true, description: 'Task or requirement description' },
+    level: { type: 'string', default: 'M', description: 'Task level: S, M, L, or CRITICAL' },
+    files: { type: 'string', description: 'Comma-separated changed or target files' },
+    services: { type: 'string', description: 'Comma-separated affected services' },
+    budget: { type: 'string', description: 'Token budget used to allocate per-agent context' },
+    'requested-mode': { type: 'string', description: 'Requested governance mode: minimal, standard, expanded, or critical' },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const scaleDir = resolveScaleDirForProject(projectDir)
+    const plan = await createAiOsPlan({
+      projectDir,
+      scaleDir,
+      taskId: args['task-id'] ? String(args['task-id']) : undefined,
+      task: String(args.task),
+      level: normalizeTaskArtifactLevel(args.level),
+      files: parseCommaList(args.files),
+      services: parseCommaList(args.services),
+      budget: parsePositiveInt(args.budget, '--budget'),
+      requestedMode: normalizeAgentGovernanceMode(args['requested-mode']),
+    })
+    const report = {
+      version: plan.version,
+      generatedAt: plan.generatedAt,
+      task: plan.task,
+      governance: {
+        effectiveMode: plan.governance.effectiveMode,
+        workflowProfile: plan.adaptiveWorkflow.profile,
+        evaluatorRisk: plan.evaluator.riskLevel,
+      },
+      toolStrategy: plan.toolStrategy.summary,
+      agentCollaboration: plan.agentCollaboration,
+      recommendations: plan.agentCollaboration.recommendations,
+    }
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2))
+      return
+    }
+    console.log('SCALE Agent Collaboration Plan')
+    console.log(`  Task: ${report.task.taskId ?? 'n/a'} ${report.task.task}`)
+    console.log(`  Governance: ${report.governance.effectiveMode}; workflow ${report.governance.workflowProfile}; evaluator ${report.governance.evaluatorRisk}`)
+    console.log(`  Mode: ${report.agentCollaboration.mode}`)
+    console.log(`  Roles: ${report.agentCollaboration.summary.totalRoles}; required ${report.agentCollaboration.summary.requiredRoles}; reviewers ${report.agentCollaboration.summary.reviewerRoles}`)
+    console.log(`  Review gates: ${report.agentCollaboration.summary.reviewGateCount}; handoffs ${report.agentCollaboration.summary.handoffCount}`)
+    console.log(`  Budget: ${report.agentCollaboration.budget.assignedTokens}/${report.agentCollaboration.budget.totalTokens} assigned; reserve ${report.agentCollaboration.budget.reserveTokens}`)
+    for (const role of report.agentCollaboration.roles) {
+      console.log(`  - ${role.profileId}: ${role.responsibility}, ${role.required ? 'required' : 'advisory'}, ${role.budgetTokens} tokens`)
+    }
+    for (const recommendation of report.recommendations) console.log(`  recommendation: ${recommendation}`)
+  },
+})
+
 export const agentCommand = defineCommand({
   meta: { name: 'agent', description: 'Multi-Agent system management' },
-  subCommands: { spawn: agentSpawn, list: agentList, profiles: agentProfiles, leaders: agentLeaders },
+  subCommands: { plan: agentPlan, spawn: agentSpawn, list: agentList, profiles: agentProfiles, leaders: agentLeaders },
 })
 
 // ============================================================================

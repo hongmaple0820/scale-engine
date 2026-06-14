@@ -212,12 +212,29 @@ select {
   line-height: 1.6;
 }
 
+.code-box.compact {
+  max-height: 220px;
+}
+
+.editor-box textarea {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .doc-preview {
   height: 560px;
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   background: #fff;
+}
+
+.import-panel {
+  display: grid;
+  grid-template-columns: 260px minmax(280px, 1fr) auto;
+  gap: 10px;
+  align-items: start;
 }
 
 .doc-shell {
@@ -530,32 +547,94 @@ select {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.knowledge-graph-svg {
+.graph-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.graph-workbench.graph-focus {
+  position: fixed;
+  inset: 12px;
+  z-index: 1000;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid rgba(32, 128, 240, 0.38);
+  border-radius: 8px;
+  background: #0d1117;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.graph-toolbar {
+  align-items: center;
+}
+
+.graph-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.graph-canvas-card,
+.graph-inspector {
+  min-height: calc(100vh - 270px);
+}
+
+.graph-canvas-card .n-card__content {
+  height: 100%;
+  min-height: calc(100vh - 300px);
+  padding: 0 !important;
+}
+
+.graph-workbench.graph-focus .graph-canvas-card,
+.graph-workbench.graph-focus .graph-inspector {
+  min-height: calc(100vh - 100px);
+}
+
+.graph-workbench.graph-focus .graph-canvas-card .n-card__content {
+  min-height: calc(100vh - 132px);
+}
+
+.knowledge-graph-chart {
   width: 100%;
-  min-height: 360px;
-  display: block;
+  height: min(78vh, 820px);
+  min-height: 620px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   background:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 32px 32px;
+  background-size: 32px 32px;
 }
 
-.knowledge-graph-svg line {
-  stroke: rgba(148, 163, 184, 0.32);
-  stroke-width: 1.2;
+.graph-workbench.graph-focus .knowledge-graph-chart {
+  height: calc(100vh - 132px);
+  min-height: 680px;
 }
 
-.knowledge-graph-svg circle {
-  stroke: rgba(255, 255, 255, 0.66);
-  stroke-width: 1;
+.graph-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.knowledge-graph-svg text {
-  fill: #c9d1d9;
-  font-size: 11px;
-  pointer-events: none;
+.graph-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.graph-preview-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.graph-inspector .code-box {
+  max-height: min(42vh, 420px);
 }
 
 .prompt-layout {
@@ -591,6 +670,64 @@ select {
   font-size: 12px;
 }
 
+.prompt-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.prompt-meta-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+}
+
+.prompt-meta-card strong,
+.prompt-meta-card span,
+.prompt-meta-card small,
+.prompt-meta-card li {
+  overflow-wrap: anywhere;
+}
+
+.prompt-meta-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.prompt-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-plan-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(24, 160, 88, 0.25);
+  border-radius: 6px;
+  background: rgba(24, 160, 88, 0.08);
+}
+
+.agent-plan-head span,
+.agent-plan-head strong {
+  overflow-wrap: anywhere;
+}
+
 .muted {
   color: #8b949e;
 }
@@ -613,9 +750,34 @@ select {
     position: static;
     max-height: 360px;
   }
+
+  .import-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-canvas-card,
+  .graph-inspector,
+  .graph-canvas-card .n-card__content {
+    min-height: auto;
+  }
+
+  .knowledge-graph-chart {
+    height: 62vh;
+    min-height: 460px;
+  }
 }
 
 @media (max-width: 720px) {
+  .graph-workbench.graph-focus {
+    inset: 0;
+    padding: 10px;
+    border-radius: 0;
+  }
+
   .layout {
     display: flex !important;
     flex-direction: column !important;

@@ -10,11 +10,15 @@ describe('VibeTemplateGallery', () => {
   it('provides visual copyable prompt templates aligned with SCALE workflow', () => {
     const templates = listVisualVibeTemplates()
 
-    expect(templates.length).toBeGreaterThanOrEqual(5)
+    expect(templates.length).toBeGreaterThanOrEqual(9)
     expect(templates.map(template => template.id)).toEqual(expect.arrayContaining([
       'product-ceo-discovery',
       'ui-ux-design-direction',
       'technical-architecture-plan',
+      'agentic-company-operating-system',
+      'multi-agent-governed-delivery',
+      'mutual-review-red-team-loop',
+      'budget-aware-long-task-autopilot',
       'implementation-slice',
       'verification-release',
     ]))
@@ -26,12 +30,41 @@ describe('VibeTemplateGallery', () => {
     }
   })
 
+  it('includes research-backed agentic workflow templates with budget and supervision controls', () => {
+    const company = getVisualVibeTemplate('agentic-company-operating-system')
+    const delivery = getVisualVibeTemplate('multi-agent-governed-delivery')
+    const review = getVisualVibeTemplate('mutual-review-red-team-loop')
+    const longTask = getVisualVibeTemplate('budget-aware-long-task-autopilot')
+
+    expect(company?.copyPrompt).toContain('agent presets')
+    expect(company?.copyPrompt).toContain('gbrain')
+    expect(company?.copyPrompt).toContain('知识库')
+    expect(company?.methodologyReferences).toEqual(expect.arrayContaining([
+      expect.stringContaining('MetaGPT'),
+      expect.stringContaining('AutoGen'),
+      expect.stringContaining('ReAct'),
+    ]))
+    expect(delivery?.copyPrompt).toContain('DAG')
+    expect(delivery?.copyPrompt).toContain('runtime evidence')
+    expect(review?.methodologyReferences).toEqual(expect.arrayContaining([
+      expect.stringContaining('Self-Refine'),
+      expect.stringContaining('Reflexion'),
+    ]))
+    expect(longTask?.copyPrompt).toContain('token budget')
+    expect(longTask?.copyPrompt).toContain('checkpoint')
+    expect(longTask?.methodologyReferences).toEqual(expect.arrayContaining([
+      expect.stringContaining('FrugalGPT'),
+    ]))
+  })
+
   it('renders a markdown index that users can view and copy from', () => {
     const markdown = renderVisualVibeTemplateIndex({ appName: 'Amdox Workbench' })
 
     expect(markdown).toContain('# SCALE Vibe Coding 可视化提示词模板')
     expect(markdown).toContain('复制使用')
     expect(markdown).toContain('product-ceo-discovery')
+    expect(markdown).toContain('agentic-company-operating-system')
+    expect(markdown).toContain('方法论依据')
     expect(markdown).toContain('Amdox Workbench')
     expect(markdown).toContain('scale vibe --template')
   })

@@ -1,3 +1,16 @@
+## 0.50.3 - 2026-06-14
+
+### Dashboard
+- Add resilient Vue dashboard bootstrap data so Prompt Studio, documents, knowledge, and status panels can show repo data even when one API source fails or the browser lacks standard fetch transport.
+- Add safe dashboard Agent Plan generation and read-only JSON preview for AI OS `agentCollaboration` plans without enabling arbitrary shell execution.
+- Keep Prompt Studio templates, multi-agent roles, handoffs, review gates, token reserve, copy, and download actions visible from the dashboard.
+
+### AI OS and Prompts
+- Add agent-collaboration planning surfaces across CLI, runtime, Prompt Studio, and status signals.
+- Expand vibe coding templates for governed multi-agent collaboration, mutual review, budget-aware long tasks, and agentic company workflows.
+
+---
+
 ## 0.50.2 - 2026-06-14
 
 ### Dashboard

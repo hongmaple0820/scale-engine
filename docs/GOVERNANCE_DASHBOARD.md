@@ -81,9 +81,29 @@ Important signals:
 | Event stream | server was started with an EventBus | normal `npm run serve` is heartbeat-only SSE plus polling |
 | Artifact transitions | server was started with artifact store and FSM | normal `npm run serve` is read-mostly and transition APIs report partial |
 
-This is intentional: the dashboard should tell users whether a capability is actually wired, not silently present empty UI as a healthy state. The Vue implementation is served from the root URL so users do not need to remember an internal `/spa/` path.
+This is intentional: the dashboard should tell users whether a capability is actually wired, not silently present empty UI as a healthy state. A `partial` or `missing` panel usually means one of two things: the repository has not produced that evidence yet, or the live server was started without an optional runtime dependency such as EventBus/FSM/store injection. The Vue implementation is served from the root URL so users do not need to remember an internal `/spa/` path.
 
 Knowledge is not treated as the same thing as memory. The dashboard keeps `GET /api/knowledge` as the gbrain/provider-memory endpoint, and exposes `GET /api/knowledge-base` for repository knowledge sources: previewable knowledge documents, SQLite knowledge entries, Graphify graph/report artifacts, and a derived gbrain memory graph for visualization/export.
+
+## Documents And Knowledge Maintenance
+
+The live dashboard supports governed maintenance for previewable documents and repository knowledge files:
+
+- document preview: `.md`, `.json`, and `.html` files can be opened from the grouped directory tree.
+- document editing: Markdown, JSON, and HTML documents discovered by the dashboard can be edited online through `PUT /api/documents/*`.
+- download/copy: document and knowledge preview panes support content copy and single-file download through `/api/documents/*?download=1`.
+- JSON guard: JSON edits are parsed before write; invalid JSON is rejected and the original file is left unchanged.
+- path guard: write operations are constrained to discovered dashboard documents and `.scale/knowledge/imports/`.
+- knowledge import: new knowledge documents can be imported into `.scale/knowledge/imports/` from the Knowledge page.
+- evidence: successful document edits and knowledge imports write append-only runtime evidence under `.scale/evidence/runtime/` with `taskId=dashboard-document-maintenance`.
+
+These operations are intentionally file-oriented. They do not mutate `.scale/knowledge.db` rows or external gbrain/provider memory directly; database and provider maintenance should still go through their own governed APIs.
+
+## Graph Views
+
+The Knowledge graph tab renders both Graphify repository knowledge and the derived gbrain memory graph when those sources exist. The graph workbench uses Apache ECharts graph series rather than a hand-rolled SVG layout. It provides one large graph canvas, force-directed layout, mouse wheel zoom, drag pan, draggable nodes, adjacency emphasis, graph JSON download, clickable nodes, and a separate node inspector. Large graphs default to a high-degree interactive subgraph with a visible node-count selector so the browser remains usable; the JSON download still exports the full graph. If a node points at a previewable document path, the inspector can jump back to that document for copy, download, or editing.
+
+Graph data still follows the live data contract above: no graph source means the panel reports `missing`, and sparse graph metadata means the node preview falls back to structural fields such as id, label, kind, group, source, and path.
 
 ## Prompt Studio
 
@@ -100,6 +120,10 @@ Prompt Studio is a usability surface, not a new prompt-only execution model. It 
 | Prompt optimizer | `src/prompts/PromptOptimizer.ts` |
 
 The page supports search, source filtering, copy, command copy, JSON export, and prompt download. Custom registry prompts that do not have a CLI route are marked copy-only in the dashboard rather than pretending they can be executed through `scale vibe`.
+
+The built-in Vibe template gallery includes Agentic workflow packs for company-style delivery: `agentic-company-flow`, `multi-agent-delivery`, and `long-task-autopilot`. These packs adapt SCALE workflow gates, agent profiles, role perspectives, runtime evidence, gbrain memory, repository knowledge, review ledgers, and token/cost budgets into copyable prompts. The design is informed by agent-loop and multi-agent research patterns such as ReAct-style observation/action feedback, Reflexion/Self-Refine revision loops, MetaGPT-style SOPs, AutoGen/CAMEL/AgentVerse-style role collaboration, and FrugalGPT-style cost control.
+
+Agentic prompts are now paired with a machine-readable runtime planner and settlement report. `scale agent plan --task "<task>" --json` and `scale ai-os plan --task "<task>" --json` both emit `agentCollaboration` with selected agent profiles, DAG edges, handoff contracts, review gates, and per-role token budget. The dashboard Prompt Studio can generate the same safe plan through `/api/agent/plan` without executing shell commands, then copy or download `agent-collaboration.json`. `scale ai-os run --mode guarded --verify "<command>" --json` adds `agentExecution` when verification passes, binding role, handoff, and review-gate settlement to runtime evidence ids. `scale ai-os status --json` exposes the same capability through the `agent-collaboration` intelligence signal and `agentCollaborationQuality` summary. Execution readiness is still decided by AI OS runtime reports, gates, review evidence, and verification status.
 
 The optimizer uses the same deterministic local logic as:
 

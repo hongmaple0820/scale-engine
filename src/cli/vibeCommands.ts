@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import {
   getVisualVibeTemplate,
+  listVisualVibePacks,
   renderCopyablePromptCard,
   renderVisualVibeTemplateIndex,
 } from '../prompts/VibeTemplateGallery.js'
@@ -14,34 +15,11 @@ const LEGACY_PHASE_TEMPLATE_MAP: Record<LegacyVibePhase, string> = {
   research: 'product-ceo-discovery',
   prd: 'product-ceo-discovery',
   design: 'technical-architecture-plan',
-  agents: 'technical-architecture-plan',
+  agents: 'agentic-company-operating-system',
   build: 'implementation-slice',
 }
 
-const PACKS: Record<string, string[]> = {
-  'full-mvp': [
-    'product-ceo-discovery',
-    'ui-ux-design-direction',
-    'technical-architecture-plan',
-    'implementation-slice',
-    'verification-release',
-  ],
-  'quick-prototype': [
-    'product-ceo-discovery',
-    'implementation-slice',
-    'verification-release',
-  ],
-  'developer-path': [
-    'technical-architecture-plan',
-    'implementation-slice',
-    'verification-release',
-  ],
-  'vibe-coder-path': [
-    'product-ceo-discovery',
-    'ui-ux-design-direction',
-    'implementation-slice',
-  ],
-}
+const PACKS = Object.fromEntries(listVisualVibePacks().map(pack => [pack.id, pack.templateIds]))
 
 export const vibeCommand = defineCommand({
   meta: {
@@ -62,7 +40,7 @@ export const vibeCommand = defineCommand({
     pack: {
       type: 'string',
       alias: 'k',
-      description: '组合包: full-mvp/quick-prototype/developer-path/vibe-coder-path',
+      description: '组合包: full-mvp/quick-prototype/developer-path/vibe-coder-path/agentic-company-flow/multi-agent-delivery/long-task-autopilot',
     },
     app: {
       type: 'string',
@@ -223,6 +201,8 @@ function renderInteractiveGuide(appName?: unknown): string {
     '| 要做 UI/UX | `scale vibe --template ui-ux-design-direction` | UX Director 定义体验、状态和浏览器验证 |',
     '| 要做技术方案 | `scale vibe --template technical-architecture-plan` | CTO 定义架构、模块边界和验证策略 |',
     '| 已经可以开发 | `scale vibe --template implementation-slice` | Engineering Lead 拆最小切片并推动验证 |',
+    '| 要公司化多 Agent 协同 | `scale vibe --pack agentic-company-flow` | 角色 SOP、编排、互审、验证和发布闭环 |',
+    '| 要长任务自动推进 | `scale vibe --pack long-task-autopilot` | 预算、checkpoint、恢复、互审和 evidence 闭环 |',
     '| 准备发版 | `scale vibe --template verification-release` | QA/Release Lead 收敛证据和风险 |',
     '',
     '建议用法：',

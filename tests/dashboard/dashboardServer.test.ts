@@ -153,6 +153,67 @@ describe('DashboardServer API', () => {
     expect(await karpathyDoc.text()).toContain('Karpathy LLM Guidelines')
   })
 
+  it('supports document download, online editing, knowledge import, and path guards', async () => {
+    const projectDir = makeTempDir('scale-dashboard-doc-maintenance-')
+    const scaleDir = join(projectDir, '.scale')
+    mkdirSync(join(projectDir, 'docs'), { recursive: true })
+    mkdirSync(join(scaleDir, 'knowledge'), { recursive: true })
+    writeFileSync(join(projectDir, 'docs', 'guide.md'), '# Guide\n\nBefore', 'utf-8')
+    writeFileSync(join(projectDir, 'docs', 'data.json'), JSON.stringify({ ok: true }), 'utf-8')
+
+    const server = new DashboardServer({ projectDir, scaleDir })
+    const app = server.getApp()
+
+    const download = await app.request('/api/documents/docs/guide.md?download=1')
+    expect(download.status).toBe(200)
+    expect(download.headers.get('content-disposition')).toContain('attachment')
+    expect(await download.text()).toContain('Before')
+
+    const edit = await app.request('/api/documents/docs/guide.md', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: '# Guide\n\nAfter' }),
+    })
+    expect(edit.status).toBe(200)
+    const editPayload = await json<{ success: boolean; document: { path: string; updatedAt: number } }>(edit)
+    expect(editPayload).toEqual(expect.objectContaining({
+      success: true,
+      document: expect.objectContaining({ path: 'docs/guide.md' }),
+    }))
+    expect(editPayload.document.updatedAt).toBeGreaterThan(0)
+    expect(readFileSync(join(projectDir, 'docs', 'guide.md'), 'utf-8')).toContain('After')
+
+    const invalidJson = await app.request('/api/documents/docs/data.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: '{broken' }),
+    })
+    expect(invalidJson.status).toBe(400)
+    expect(await invalidJson.text()).toContain('Invalid JSON')
+
+    const imported = await app.request('/api/knowledge-base/documents/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'team knowledge.md', content: '# Team Knowledge\n\nRules' }),
+    })
+    expect(imported.status).toBe(200)
+    const importPayload = await json<{ document: { path: string } }>(imported)
+    expect(importPayload.document.path).toMatch(/^\.scale\/knowledge\/imports\/team-knowledge\.md$/)
+    expect(readFileSync(join(scaleDir, 'knowledge', 'imports', 'team-knowledge.md'), 'utf-8')).toContain('Team Knowledge')
+
+    const knowledgeBase = await json<{ documents: Array<{ path: string }> }>(await app.request('/api/knowledge-base'))
+    expect(knowledgeBase.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: '.scale/knowledge/imports/team-knowledge.md' }),
+    ]))
+
+    const traversal = await app.request('/api/documents/docs%2F..%2Fsecret.md', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'nope' }),
+    })
+    expect(traversal.status).toBe(400)
+  })
+
   it('serves prompt studio templates and optimizes raw prompts', async () => {
     const projectDir = makeTempDir('scale-dashboard-prompts-')
     const scaleDir = join(projectDir, '.scale')
@@ -165,14 +226,14 @@ describe('DashboardServer API', () => {
     const promptReport = await json<{
       summary: { vibeTemplates: number; phasePrompts: number; packs: number; customPrompts: number }
       commands: { vibeTemplate: string; promptOptimize: string }
-      vibeTemplates: Array<{ id: string; command: string; copyPrompt: string }>
+      vibeTemplates: Array<{ id: string; command: string; copyPrompt: string; methodologyReferences?: string[] }>
       phasePrompts: Array<{ id: string; source: string; command?: string; template: string }>
-      packs: Array<{ id: string; command: string; templateIds: string[] }>
+      packs: Array<{ id: string; command: string; templateIds: string[]; source?: string }>
     }>(await app.request('/api/prompts'))
 
-    expect(promptReport.summary.vibeTemplates).toBeGreaterThanOrEqual(5)
+    expect(promptReport.summary.vibeTemplates).toBeGreaterThanOrEqual(9)
     expect(promptReport.summary.phasePrompts).toBeGreaterThanOrEqual(7)
-    expect(promptReport.summary.packs).toBeGreaterThanOrEqual(4)
+    expect(promptReport.summary.packs).toBeGreaterThanOrEqual(7)
     expect(promptReport.summary.customPrompts).toBeGreaterThanOrEqual(1)
     expect(promptReport.commands).toEqual(expect.objectContaining({
       vibeTemplate: 'scale vibe --template <template-id> --app "<project>"',
@@ -181,6 +242,14 @@ describe('DashboardServer API', () => {
     expect(promptReport.vibeTemplates).toContainEqual(expect.objectContaining({
       id: 'product-ceo-discovery',
       command: 'scale vibe --template product-ceo-discovery',
+    }))
+    expect(promptReport.vibeTemplates).toContainEqual(expect.objectContaining({
+      id: 'agentic-company-operating-system',
+      command: 'scale vibe --template agentic-company-operating-system',
+      methodologyReferences: expect.arrayContaining([
+        expect.stringContaining('MetaGPT'),
+        expect.stringContaining('AutoGen'),
+      ]),
     }))
     expect(promptReport.phasePrompts).toContainEqual(expect.objectContaining({
       id: 'idea-validate',
@@ -197,6 +266,26 @@ describe('DashboardServer API', () => {
       command: 'scale vibe --pack full-mvp',
       templateIds: expect.arrayContaining(['idea-validate', 'build-mvp']),
     }))
+    expect(promptReport.packs).toContainEqual(expect.objectContaining({
+      id: 'agentic-company-flow',
+      command: 'scale vibe --pack agentic-company-flow',
+      source: 'vibe',
+      templateIds: expect.arrayContaining([
+        'agentic-company-operating-system',
+        'multi-agent-governed-delivery',
+        'mutual-review-red-team-loop',
+      ]),
+    }))
+
+    const root = await app.request('/')
+    if (root.status === 200) {
+      const rootHtml = await root.text()
+      expect(rootHtml).toContain('window.__SCALE_DASHBOARD_BOOTSTRAP__=')
+      expect(rootHtml).toContain('/api/prompts')
+      expect(rootHtml).toContain('product-ceo-discovery')
+    } else {
+      expect(root.status).toBe(503)
+    }
 
     const optimized = await json<{
       result: {
@@ -220,6 +309,44 @@ describe('DashboardServer API', () => {
     expect(optimized.result.quality.score).toBeGreaterThan(0)
     expect(optimized.result.stats.optimizedChars).toBeGreaterThan(optimized.result.stats.originalChars)
 
+    const agentPlan = await json<{
+      task: { task: string; level: string; files: string[] }
+      governance: { effectiveMode: string; workflowProfile: string; evaluatorRisk: string }
+      agentCollaboration: {
+        strategy: string
+        roles: Array<{ profileId: string; required: boolean }>
+        reviewGates: Array<{ id: string; required: boolean }>
+        summary: { totalRoles: number; reviewGateCount: number }
+      }
+    }>(await app.request('/api/agent/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: 'Implement Vue dashboard agent plan workbench with security review',
+        level: 'L',
+        files: 'dashboard/web/src/App.vue,src/dashboard/DashboardServer.ts',
+        budget: 3600,
+      }),
+    }))
+    expect(agentPlan.task.level).toBe('L')
+    expect(agentPlan.task.files).toEqual(['dashboard/web/src/App.vue', 'src/dashboard/DashboardServer.ts'])
+    expect(agentPlan.governance.workflowProfile).toEqual(expect.any(String))
+    expect(agentPlan.agentCollaboration.strategy).toBe('agent-collaboration-v1')
+    expect(agentPlan.agentCollaboration.roles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ profileId: 'frontend-agent', required: true }),
+      expect.objectContaining({ profileId: 'security-agent', required: true }),
+    ]))
+    expect(agentPlan.agentCollaboration.summary.totalRoles).toBeGreaterThan(0)
+    expect(agentPlan.agentCollaboration.summary.reviewGateCount).toBeGreaterThan(0)
+
+    const agentPlanPreview = await json<{
+      task: { level: string; files: string[] }
+      agentCollaboration: { strategy: string }
+    }>(await app.request('/api/agent/plan?task=Preview%20agent%20handoff&level=L&files=dashboard%2Fweb%2Fsrc%2FApp.vue'))
+    expect(agentPlanPreview.task.level).toBe('L')
+    expect(agentPlanPreview.task.files).toEqual(['dashboard/web/src/App.vue'])
+    expect(agentPlanPreview.agentCollaboration.strategy).toBe('agent-collaboration-v1')
+
     const empty = await app.request('/api/prompts/optimize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -233,8 +360,21 @@ describe('DashboardServer API', () => {
     const scaleDir = join(projectDir, '.scale')
     mkdirSync(join(projectDir, 'docs'), { recursive: true })
     mkdirSync(join(scaleDir, 'evidence', 'runtime'), { recursive: true })
+    mkdirSync(join(scaleDir, 'ai-os', 'runs'), { recursive: true })
     writeFileSync(join(projectDir, 'docs', 'prototype.html'), '<main>Prototype</main>', 'utf-8')
     writeFileSync(join(scaleDir, 'evidence', 'runtime', 'run.json'), JSON.stringify({ status: 'passed' }), 'utf-8')
+    writeFileSync(join(scaleDir, 'ai-os', 'runs', 'agent-plan.json'), JSON.stringify({
+      plan: {
+        agentCollaboration: {
+          strategy: 'agent-collaboration-v1',
+          roles: [{ profileId: 'frontend-agent' }],
+        },
+      },
+      agentExecution: {
+        strategy: 'agent-execution-settlement-v1',
+        status: 'settled',
+      },
+    }), 'utf-8')
     new ModelUsageLedger(scaleDir).record({
       provider: 'openai',
       model: 'gpt-4.1-mini',
@@ -247,7 +387,7 @@ describe('DashboardServer API', () => {
     const report = await json<{
       summary: { total: number; ready: number; partial: number; missing: number }
       realtime: { mode: string; heartbeatOnly: boolean }
-      writeOps: { artifactTransitions: boolean; promptOptimization: boolean }
+      writeOps: { artifactTransitions: boolean; promptOptimization: boolean; documentEditing: boolean; knowledgeImport: boolean }
       dataSources: Array<{ id: string; status: string; count: number; emptyReason?: string }>
     }>(await server.getApp().request('/api/dashboard/capabilities'))
 
@@ -262,10 +402,13 @@ describe('DashboardServer API', () => {
     expect(report.writeOps).toEqual(expect.objectContaining({
       artifactTransitions: false,
       promptOptimization: true,
+      documentEditing: true,
+      knowledgeImport: true,
     }))
     expect(source('runtime-evidence')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
     expect(source('model-usage')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
     expect(source('documents')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
+    expect(source('agent-collaboration')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
     expect(source('knowledge-base')).toEqual(expect.objectContaining({
       status: 'missing',
       emptyReason: expect.stringContaining('knowledge docs'),
