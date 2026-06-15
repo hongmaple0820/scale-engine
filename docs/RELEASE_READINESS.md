@@ -16,8 +16,9 @@ npm run release:check
 
 ## GitHub/Gitee 发行版同步
 
-Git tag 触发 `.github/workflows/publish.yml` 后，工作流会先创建 GitHub Release。
-如果仓库配置了 GitHub Actions secret `GITEE_TOKEN`，同一流程会继续把 GitHub 上的 release 标题、正文、tag、prerelease 状态同步到 Gitee：
+Git tag 触发 `.github/workflows/publish.yml` 后，工作流会先校验官方仓库的 GitHub Actions secret `GITEE_TOKEN`。官方发版必须具备 Gitee API token；缺失时 workflow 会在 npm publish 前失败，避免出现 GitHub/npm 已发布但 Gitee 没有发行版的假绿。
+
+配置 secret 后，同一流程会把 GitHub 上的 release 标题、正文、tag、prerelease 状态同步到 Gitee：
 
 ```bash
 npm run release:sync-gitee -- --gitee-owner hongmaple --gitee-repo scale-engine
@@ -29,9 +30,16 @@ npm run release:sync-gitee -- --gitee-owner hongmaple --gitee-repo scale-engine
 npm run release:sync-gitee -- --dry-run --json
 ```
 
+本地补齐历史 release 时必须显式提供 token：
+
+```bash
+GITEE_TOKEN=<gitee-api-token> npm run release:sync-gitee -- --gitee-owner hongmaple --gitee-repo scale-engine
+```
+
 注意：
 
 - `GITEE_TOKEN` 必须是 Gitee API 可用的私人令牌；普通 Git HTTPS 密码不一定能调用 `https://gitee.com/api/v5`。
+- `gh secret list --repo hongmaple0820/scale-engine` 必须能看到 `GITEE_TOKEN` 后，才允许打正式发布 tag。
 - 当前脚本同步 release 元数据。GitHub release asset 会以下载链接写入 Gitee release notes，不做二进制附件镜像上传。
 - 如果 Gitee release 已存在同名 tag，脚本会跳过，不覆盖用户手工编辑过的 Gitee release。
 
@@ -75,6 +83,7 @@ npx vitest run tests/api/officialDemoWorkflow.test.ts
 出现以下任一情况，不得发版：
 
 - 全量测试失败。
+- 官方仓库缺少 GitHub Actions secret `GITEE_TOKEN`，导致 Gitee 发行版无法自动同步。
 - 官方 demo smoke 失败。
 - npm pack dry-run 失败，或包内缺失关键 dist 文件。
 - README、quickstart、demo walkthrough 与实际命令不一致。
