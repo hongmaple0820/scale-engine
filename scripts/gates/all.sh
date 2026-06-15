@@ -149,10 +149,14 @@ echo "========================================"
 if [ -n "$GATE_TIMES" ]; then
   echo "[GATE] per-gate timing:"
   echo -e "$GATE_TIMES" | while IFS=: read -r g d; do
-    [ -n "$g" ] && echo "  $g: $d"
+    if [ -n "$g" ]; then
+      echo "  $g: $d"
+    fi
   done
 fi
 
 if [ "$FAILED" -gt 0 ]; then
   exit 1
 fi
+
+exit 0

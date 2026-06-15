@@ -8,7 +8,7 @@ const DEFAULT_ARGS = [
   '--reporter',
   'dot',
   '--pool=forks',
-  '--maxWorkers=4',
+  '--maxWorkers=2',
   '--minWorkers=1',
 ]
 

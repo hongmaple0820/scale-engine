@@ -21,7 +21,17 @@ if [ -f "$STATE_FILE" ] && [ -f "$PY_STATE" ]; then
 fi
 
 if [ -z "$PLAN_FILE" ] && [ -d "$PROJECT_ROOT/.planning/tasks" ]; then
-  PLAN_FILE="$(find "$PROJECT_ROOT/.planning/tasks" -path "*/plan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2- || true)"
+  PLAN_FILE="$(
+    python3 - "$PROJECT_ROOT/.planning/tasks" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+plans = [path for path in root.rglob("plan.md") if path.is_file()]
+if plans:
+    print(max(plans, key=lambda path: path.stat().st_mtime))
+PY
+  )"
 fi
 
 if [ -z "$PLAN_FILE" ] || [ ! -f "$PLAN_FILE" ]; then

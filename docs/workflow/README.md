@@ -49,7 +49,7 @@ scale cortex metrics --days 30 # 治理 ROI 报告
 PowerShell:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default
 ```
 
 See [GATES_AND_SCORE.md](GATES_AND_SCORE.md) for gate catalog visibility, architecture standards gate scope, and deterministic task scoring.

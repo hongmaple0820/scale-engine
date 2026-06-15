@@ -18,11 +18,11 @@ bash scripts/workflow/verify.sh --preflight-profile quick
 PowerShell:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/all.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gates/all.ps1 --dry-run
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/new-task.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/resume.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 --preflight-profile quick
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/all.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/gates/all.ps1 --dry-run
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/new-task.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/resume.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 --preflight-profile quick
 ```
 
 ## Default Verification Matrix

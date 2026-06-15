@@ -41,8 +41,6 @@ echo ""
 # CSV header
 echo "run,gate,duration_ms,status" > "$OUTPUT"
 
-declare -A GATE_TOTALS
-declare -A GATE_COUNTS
 TOTAL_SUM=0
 
 for run in $(seq 1 "$RUNS"); do
@@ -64,8 +62,6 @@ for run in $(seq 1 "$RUNS"); do
     elif [[ "$line" =~ ^[[:space:]]+duration:\ ([0-9]+)ms$ ]] && [ -n "${CURRENT_GATE:-}" ]; then
       DURATION="${BASH_REMATCH[1]}"
       echo "$run,$CURRENT_GATE,$DURATION,pass" >> "$OUTPUT"
-      GATE_TOTALS["$CURRENT_GATE"]=$(( ${GATE_TOTALS["$CURRENT_GATE"]:-0} + DURATION ))
-      GATE_COUNTS["$CURRENT_GATE"]=$(( ${GATE_COUNTS["$CURRENT_GATE"]:-0} + 1 ))
       CURRENT_GATE=""
     elif [[ "$line" =~ ^[[:space:]]+skipped ]]; then
       if [ -n "${CURRENT_GATE:-}" ]; then
@@ -86,13 +82,18 @@ echo " Summary ($RUNS runs, mode: $MODE)"
 echo "============================================"
 echo ""
 echo " Per-gate averages:"
-for gate in $(echo "${!GATE_TOTALS[@]}" | tr ' ' '\n' | sort); do
-  total="${GATE_TOTALS[$gate]}"
-  count="${GATE_COUNTS[$gate]}"
-  if [ "$count" -gt 0 ]; then
-    avg=$((total / count))
-    echo "  $gate: ${avg}ms avg (${count} samples)"
-  fi
+awk -F, '
+  NR > 1 && $4 == "pass" {
+    total[$2] += $3
+    count[$2] += 1
+  }
+  END {
+    for (gate in total) {
+      printf "%s,%d,%d\n", gate, total[gate] / count[gate], count[gate]
+    }
+  }
+' "$OUTPUT" | sort | while IFS=, read -r gate avg count; do
+  [ -n "$gate" ] && echo "  $gate: ${avg}ms avg (${count} samples)"
 done
 
 if [ "$RUNS" -gt 0 ]; then

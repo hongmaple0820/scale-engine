@@ -440,6 +440,8 @@ echo "========================================"
 if [ "$FAILED" -gt 0 ]; then
   exit 1
 fi
+
+exit 0
 `
 }
 
@@ -890,11 +892,11 @@ bash scripts/workflow/verify.sh --preflight-profile quick
 PowerShell:
 
 \`\`\`powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/all.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gates/all.ps1 --dry-run
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/new-task.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/resume.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 --preflight-profile quick
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/all.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/gates/all.ps1 --dry-run
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/new-task.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/resume.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 --preflight-profile quick
 \`\`\`
 
 ## Default Verification Matrix
@@ -1803,7 +1805,7 @@ make workflow-aios-adopt
 PowerShell:
 
 \`\`\`powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default
 \`\`\`
 
 ## 任务等级
@@ -1864,6 +1866,7 @@ function scaleEngineRepoMakefile(): string {
   return `.PHONY: help preflight new-task plan explore checkpoint gate gate-workflow gate-quality resume status lint-scaffold verify verify-list validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
 
 SCALE ?= scale
+POWERSHELL ?= $(shell command -v pwsh 2>/dev/null || command -v powershell 2>/dev/null || echo pwsh)
 SCALE_VERSION ?= locked
 TASK ?= scale-engine workflow adaptation
 FILES ?= AGENTS.md,CLAUDE.md,README.md
@@ -1922,13 +1925,13 @@ preflight:
 \tbash scripts/preflight/all.sh
 
 bootstrap-scale:
-\tpowershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)"
+\t$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)"
 
 bootstrap-scale-install:
-\tpowershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)" -AutoInstall
+\t$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)" -AutoInstall
 
 bootstrap-scale-latest:
-\tpowershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version latest -AutoInstall
+\t$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version latest -AutoInstall
 
 workflow-upgrade-check:
 \t$(SCALE) upgrade check --dir .
@@ -1970,7 +1973,7 @@ scale-dashboard:
 \t$(SCALE) artifact dashboard --dir . --lang zh
 
 scale-smoke:
-\tpowershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/scale-smoke.ps1 -Task "$(TASK)" -Files "$(FILES)" -Level "$(LEVEL)" -Phase "$(PHASE)" -Services "$(SERVICES)"
+\t$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/scale-smoke.ps1 -Task "$(TASK)" -Files "$(FILES)" -Level "$(LEVEL)" -Phase "$(PHASE)" -Services "$(SERVICES)"
 `
 }
 
@@ -2138,7 +2141,7 @@ make verify PROFILE=default
 PowerShell:
 
 \`\`\`powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default
 \`\`\`
 
 ## 门禁说明

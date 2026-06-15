@@ -1,3 +1,12 @@
+## 0.50.6 - 2026-06-15
+
+### CI and Workflow
+- Make workflow shell gates portable across Linux and stock macOS by removing Bash 4-only and GNU `find -printf` assumptions.
+- Add macOS CI coverage for source and published-package gate workflows.
+- Harden workflow preflight against LF line-ending regressions and dry-run success returning a failed exit code.
+
+---
+
 ## 0.50.5 - 2026-06-15
 
 ### Tests

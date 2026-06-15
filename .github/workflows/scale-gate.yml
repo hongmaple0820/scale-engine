@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   published-package-gates:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
     steps:
@@ -41,7 +45,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-gate-evidence
+          name: scale-gate-${{ matrix.os }}-evidence
           path: |
             .scale/evidence/
             scale-gates.json

@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   source:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 25
 
     steps:
@@ -55,6 +59,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: source-ci-gate-fast-lane
+          name: source-ci-${{ matrix.os }}-gate-fast-lane
           path: gate-fast-lane.log
           retention-days: 30

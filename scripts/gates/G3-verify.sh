@@ -5,7 +5,10 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-mapfile -t changed < <(git status --short --untracked-files=all 2>/dev/null | awk '{print $2}' | tr -d '\r')
+changed=()
+while IFS= read -r path; do
+  [ -n "$path" ] && changed+=("$path")
+done < <(git status --short --untracked-files=all 2>/dev/null | awk '{print $2}' | tr -d '\r')
 
 if [ "${#changed[@]}" -eq 0 ]; then
   echo "[G3] no working tree changes; skip"

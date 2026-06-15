@@ -224,7 +224,9 @@ describe('writeGovernanceTemplates', () => {
     ]))
     expect(readFileSync(join(dir, 'scripts', 'preflight', 'all.sh'), 'utf-8')).toContain('[PREFLIGHT] node-library workflow')
     expect(readFileSync(join(dir, 'scripts', 'preflight', 'all.ps1'), 'utf-8')).toContain("[PREFLIGHT] node-library workflow")
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'node-library.md'), 'utf-8')).toContain('feature/fix/docs/chore/codex -> dev -> master -> tag/publish')
+    const nodeLibraryDoc = readFileSync(join(dir, 'docs', 'workflow', 'node-library.md'), 'utf-8')
+    expect(nodeLibraryDoc).toContain('feature/fix/docs/chore/codex -> dev -> master -> tag/publish')
+    expect(nodeLibraryDoc).toContain('pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/all.ps1')
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'workspace.json'), 'utf-8'))).toMatchObject({
       topology: 'single',
       repositories: [
@@ -338,9 +340,14 @@ describe('writeGovernanceTemplates', () => {
     expect(readFileSync(join(dir, 'docs', 'guides', 'GETTING_STARTED.md'), 'utf-8')).toContain('make preflight')
     expect(readFileSync(join(dir, 'scripts', 'gates', 'all.sh'), 'utf-8')).toContain('preflight --service all')
     expect(readFileSync(join(dir, 'scripts', 'workflow', 'verify.sh'), 'utf-8')).toContain('scale preflight')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('GitLab Flow')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('make workflow-aios-adopt')
-    expect(readFileSync(join(dir, 'Makefile'), 'utf-8')).toContain('workflow-aios-adopt:')
+    const workflowReadme = readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')
+    expect(workflowReadme).toContain('GitLab Flow')
+    expect(workflowReadme).toContain('make workflow-aios-adopt')
+    expect(workflowReadme).toContain('pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default')
+    const makefile = readFileSync(join(dir, 'Makefile'), 'utf-8')
+    expect(makefile).toContain('POWERSHELL ?= $(shell command -v pwsh')
+    expect(makefile).toContain('$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1')
+    expect(makefile).toContain('workflow-aios-adopt:')
     expect(readFileSync(join(dir, 'AGENTS.md'), 'utf-8')).toContain('make workflow-aios-adopt')
     expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf-8')).toContain('make workflow-aios-adopt')
   })

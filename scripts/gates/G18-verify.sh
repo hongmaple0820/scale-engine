@@ -27,17 +27,24 @@ if [ "$EVIDENCE_COUNT" -eq 0 ]; then
 fi
 
 # Check freshness (most recent file within 24h)
-LATEST=$(find "$EVIDENCE_DIR" -name "*.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-if [ -n "$LATEST" ]; then
-  if [ -f "$LATEST" ]; then
-    MTIME=$(stat --printf="%Y" "$LATEST" 2>/dev/null || stat -f%m "$LATEST" 2>/dev/null || echo 0)
-    NOW=$(date +%s)
-    HOURS=$(( (NOW - MTIME) / 3600 ))
-    if [ "$HOURS" -lt 24 ]; then
-      echo "  [OK] Latest evidence ${HOURS}h ago (< 24h)"
-    else
-      echo "  [WARN] Latest evidence ${HOURS}h ago (>= 24h, stale)"
-    fi
+LATEST_HOURS=$(
+  python3 - "$EVIDENCE_DIR" <<'PY'
+from pathlib import Path
+import sys
+import time
+
+root = Path(sys.argv[1])
+files = [path for path in root.rglob("*.json") if path.is_file()]
+if files:
+    latest = max(files, key=lambda path: path.stat().st_mtime)
+    print(int((time.time() - latest.stat().st_mtime) // 3600))
+PY
+)
+if [ -n "$LATEST_HOURS" ]; then
+  if [ "$LATEST_HOURS" -lt 24 ]; then
+    echo "  [OK] Latest evidence ${LATEST_HOURS}h ago (< 24h)"
+  else
+    echo "  [WARN] Latest evidence ${LATEST_HOURS}h ago (>= 24h, stale)"
   fi
 fi
 

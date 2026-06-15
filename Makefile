@@ -2,6 +2,7 @@
 
 SCALE ?= scale
 SCALE_SMOKE ?= node --import tsx src/api/cli.ts
+POWERSHELL ?= $(shell command -v pwsh 2>/dev/null || command -v powershell 2>/dev/null || echo pwsh)
 SCALE_VERSION ?= locked
 TASK ?= scale-engine workflow adaptation
 FILES ?= AGENTS.md,CLAUDE.md,README.md
@@ -67,13 +68,13 @@ preflight-ci:
 	$(SCALE) preflight --dir . --service all --profile ci --preflight-profile ci
 
 bootstrap-scale:
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)"
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)"
 
 bootstrap-scale-install:
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)" -AutoInstall
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version "$(or $(SCALE_VERSION),locked)" -AutoInstall
 
 bootstrap-scale-latest:
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version latest -AutoInstall
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-scale.ps1 -Version latest -AutoInstall
 
 workflow-upgrade-check:
 	$(SCALE) upgrade check --dir .
@@ -118,4 +119,4 @@ scale-dashboard:
 	$(SCALE) artifact dashboard --dir . --lang zh
 
 scale-smoke:
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/scale-smoke.ps1 -Task "$(TASK)" -Files "$(FILES)" -Level "$(LEVEL)" -Phase "$(PHASE)" -Services "$(SERVICES)"
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/scale-smoke.ps1 -Task "$(TASK)" -Files "$(FILES)" -Level "$(LEVEL)" -Phase "$(PHASE)" -Services "$(SERVICES)"
