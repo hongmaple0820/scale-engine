@@ -1,3 +1,10 @@
+## 0.50.5 - 2026-06-15
+
+### Tests
+- Make the TaskScoreEngine test fixture self-contained so CI runners without local gbrain or CodeGraph installations still validate deterministic scoring behavior.
+
+---
+
 ## 0.50.4 - 2026-06-15
 
 ### Setup and Ecosystem

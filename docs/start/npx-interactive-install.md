@@ -97,8 +97,8 @@ npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --
 ## 固定版本复现
 
 ```bash
-npx -y @hongmaple0820/scale-engine@0.50.4 --version
-npx -y @hongmaple0820/scale-engine@0.50.4 init --agent codex --dir .
+npx -y @hongmaple0820/scale-engine@0.50.5 --version
+npx -y @hongmaple0820/scale-engine@0.50.5 init --agent codex --dir .
 ```
 
 版本固定后，教程、CI 和用户机器更容易复现同一行为。
