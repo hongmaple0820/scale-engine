@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   applyDependencyBootstrapPostActions,
+  bootstrapDependencies,
   hasCodexRtkInstructions,
   runDependencyBootstrapPostChecks,
   type DependencyBootstrapItemReport,
@@ -25,6 +26,37 @@ function installedItem(id: string): DependencyBootstrapItemReport {
 }
 
 describe('dependency bootstrap post-checks', () => {
+  it('exposes GitNexus as include-only manual-review capability', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-gitnexus-bootstrap-project-'))
+    const scaleDir = join(projectDir, '.scale')
+
+    try {
+      const report = await bootstrapDependencies({
+        projectDir,
+        scaleDir,
+        packIds: ['external-cli'],
+        includeIds: ['gitnexus'],
+        onlyIds: ['gitnexus'],
+        apply: false,
+      })
+
+      expect(report.items).toHaveLength(1)
+      expect(report.items[0]).toMatchObject({
+        id: 'gitnexus',
+        installSupported: false,
+      })
+      expect(['manual-review', 'needs-init', 'installed']).toContain(report.items[0].status)
+      expect(report.items[0].packs).toEqual([])
+      expect(report.postCheckCommands).toEqual(expect.arrayContaining([
+        'scale tool doctor --tools gitnexus --json',
+        'scale codegraph status --json',
+      ]))
+      expect(report.recommendations.join('\n')).toContain('GitNexus is optional and non-default')
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
   it('summarizes tool, memory, and code-intelligence checks with warn/fail separation', () => {
     const results = runDependencyBootstrapPostChecks({
       projectDir: 'E:/project/demo',

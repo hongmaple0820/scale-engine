@@ -1,6 +1,6 @@
 # Code Intelligence
 
-SCALE uses an adapter-first code intelligence layer. It can consume the upstream [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) CLI when it is installed and the project has a local `.codegraph/` index, read graph artifacts such as Graphify outputs, and fall back to a scoped internal source scan when no provider is available.
+SCALE uses an adapter-first code intelligence layer. It can consume the upstream [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) CLI when it is installed and the project has a local `.codegraph/` index, detect optional external CLIs such as [GitNexus](https://github.com/abhigyanpatwari/GitNexus) and code-review-graph, read graph artifacts such as Graphify outputs, and fall back to a scoped internal source scan when no provider is available.
 
 The goal is not to replace IDE indexing. The goal is to make exploration measurable:
 
@@ -45,6 +45,18 @@ node scripts/workflow/provider-rehearsal.mjs --skip-gbrain --require-graphify --
 
 The rehearsal executes `graphify update <project> --no-cluster` by default so graph generation stays AST/Python based and does not call a model. It locates the generated `graph.json`, parses graph stats, and runs `graphify query`. Use `--semantic-extract` only when semantic LLM extraction is explicitly allowed. Do not commit generated `graphify-out/` artifacts by default; commit only reviewed knowledge summaries, docs, or rules derived from the graph.
 
+For GitNexus, keep it as an explicit optional provider because the npm package is licensed under PolyForm-Noncommercial-1.0.0 and may run install/build scripts for native grammar support:
+
+```bash
+scale bootstrap deps --pack external-cli --include gitnexus --json
+npm install -g gitnexus
+gitnexus analyze --index-only
+gitnexus status
+gitnexus mcp
+```
+
+If global install is not allowed, the upstream skill path uses `npx gitnexus@latest analyze --index-only` to generate a project-local `.gitnexus/` index and runner. Do not treat GitNexus as a required SCALE dependency without a license and installation review for the target project.
+
 Create the optional provider configuration:
 
 ```bash
@@ -56,7 +68,7 @@ Inspect provider availability:
 ```bash
 scale codegraph status
 scale codegraph status --json
-scale tool doctor --tools codegraph,graphify --json
+scale tool doctor --tools codegraph,graphify,gitnexus --json
 ```
 
 Query code intelligence:
@@ -101,6 +113,28 @@ Default shape:
       "capabilities": ["symbols", "callers", "callees", "impact", "context", "summary", "module-map"],
       "source": "https://github.com/safishamsi/graphify",
       "installHint": "uv tool install graphify && graphify install --platform codex"
+    },
+    {
+      "id": "code-review-graph",
+      "type": "external-cli",
+      "enabled": true,
+      "command": "code-review-graph",
+      "capabilities": ["symbols", "callers", "callees", "impact", "context", "summary", "module-map"],
+      "source": "https://github.com/tirth8205/code-review-graph",
+      "installHint": "pip install code-review-graph",
+      "projectInitHint": "code-review-graph build",
+      "serveCommand": "code-review-graph serve"
+    },
+    {
+      "id": "gitnexus",
+      "type": "external-cli",
+      "enabled": true,
+      "command": "gitnexus",
+      "capabilities": ["symbols", "callers", "callees", "impact", "context", "summary", "module-map"],
+      "source": "https://github.com/abhigyanpatwari/GitNexus",
+      "installHint": "npm install -g gitnexus or npx gitnexus@latest analyze --index-only",
+      "projectInitHint": "gitnexus analyze --index-only",
+      "serveCommand": "gitnexus mcp"
     }
   ],
   "fallback": {
@@ -114,7 +148,7 @@ Default shape:
 
 | Type | Use |
 | --- | --- |
-| `external-cli` | Detects an installed external code graph command. For `codegraph`, SCALE consumes the official JSON output from `codegraph query --json` and `codegraph context --format json` when `.codegraph/` exists. |
+| `external-cli` | Detects an installed external code graph command. For `codegraph`, SCALE consumes the official JSON output from `codegraph query --json` and `codegraph context --format json` when `.codegraph/` exists. Other external CLIs such as GitNexus and code-review-graph stay optional unless a command adapter is explicitly wired. |
 | `artifact` | Reads a local graph manifest or report file. JSON manifests can provide symbol impact data. |
 | fallback | Uses a bounded internal source scan when providers are unavailable or return no hits. |
 
@@ -176,5 +210,7 @@ When a graph provider answers, the module is reported as measured evidence. When
 - External tools are installed only through explicit user intent such as `scale setup --pack knowledge --apply --yes`, then verified with `scale setup --verify --pack knowledge --json`.
 - When CodeGraph is installed and the project is initialized, SCALE should prefer the upstream JSON query/context surfaces before falling back to raw file scans.
 - Graphify is treated as an artifact provider. CLI installation is not enough; `graphify-out/graph.json` must exist before graph-backed knowledge recall can use it.
+- GitNexus is treated as an optional external provider. CLI installation is not enough; `.gitnexus/` should exist before relying on GitNexus MCP or direct query/impact tools.
+- Because GitNexus is published under PolyForm-Noncommercial-1.0.0, do not make it a default hard dependency for commercial use without explicit license review.
 - Source files are read only through a bounded fallback scan.
 - Large generated graph outputs should stay outside default prompt context; use summaries and file paths.

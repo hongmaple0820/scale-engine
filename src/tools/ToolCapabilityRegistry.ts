@@ -139,6 +139,17 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     installHint: 'scale setup --pack knowledge --apply --yes',
   },
   {
+    id: 'gitnexus',
+    name: 'GitNexus',
+    category: 'cli',
+    command: 'gitnexus',
+    versionArgs: ['--version'],
+    requiredFor: [],
+    recommendedFor: ['review'],
+    source: 'https://github.com/abhigyanpatwari/GitNexus',
+    installHint: 'Install explicitly with: npm install -g gitnexus; initialize per project with: gitnexus analyze --index-only',
+  },
+  {
     id: 'agent-browser',
     name: 'Agent Browser',
     category: 'browser',

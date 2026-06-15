@@ -91,6 +91,7 @@ describe('codegraph CLI', () => {
     expect(report.config.providers).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'codegraph', source: 'https://github.com/colbymchenry/codegraph' }),
       expect.objectContaining({ id: 'graphify', source: 'https://github.com/safishamsi/graphify' }),
+      expect.objectContaining({ id: 'gitnexus', source: 'https://github.com/abhigyanpatwari/GitNexus' }),
     ]))
     expect(report.config.fallback.enabled).toBe(true)
   }, 120_000)

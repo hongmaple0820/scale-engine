@@ -55,6 +55,25 @@
       "installHint": "pip install code-review-graph",
       "projectInitHint": "code-review-graph build",
       "serveCommand": "code-review-graph serve"
+    },
+    {
+      "id": "gitnexus",
+      "type": "external-cli",
+      "enabled": true,
+      "command": "gitnexus",
+      "capabilities": [
+        "symbols",
+        "callers",
+        "callees",
+        "impact",
+        "context",
+        "summary",
+        "module-map"
+      ],
+      "source": "https://github.com/abhigyanpatwari/GitNexus",
+      "installHint": "npm install -g gitnexus or npx gitnexus@latest analyze --index-only",
+      "projectInitHint": "gitnexus analyze --index-only",
+      "serveCommand": "gitnexus mcp"
     }
   ],
   "fallback": {

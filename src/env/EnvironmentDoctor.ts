@@ -215,6 +215,15 @@ const CHECK_DEFINITIONS: Array<{
     requiredFor: ['code intelligence provider'],
     installHint: 'Install with `npm install -g @colbymchenry/codegraph` and run `codegraph init -i` per project.',
   },
+  {
+    id: 'gitnexus',
+    label: 'GitNexus',
+    category: 'third-party',
+    required: false,
+    candidates: [{ command: 'gitnexus', args: ['--version'], display: 'gitnexus' }],
+    requiredFor: ['optional code intelligence provider'],
+    installHint: 'Install explicitly with `npm install -g gitnexus`, then run `gitnexus analyze --index-only` per project.',
+  },
 ]
 
 export function inspectEnvironment(options: InspectEnvironmentOptions = {}): EnvironmentDoctorReport {

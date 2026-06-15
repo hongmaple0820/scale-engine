@@ -63,6 +63,7 @@ describe('environment doctor CLI', () => {
       expect.objectContaining({ id: 'gbrain', category: 'third-party', required: false }),
       expect.objectContaining({ id: 'graphify', category: 'third-party', required: false }),
       expect.objectContaining({ id: 'codegraph', category: 'third-party', required: false }),
+      expect.objectContaining({ id: 'gitnexus', category: 'third-party', required: false }),
     ]))
     const gbrain = report.checks.find(check => check.id === 'gbrain')
     if (gbrain?.version) expect(gbrain.version.trim().startsWith('{')).toBe(false)

@@ -163,6 +163,7 @@ const GRAPHIFY_PYTHON_INSTALL = 'python -m pip install graphify && graphify inst
 const GRAPHIFY_PYTHON3_INSTALL = 'python3 -m pip install graphify && graphify install --platform codex'
 const GBRAIN_INSTALL = 'bun install -g github:garrytan/gbrain && gbrain init --pglite'
 const GBRAIN_SOURCE = 'https://github.com/garrytan/gbrain'
+const GITNEXUS_SOURCE = 'https://github.com/abhigyanpatwari/GitNexus'
 
 const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
   {
@@ -276,6 +277,19 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     initializeCommands: ctx => [codegraphInitCommand(ctx.projectDir)],
     healthCheck: checkCodeGraphHealth,
   },
+  {
+    id: 'gitnexus',
+    name: 'GitNexus',
+    kind: 'cli',
+    packs: [],
+    source: GITNEXUS_SOURCE,
+    detectCommand: 'gitnexus',
+    prerequisites: ['npm'],
+    manualReason: 'GitNexus is licensed under PolyForm-Noncommercial-1.0.0 and its npm package may run native grammar build scripts; install only after license and script review.',
+    installCommand: () => null,
+    initializeCommands: () => ['gitnexus analyze --index-only', 'gitnexus status'],
+    healthCheck: checkGitNexusHealth,
+  },
 ]
 
 export async function bootstrapDependencies(options: DependencyBootstrapOptions = {}): Promise<DependencyBootstrapReport> {
@@ -370,6 +384,7 @@ function buildReport(
   if (items.some(item => item.id === 'ui-ux-pro-max')) recommendations.push('Use ui-ux-pro-max for UX flow, UI state, accessibility, and responsive acceptance checks.')
   if (items.some(item => item.id === 'gbrain')) recommendations.push('After GBrain is installed, validate remote or thin-client health with `scale memory provider status --json`.')
   if (items.some(item => item.id === 'graphify' || item.id === 'codegraph')) recommendations.push('After knowledge tools are installed, run `scale codegraph status --json` and initialize the project index or graph artifacts as needed.')
+  if (items.some(item => item.id === 'gitnexus')) recommendations.push('GitNexus is optional and non-default; review its PolyForm-Noncommercial license and npm install scripts before relying on it.')
   if (postCheckSummary.failed > 0) recommendations.push('Resolve failed post-checks before treating the dependency bootstrap as production-ready.')
   if (postCheckSummary.warned > 0) recommendations.push('Review warned post-checks; they usually indicate provider initialization or project index/artifact setup is still pending.')
 
@@ -416,6 +431,10 @@ function buildRuntimeChecks(items: DependencyBootstrapItemReport[]): DependencyB
   if (ids.has('codegraph')) {
     requireRuntime('node', ['codegraph'])
     requireRuntime('npm', ['codegraph'])
+  }
+  if (ids.has('gitnexus')) {
+    requireRuntime('node', ['gitnexus'])
+    requireRuntime('npm', ['gitnexus'])
   }
 
   const checks: DependencyBootstrapRuntimeCheck[] = []
@@ -659,7 +678,7 @@ export function runDependencyBootstrapPostChecks(input: {
   const inspectMemory = deps.inspectMemory ?? inspectMemoryProviders
   const inspectCode = deps.inspectCode ?? inspectCodeIntelligence
   const toolIds = unique(input.items.map(item => item.id).filter(id =>
-    ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'rtk', 'gbrain', 'codegraph', 'graphify'].includes(id)))
+    ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'rtk', 'gbrain', 'codegraph', 'graphify', 'gitnexus'].includes(id)))
   const results: DependencyBootstrapPostCheckResult[] = []
   const memoryReport = input.items.some(item => item.id === 'gbrain')
     ? inspectMemory({ projectDir: input.projectDir, scaleDir: input.scaleDir })
@@ -707,10 +726,11 @@ export function runDependencyBootstrapPostChecks(input: {
     })
   }
 
-  if (input.items.some(item => item.id === 'codegraph' || item.id === 'graphify')) {
+  if (input.items.some(item => item.id === 'codegraph' || item.id === 'graphify' || item.id === 'gitnexus')) {
     const codeReport = inspectCode({ projectDir: input.projectDir, scaleDir: input.scaleDir })
     const codegraph = codeReport.providers.find(provider => provider.id === 'codegraph')
     const graphify = codeReport.providers.find(provider => provider.id === 'graphify')
+    const gitnexus = codeReport.providers.find(provider => provider.id === 'gitnexus')
     const warnings: string[] = []
     let failed = false
 
@@ -719,6 +739,7 @@ export function runDependencyBootstrapPostChecks(input: {
       else if (!codeReport.projectIndexExists) failed = true
     }
     if (input.items.some(item => item.id === 'graphify') && !graphify?.available) failed = true
+    if (input.items.some(item => item.id === 'gitnexus') && !gitnexus?.available) failed = true
 
     results.push({
       id: 'code-intelligence',
@@ -728,6 +749,7 @@ export function runDependencyBootstrapPostChecks(input: {
       summary: [
         codegraph ? `codegraph=${codegraph.available ? 'available' : 'missing'}` : undefined,
         graphify ? `graphify-artifact=${graphify.available ? 'available' : 'missing'}` : undefined,
+        gitnexus ? `gitnexus=${gitnexus.available ? 'available' : 'missing'}` : undefined,
         `projectIndex=${codeReport.projectIndexExists ? 'present' : 'missing'}`,
       ].filter(Boolean).join('; '),
       details: {
@@ -738,6 +760,9 @@ export function runDependencyBootstrapPostChecks(input: {
             : undefined,
           input.items.some(item => item.id === 'graphify') && !graphify?.available
             ? 'graphify CLI is installed but graphify-out/graph.json is not present yet'
+            : undefined,
+          input.items.some(item => item.id === 'gitnexus') && !gitnexus?.available
+            ? 'gitnexus CLI is not available; install only after license and script review'
             : undefined,
         ].filter(Boolean),
       },
@@ -994,6 +1019,28 @@ function checkCodeGraphHealth(context: BootstrapInstallContext): DependencyBoots
   return { status: 'ok', reason: 'codegraph CLI and project index are available.' }
 }
 
+function checkGitNexusHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
+  const indexPath = join(context.projectDir, '.gitnexus')
+  if (!existsSync(indexPath)) {
+    return {
+      status: 'warn',
+      bootstrapStatus: 'needs-init',
+      reason: 'gitnexus CLI is installed but this project has no .gitnexus index yet.',
+      nextCommands: ['gitnexus analyze --index-only', 'gitnexus status', 'scale codegraph status --json'],
+    }
+  }
+  const status = runHealthCommand('gitnexus', ['status'], 10_000, context.projectDir)
+  if (!status.ok) {
+    return {
+      status: 'warn',
+      bootstrapStatus: 'needs-init',
+      reason: `gitnexus index exists but status check failed: ${firstLine(`${status.stdout}\n${status.stderr}`)}`,
+      nextCommands: ['gitnexus analyze --index-only', 'gitnexus status'],
+    }
+  }
+  return { status: 'ok', reason: 'gitnexus CLI and project index are available.' }
+}
+
 function runHealthCommand(command: string, args: string[], timeout = 5_000, cwd?: string): { ok: boolean; stdout: string; stderr: string } {
   try {
     const result = execaSync(command, args, {
@@ -1140,7 +1187,7 @@ export function applyDependencyBootstrapPostActions(
       : `Memory provider order: ${previousOrder} => ${nextOrder}`)
   }
 
-  if (ids.has('graphify') || ids.has('codegraph')) {
+  if (ids.has('graphify') || ids.has('codegraph') || ids.has('gitnexus')) {
     const codeIntelligence = writeCodeConfig({ projectDir, scaleDir })
     actions.push(`${codeIntelligence.written ? 'Wrote' : 'Reused'} ${codeIntelligence.path}`)
   }
@@ -1175,8 +1222,16 @@ function buildPostCheckCommands(packIds: DependencyBootstrapPackId[], items: Dep
   if (selectedPacks.has('memory') || ids.has('gbrain')) {
     commands.add('scale memory provider status --json')
   }
-  if (selectedPacks.has('knowledge') || ids.has('codegraph') || ids.has('graphify')) {
-    commands.add('scale tool doctor --tools codegraph,graphify --json')
+  if (selectedPacks.has('knowledge') || ids.has('codegraph') || ids.has('graphify') || ids.has('gitnexus')) {
+    const knowledgeToolIds = new Set<string>()
+    if (selectedPacks.has('knowledge')) {
+      knowledgeToolIds.add('codegraph')
+      knowledgeToolIds.add('graphify')
+    }
+    for (const id of ['codegraph', 'graphify', 'gitnexus']) {
+      if (ids.has(id)) knowledgeToolIds.add(id)
+    }
+    commands.add(`scale tool doctor --tools ${[...knowledgeToolIds].join(',')} --json`)
     commands.add('scale codegraph status --json')
   }
   if (selectedPacks.has('external-cli') || ids.has('rtk')) {
@@ -1198,6 +1253,9 @@ function buildRollbackHints(items: DependencyBootstrapItemReport[]): string[] {
         break
       case 'graphify':
         hints.add('Graphify rollback: pip uninstall graphify  # or pip3/python -m pip uninstall graphify')
+        break
+      case 'gitnexus':
+        hints.add('GitNexus rollback: npm uninstall -g gitnexus, then remove .gitnexus/ after confirming no shared index data is needed')
         break
       case 'gbrain':
         hints.add('GBrain rollback: bun unlink gbrain, then remove ~/.scale/vendor/gbrain if you want a full local cleanup')

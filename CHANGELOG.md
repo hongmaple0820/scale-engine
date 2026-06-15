@@ -1,3 +1,12 @@
+## 0.50.7 - 2026-06-15
+
+### Code Intelligence
+- Add GitNexus as an optional code intelligence provider with project index detection, install/init guidance, tool doctor visibility, and include-only bootstrap review.
+- Keep GitNexus non-default because its npm package is PolyForm-Noncommercial-1.0.0 and may run native grammar build scripts.
+- Ignore generated `.gitnexus/` indexes so local code maps do not enter commits.
+
+---
+
 ## 0.50.6 - 2026-06-15
 
 ### CI and Workflow

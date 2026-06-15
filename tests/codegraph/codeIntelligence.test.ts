@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildCodeGraphContext, dumpCodeGraphData, inspectCodeIntelligence, queryCodeGraph, setCodeIntelligenceExecFileSyncForTesting } from '../../src/codegraph/CodeIntelligence.js'
+import { buildCodeGraphContext, defaultCodeIntelligenceConfig, dumpCodeGraphData, inspectCodeIntelligence, queryCodeGraph, setCodeIntelligenceExecFileSyncForTesting } from '../../src/codegraph/CodeIntelligence.js'
 
 let dirs: string[] = []
 
@@ -72,6 +72,21 @@ function mockCodegraphCli() {
 }
 
 describe('CodeIntelligence external CodeGraph integration', () => {
+  it('includes GitNexus as an optional default code intelligence provider', () => {
+    const config = defaultCodeIntelligenceConfig()
+
+    expect(config.providers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'gitnexus',
+        type: 'external-cli',
+        command: 'gitnexus',
+        source: 'https://github.com/abhigyanpatwari/GitNexus',
+        projectInitHint: 'gitnexus analyze --index-only',
+        serveCommand: 'gitnexus mcp',
+      }),
+    ]))
+  })
+
   it('reports upstream metadata and init guidance for CodeGraph', () => {
     const projectDir = makeProject(false)
     mockCodegraphCli()

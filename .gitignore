@@ -52,6 +52,7 @@ scale-engine-compare
 .codex-tmp/
 .cursor/tmp/
 .codegraph/
+.gitnexus/
 .continue/
 .aider*
 .gemini/tmp/

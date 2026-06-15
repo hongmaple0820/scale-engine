@@ -22,6 +22,7 @@ This document records external skill projects that SCALE may learn from, recomme
 | RTK | Upstream project license | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) | Governed CLI proxy for shell-output compression and token savings. SCALE checks `rtk gain` and hook initialization. | External CLI only. |
 | Graphify | Upstream project license | [safishamsi/graphify](https://github.com/safishamsi/graphify) | Knowledge graph artifact provider. SCALE expects `graphify-out/graph.json` and Codex hook/skill freshness before relying on it. | Generated artifacts are project-local. |
 | CodeGraph | Upstream project license | [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) | Code structure provider for symbol/context exploration. SCALE expects a project `.codegraph/` index. | External CLI/index only. |
+| GitNexus | PolyForm-Noncommercial-1.0.0 | [abhigyanpatwari/GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Optional code intelligence CLI/MCP provider for exploration, process context, and impact analysis. SCALE detects it and records install/init guidance, but does not make it a default required dependency. | External CLI/index only; license review required before commercial default use. |
 
 Other referenced skills, MCP servers, CLIs, discovery candidates, and adapter targets are listed in [External Reference Inventory](EXTERNAL_REFERENCES.md). Unknown licenses stay `review-required`; do not treat a repository link as redistribution permission.
 

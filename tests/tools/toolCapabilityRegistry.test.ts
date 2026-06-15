@@ -106,17 +106,18 @@ describe('ToolCapabilityRegistry', () => {
     const report = inspectToolCapabilities({
       projectDir: makeDir('scale-tools-project-'),
       homeDir: makeDir('scale-tools-home-'),
-      toolIds: ['gbrain', 'codegraph', 'graphify'],
-      commandExists: command => ['gbrain', 'codegraph', 'graphify'].includes(command),
+      toolIds: ['gbrain', 'codegraph', 'graphify', 'gitnexus'],
+      commandExists: command => ['gbrain', 'codegraph', 'graphify', 'gitnexus'].includes(command),
       runVersion: command => ({ ok: true, stdout: `${command} 1.0.0` }),
     })
 
     expect(report.ok).toBe(true)
-    expect(report.tools.map(tool => tool.id)).toEqual(['gbrain', 'codegraph', 'graphify'])
+    expect(report.tools.map(tool => tool.id)).toEqual(['gbrain', 'codegraph', 'graphify', 'gitnexus'])
     expect(report.tools.every(tool => tool.installed)).toBe(true)
     expect(report.tools.find(tool => tool.id === 'gbrain')?.installHint).toBe('scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes')
     expect(report.tools.find(tool => tool.id === 'codegraph')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
     expect(report.tools.find(tool => tool.id === 'graphify')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
+    expect(report.tools.find(tool => tool.id === 'gitnexus')?.installHint).toContain('gitnexus analyze --index-only')
   })
 
   it('detects policy-selected skills that are not in the static tool catalog', () => {

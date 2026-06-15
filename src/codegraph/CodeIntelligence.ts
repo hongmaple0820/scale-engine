@@ -190,6 +190,10 @@ const CRG_SOURCE = 'https://github.com/tirth8205/code-review-graph'
 const CRG_INSTALL_HINT = 'pip install code-review-graph'
 const CRG_PROJECT_INIT_HINT = 'code-review-graph build'
 const CRG_SERVE_COMMAND = 'code-review-graph serve'
+const GITNEXUS_SOURCE = 'https://github.com/abhigyanpatwari/GitNexus'
+const GITNEXUS_INSTALL_HINT = 'npm install -g gitnexus or npx gitnexus@latest analyze --index-only'
+const GITNEXUS_PROJECT_INIT_HINT = 'gitnexus analyze --index-only'
+const GITNEXUS_SERVE_COMMAND = 'gitnexus mcp'
 
 const DEFAULT_CODEGRAPH_PROVIDER: CodeIntelligenceProviderConfig = {
   id: 'codegraph',
@@ -225,6 +229,18 @@ const DEFAULT_CRG_PROVIDER: CodeIntelligenceProviderConfig = {
   serveCommand: CRG_SERVE_COMMAND,
 }
 
+const DEFAULT_GITNEXUS_PROVIDER: CodeIntelligenceProviderConfig = {
+  id: 'gitnexus',
+  type: 'external-cli',
+  enabled: true,
+  command: 'gitnexus',
+  capabilities: ['symbols', 'callers', 'callees', 'impact', 'context', 'summary', 'module-map'],
+  source: GITNEXUS_SOURCE,
+  installHint: GITNEXUS_INSTALL_HINT,
+  projectInitHint: GITNEXUS_PROJECT_INIT_HINT,
+  serveCommand: GITNEXUS_SERVE_COMMAND,
+}
+
 let execFileSyncImpl: typeof childProcess.execFileSync = childProcess.execFileSync
 
 export function setCodeIntelligenceExecFileSyncForTesting(impl?: typeof childProcess.execFileSync): void {
@@ -238,6 +254,7 @@ export function defaultCodeIntelligenceConfig(): CodeIntelligenceConfig {
       { ...DEFAULT_CODEGRAPH_PROVIDER },
       { ...DEFAULT_GRAPHIFY_PROVIDER },
       { ...DEFAULT_CRG_PROVIDER },
+      { ...DEFAULT_GITNEXUS_PROVIDER },
     ],
     fallback: {
       enabled: true,
@@ -322,7 +339,13 @@ export function inspectCodeIntelligence(options: {
       reason: fallbackAvailable ? 'internal source scan fallback is available' : 'fallback is disabled by policy',
     },
     availableProviderCount,
-    recommendations: recommendations(loaded.exists, providers, fallbackAvailable, projectIndexExists),
+    recommendations: recommendations(
+      loaded.exists,
+      providers,
+      fallbackAvailable,
+      projectIndexExists,
+      existsSync(join(projectDir, '.gitnexus')),
+    ),
   }
 }
 
@@ -897,7 +920,11 @@ function providerStatus(projectDir: string): (provider: CodeIntelligenceProvider
           : '; project index missing (.codegraph/)'
         : provider.id === 'code-review-graph'
           ? '; run code-review-graph build to index the project'
-          : ''
+          : provider.id === 'gitnexus'
+            ? existsSync(join(projectDir, '.gitnexus'))
+              ? '; project index found at .gitnexus/'
+              : '; project index missing (.gitnexus/); run gitnexus analyze --index-only'
+            : ''
       return {
         id: provider.id,
         type: provider.type,
@@ -1094,10 +1121,17 @@ function confidence(hitCount: number, fallbackUsed: boolean): number {
   return fallbackUsed ? 0.35 : Math.min(0.9, 0.55 + hitCount * 0.05)
 }
 
-function recommendations(configExists: boolean, providers: CodeIntelligenceProviderStatus[], fallbackAvailable: boolean, projectIndexExists: boolean): string[] {
+function recommendations(
+  configExists: boolean,
+  providers: CodeIntelligenceProviderStatus[],
+  fallbackAvailable: boolean,
+  projectIndexExists: boolean,
+  gitnexusIndexExists: boolean,
+): string[] {
   const output: string[] = []
   const codegraph = providers.find(provider => provider.id === 'codegraph')
   const crg = providers.find(provider => provider.id === 'code-review-graph')
+  const gitnexus = providers.find(provider => provider.id === 'gitnexus')
   if (!configExists) output.push('Run scale codegraph init to create .scale/code-intelligence.json.')
   if (codegraph && !codegraph.available && codegraph.installHint) {
     output.push(`Install CodeGraph from ${codegraph.source ?? CODEGRAPH_SOURCE}: ${codegraph.installHint}.`)
@@ -1107,6 +1141,12 @@ function recommendations(configExists: boolean, providers: CodeIntelligenceProvi
   }
   if (crg && !crg.available && crg.installHint) {
     output.push(`Install code-review-graph from ${crg.source ?? CRG_SOURCE}: ${crg.installHint}.`)
+  }
+  if (gitnexus && !gitnexus.available && gitnexus.installHint) {
+    output.push(`Install GitNexus from ${gitnexus.source ?? GITNEXUS_SOURCE}: ${gitnexus.installHint}.`)
+  }
+  if (gitnexus?.available && !gitnexusIndexExists) {
+    output.push('Run gitnexus analyze --index-only in the project root to build the local .gitnexus/ index.')
   }
   if (providers.every(provider => !provider.available)) output.push('No graph provider is available; exploration will use explicit fallback.')
   if (!fallbackAvailable) output.push('Fallback is disabled; missing providers may leave code intelligence unavailable.')
@@ -1161,7 +1201,9 @@ function hydrateProviderConfig(provider: CodeIntelligenceProviderConfig): CodeIn
       ? DEFAULT_GRAPHIFY_PROVIDER
       : provider.id === 'code-review-graph'
         ? DEFAULT_CRG_PROVIDER
-        : undefined
+        : provider.id === 'gitnexus'
+          ? DEFAULT_GITNEXUS_PROVIDER
+          : undefined
   return {
     ...(defaults ?? {}),
     ...provider,
