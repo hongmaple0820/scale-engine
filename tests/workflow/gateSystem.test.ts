@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -21,6 +21,10 @@ function nodePrintCommand(text: string): string {
 function nodeEvalCommand(script: string): string {
   const codes = Array.from(script).map(char => char.charCodeAt(0)).join(',')
   return `node -e "eval(String.fromCharCode(${codes}))"`
+}
+
+function canonicalPath(path: string): string {
+  return realpathSync(path)
 }
 
 describe('runShellCommand', () => {
@@ -47,8 +51,8 @@ describe('runShellCommand', () => {
     const result = await runShellCommand('node -e "process.stdout.write(process.cwd())"', 10_000, dir)
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toBe(dir)
-    expect(result.cwd).toBe(dir)
+    expect(canonicalPath(result.stdout)).toBe(canonicalPath(dir))
+    expect(canonicalPath(result.cwd)).toBe(canonicalPath(dir))
   })
 
   it('compresses verbose output and records optional command-run evidence', async () => {
