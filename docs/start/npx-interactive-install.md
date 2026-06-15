@@ -97,8 +97,8 @@ npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --
 ## 固定版本复现
 
 ```bash
-npx -y @hongmaple0820/scale-engine@0.50.3 --version
-npx -y @hongmaple0820/scale-engine@0.50.3 init --agent codex --dir .
+npx -y @hongmaple0820/scale-engine@0.50.4 --version
+npx -y @hongmaple0820/scale-engine@0.50.4 init --agent codex --dir .
 ```
 
 版本固定后，教程、CI 和用户机器更容易复现同一行为。
@@ -166,4 +166,3 @@ npx -y @hongmaple0820/scale-engine@latest setup --pack full --apply --yes --dir 
 | 不知道选哪个 pack | 先跑 `npx -y @hongmaple0820/scale-engine@latest onboard --lang zh` |
 | 不想真的安装第三方工具 | 只跑 `setup --json` 或 `setup --verify`，不要加 `--apply` |
 | 已经全局安装了旧版本 | 用 `npx -y @hongmaple0820/scale-engine@latest ...` 临时试最新版本，确认后再升级全局包 |
-

@@ -1,3 +1,16 @@
+## 0.50.4 - 2026-06-15
+
+### Setup and Ecosystem
+- Enforce gbrain-only memory routing across setup, init guidance, doctor output, skill recommendations, workflow effectiveness, and AI OS status.
+- Make setup verification fail closed when governed capabilities such as gbrain, CodeGraph, Graphify, or RTK are missing or uninitialized instead of silently falling back.
+- Extend the setup smoke to exercise a fresh-project path from `scale init` through setup apply, setup verify, isolated gbrain initialization, CodeGraph indexing, and Graphify artifact generation.
+
+### Documentation
+- Update README, quickstart, Memory Fabric, third-party skill, and upgrade-management guidance so users follow the governed `scale setup ... --memory-provider gbrain ...` path.
+- Remove current documentation references to legacy memory providers and old install-entry wording.
+
+---
+
 ## 0.50.3 - 2026-06-14
 
 ### Dashboard
