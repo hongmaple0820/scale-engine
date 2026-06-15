@@ -44,9 +44,8 @@ jobs:
         id: gate-fast-lane
         run: |
           set +e
-          set -o pipefail
-          timeout 420s node dist/api/cli.js preflight --json --profile ci --preflight-profile fast-lane 2>&1 | tee gate-fast-lane.log
-          status=${PIPESTATUS[0]}
+          node scripts/workflow/run-command-with-timeout.mjs --timeout-ms 420000 --log-file gate-fast-lane.log -- node dist/api/cli.js preflight --json --profile ci --preflight-profile fast-lane
+          status=$?
           {
             echo "## SCALE fast-lane preflight"
             cat gate-fast-lane.log

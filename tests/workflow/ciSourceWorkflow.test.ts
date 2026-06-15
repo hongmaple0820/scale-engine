@@ -37,10 +37,13 @@ describe('source CI workflow', () => {
     expect(job['timeout-minutes']).toBeGreaterThanOrEqual(25)
     expect(scaleStep).toBeDefined()
     expect(scaleStep?.['continue-on-error']).not.toBe(true)
+    expect(scaleStep?.run).toContain('scripts/workflow/run-command-with-timeout.mjs')
+    expect(scaleStep?.run).toContain('--timeout-ms 420000')
     expect(scaleStep?.run).toContain('node dist/api/cli.js preflight')
     expect(scaleStep?.run).toContain('--profile ci')
     expect(scaleStep?.run).toContain('--preflight-profile fast-lane')
     expect(scaleStep?.run).toContain('exit "${status}"')
+    expect(scaleStep?.run).not.toContain('timeout 420s')
     expect(scaleStep?.run).not.toContain('@hongmaple0820/scale-engine')
   })
 
