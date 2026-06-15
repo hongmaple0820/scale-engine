@@ -1,10 +1,66 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTaskScoreReport } from '../../src/workflow/TaskScoreEngine.js'
 import { EvidenceStore } from '../../src/workflow/EvidenceStore.js'
 import type { GateResult } from '../../src/workflow/types.js'
+
+vi.mock('../../src/codegraph/CodeIntelligence.js', () => ({
+  inspectCodeIntelligence: vi.fn(({ projectDir, scaleDir }) => ({
+    projectDir,
+    scaleDir,
+    configPath: join(scaleDir, 'code-intelligence.json'),
+    configExists: true,
+    projectIndexPath: join(projectDir, '.codegraph'),
+    projectIndexExists: true,
+    providers: [{
+      id: 'codegraph',
+      type: 'external-cli',
+      enabled: true,
+      available: true,
+      capabilities: ['symbols', 'callers', 'callees', 'impact', 'context', 'summary', 'module-map'],
+      reason: 'test fixture provider',
+    }],
+    fallback: {
+      enabled: true,
+      tools: ['internal-scan'],
+      available: true,
+      reason: 'test fixture fallback',
+    },
+    availableProviderCount: 1,
+    recommendations: [],
+  })),
+}))
+
+vi.mock('../../src/memory/MemoryProviders.js', () => ({
+  inspectMemoryProviders: vi.fn(({ projectDir, scaleDir }) => ({
+    projectDir,
+    scaleDir,
+    configPath: join(scaleDir, 'memory-providers.json'),
+    configExists: true,
+    routing: {
+      mode: 'external-first',
+      defaultOrder: ['gbrain'],
+      allowExternalWrite: false,
+      requireEvidence: true,
+      maxResultsPerProvider: 5,
+    },
+    providers: [{
+      id: 'gbrain',
+      kind: 'gbrain',
+      enabled: true,
+      priority: 95,
+      capabilities: ['semantic-recall', 'graph-recall', 'session-memory', 'mcp'],
+      safetyLevel: 'review-required',
+      writeMode: 'disabled',
+      available: true,
+      reason: 'test fixture memory provider',
+    }],
+    availableProviderCount: 1,
+    warnings: [],
+  })),
+}))
 
 const dirs: string[] = []
 
