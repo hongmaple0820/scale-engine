@@ -94,6 +94,7 @@ import { initCommand, bootstrapCommand, setupCommand, configCommand } from '../c
 import { upgradeCommand, assetsCommand, standardsCommand, artifactCommand } from '../cli/upgradeAssetsCommands.js'
 import { runtimeCommand, memoryCommand, outOfScopeCommand, skillCommand, token as tokenCommand } from '../cli/runtimeSkillCommands.js'
 import { toolCommand, agentCommand, teamCommand } from '../cli/toolAgentCommands.js'
+import { productCommand } from '../cli/productCommands.js'
 import { writeGovernanceTemplates, type GovernanceMode } from '../workflow/GovernanceTemplates.js'
 import {
   getBootstrapPlanForProfile,
@@ -1748,6 +1749,8 @@ const main = defineCommand({
     skills: skillCommand,
     agent: agentCommand,
     team: teamCommand,
+    product: productCommand,
+    products: productCommand,
     'create-prd': createPRDCommand,
     'out-of-scope': outOfScopeCommand,
     config: configCommand,

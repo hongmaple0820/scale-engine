@@ -1,3 +1,19 @@
+## 0.50.8 - 2026-06-16
+
+### Agent Ecosystem
+- Add ACP-first collaboration planning for common agent platforms so Codex, Claude Code, Gemini CLI, Cursor, Aider, OpenCode, and related tools can be coordinated with clear handoffs and review gates.
+- Add an external agent role catalog plan for Agency Agents Chinese Edition, keeping the 215-role catalog reference-only by default with explicit conversion and installation gates.
+
+### Product Scaffolding
+- Add reusable product module templates for registration/login, license-card systems, and user/RBAC management with RuoYi-Plus-style extension points and custom template manifests.
+- Add project blueprints for architecture standards, language standards, product design, technical implementation, common solution plans, and verification gates.
+- Add existing-project onboarding for mature or legacy projects, generating codebase maps, project plans, module boundaries, risk registers, and development guides.
+
+### Code Intelligence
+- Make ProjectAnatomy respect the global max-files scan limit across nested directories so old-project codebase maps stay bounded.
+
+---
+
 ## 0.50.7 - 2026-06-15
 
 ### Code Intelligence

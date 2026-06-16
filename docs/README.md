@@ -34,6 +34,8 @@
 | [BACKGROUND_HUNTER.md](BACKGROUND_HUNTER.md) | Background Hunter 只读主动巡检、诊断交接和 ignore baseline |
 | [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md) | 供应链依赖审计、G7 dependency 子门禁和 dependency policy |
 | [TOOL_ORCHESTRATION.md](TOOL_ORCHESTRATION.md) | skills、MCP、CLI、浏览器、桌面自动化的编排策略 |
+| [AGENT_ECOSYSTEM.md](AGENT_ECOSYSTEM.md) | ACP-first agent collaboration planning and external agent role catalog adoption |
+| [PRODUCT_MODULE_TEMPLATES.md](PRODUCT_MODULE_TEMPLATES.md) | Reusable product module templates for auth, license-card, user management, and custom scaffolds |
 | [RUNTIME_EVIDENCE.md](RUNTIME_EVIDENCE.md) | 会话 ledger、运行时证据和最终交付检查 |
 | [MEMORY_FABRIC.md](MEMORY_FABRIC.md) | Runtime evidence、session events、knowledge recall 和 graph status 的预算化上下文包 |
 | [MEMORY_BRAIN.md](MEMORY_BRAIN.md) | 证据驱动的长期记忆、矛盾检测、dream 整理和 failure replay 沉淀 |

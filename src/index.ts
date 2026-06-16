@@ -114,6 +114,9 @@ export { wireEffects } from './orchestration/EffectsWiring.js'
 export * from './tools/index.js'
 export * from './workflow/WorkflowGuidance.js'
 export * from './workflow/WorkflowOpenTasks.js'
+export * from './agents/AcpCollaboration.js'
+export * from './agents/ExternalAgentCatalog.js'
+export * from './product/index.js'
 
 // Runtime Evidence Governance
 export * from './runtime/index.js'

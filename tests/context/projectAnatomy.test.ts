@@ -61,6 +61,20 @@ describe('ProjectAnatomy', () => {
       expect(total).toBeLessThanOrEqual(3)
     })
 
+    it('respects maxFiles limit across nested directories', () => {
+      for (const dir of ['a', 'b', 'c']) {
+        mkdirSync(join(testDir, dir), { recursive: true })
+        for (let i = 0; i < 4; i++) {
+          writeFileSync(join(testDir, dir, `file${i}.ts`), `export const ${dir}${i} = ${i}`)
+        }
+      }
+
+      const sections = anatomy.scan(testDir, { maxFiles: 5 })
+      let total = 0
+      for (const [, list] of sections) total += list.length
+      expect(total).toBeLessThanOrEqual(5)
+    })
+
     it('excludes node_modules and .git by default', () => {
       mkdirSync(join(testDir, 'node_modules', 'pkg'), { recursive: true })
       mkdirSync(join(testDir, '.git', 'objects'), { recursive: true })

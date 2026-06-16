@@ -183,6 +183,17 @@ Evidence-driven continuous evolution with instinct extraction.
 | `scale agent list` | List active agents |
 | `scale agent profiles` | Show agent profiles |
 | `scale agent leaders` | Show leadership presets |
+| `scale agent catalog` | Show external agent role catalogs and adoption gates |
+| `scale agent acp-plan` | Create an ACP-first collaboration plan across agent platforms |
+
+## Product Modules
+
+| Command | Description |
+|---------|-------------|
+| `scale product modules` | List reusable product module templates |
+| `scale product scaffold` | Generate product module template files, dry-run by default |
+| `scale product blueprint` | Generate architecture, language, solution, design, and implementation blueprints |
+| `scale product onboard-existing` | Generate planning and codebase-map artifacts for mature or legacy projects |
 
 ## Other
 
@@ -232,4 +243,14 @@ scale codegraph impact src/auth/login.ts
 # Skills
 scale skill scan
 scale skill recommend "implement OAuth"
+
+# Agent ecosystem
+scale agent acp-plan --task "multi-agent implementation review" --platforms codex,claude-code,gemini-cli
+scale agent catalog --catalog agency-agents-zh --mode convert-to-yaml
+
+# Product modules
+scale product modules --template ruoyi-plus-enterprise-starter
+scale product scaffold --modules auth,license,user --product DemoApp --package com.example.demo
+scale product blueprint --solutions identity-auth-rbac,license-card-commerce
+scale product onboard-existing --dir . --project LegacyApp --mode legacy
 ```

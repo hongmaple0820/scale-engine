@@ -14,6 +14,8 @@ import { createSkillPlan, loadSkillRoutingPolicy } from '../skills/routing/index
 import { listLeadershipPresets, renderLeadershipPresetsMarkdown } from '../agents/LeadershipPresets.js'
 import { AgentPool } from '../agents/AgentPool.js'
 import { PROFESSIONAL_AGENTS, getProfile, listProfiles } from '../agents/profiles.js'
+import { createAcpCollaborationPlan, renderAcpCollaborationPlanMarkdown } from '../agents/AcpCollaboration.js'
+import { createExternalAgentCatalogPlan, listExternalAgentCatalogs, renderExternalAgentCatalogMarkdown, type ExternalAgentImportMode } from '../agents/ExternalAgentCatalog.js'
 import { createAiOsPlan } from '../runtime/AiOsRuntime.js'
 import type { GovernanceMode } from '../governance/ProgressiveGovernance.js'
 import { createThirdPartyUpdateReport } from '../workflow/UpgradeManager.js'
@@ -399,6 +401,61 @@ const agentLeaders = defineCommand({
   },
 })
 
+const agentCatalog = defineCommand({
+  meta: { name: 'catalog', description: 'Show external agent role catalogs such as agency-agents-zh' },
+  args: {
+    catalog: { type: 'string', default: 'agency-agents-zh', description: 'External catalog id' },
+    mode: { type: 'string', description: 'Import mode: reference-only, convert-to-yaml, or install-to-adapter' },
+    tools: { type: 'string', description: 'Comma-separated tool ids to include' },
+    'target-dir': { type: 'string', description: 'Target directory for converted external agents' },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const plan = createExternalAgentCatalogPlan({
+      catalogId: String(args.catalog ?? 'agency-agents-zh'),
+      mode: args.mode ? String(args.mode) as ExternalAgentImportMode : undefined,
+      tools: parseCommaList(args.tools),
+      targetDir: args['target-dir'] ? String(args['target-dir']) : undefined,
+    })
+    if (args.json) {
+      console.log(JSON.stringify({
+        catalogs: listExternalAgentCatalogs(),
+        plan,
+      }, null, 2))
+      return
+    }
+    console.log(renderExternalAgentCatalogMarkdown(plan.catalog))
+    console.log('Adoption Plan')
+    console.log(`  Mode: ${plan.mode}`)
+    console.log(`  Target: ${plan.targetDir}`)
+    console.log(`  Mapped tools: ${plan.mappedTools.map(tool => tool.toolId).join(', ') || 'none'}`)
+    console.log(`  External-only tools: ${plan.externalOnlyTools.map(tool => tool.toolId).join(', ') || 'none'}`)
+    for (const step of plan.steps) console.log(`  step: ${step}`)
+    for (const gate of plan.gates) console.log(`  gate: ${gate}`)
+    for (const warning of plan.warnings) console.log(`  warning: ${warning}`)
+  },
+})
+
+const agentAcpPlan = defineCommand({
+  meta: { name: 'acp-plan', description: 'Create an ACP-first collaboration plan across agent platforms' },
+  args: {
+    task: { type: 'string', required: true, description: 'Task or collaboration goal' },
+    platforms: { type: 'string', description: 'Comma-separated platforms, e.g. codex,claude-code,gemini-cli' },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const plan = createAcpCollaborationPlan({
+      task: String(args.task),
+      platforms: parseCommaList(args.platforms),
+    })
+    if (args.json) {
+      console.log(JSON.stringify(plan, null, 2))
+      return
+    }
+    console.log(renderAcpCollaborationPlanMarkdown(plan))
+  },
+})
+
 const agentPlan = defineCommand({
   meta: { name: 'plan', description: 'Predict agent roles, DAG handoffs, review gates, and token budget for a task' },
   args: {
@@ -459,7 +516,7 @@ const agentPlan = defineCommand({
 
 export const agentCommand = defineCommand({
   meta: { name: 'agent', description: 'Multi-Agent system management' },
-  subCommands: { plan: agentPlan, spawn: agentSpawn, list: agentList, profiles: agentProfiles, leaders: agentLeaders },
+  subCommands: { plan: agentPlan, spawn: agentSpawn, list: agentList, profiles: agentProfiles, leaders: agentLeaders, catalog: agentCatalog, 'acp-plan': agentAcpPlan },
 })
 
 // ============================================================================

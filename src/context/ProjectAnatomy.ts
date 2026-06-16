@@ -2,7 +2,7 @@
 // Scans project directory and generates a file map with descriptions and token estimates.
 // Inspired by OpenWolf's anatomy system.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, extname, basename, dirname } from 'node:path'
 import { estimateTokens } from './ContextBudget.js'
 
@@ -31,7 +31,8 @@ export class ProjectAnatomy {
     const maxFiles = opts?.maxFiles ?? 500
     const excludePatterns = opts?.excludePatterns ?? DEFAULT_EXCLUDE
     const entries = new Map<string, AnatomyEntry[]>()
-    this.walkDir(projectDir, projectDir, excludePatterns, maxFiles, entries)
+    const state = { fileCount: 0 }
+    this.walkDir(projectDir, projectDir, excludePatterns, maxFiles, entries, state)
     return entries
   }
 
@@ -115,7 +116,6 @@ export class ProjectAnatomy {
       return
     }
 
-    const ext = extname(relPath).toLowerCase()
     const desc = this.extractDescriptionFromContent(fileContent, relPath)
     const tokens = estimateTokens(fileContent)
 
@@ -246,10 +246,9 @@ export class ProjectAnatomy {
     excludePatterns: string[],
     maxFiles: number,
     entries: Map<string, AnatomyEntry[]>,
+    state: { fileCount: number },
   ): void {
-    let totalFiles = 0
-    for (const [, list] of entries) totalFiles += list.length
-    if (totalFiles >= maxFiles) return
+    if (state.fileCount >= maxFiles) return
 
     let items: string[]
     try {
@@ -274,8 +273,10 @@ export class ProjectAnatomy {
       }
 
       if (stat.isDirectory()) {
-        this.walkDir(fullPath, rootDir, excludePatterns, maxFiles, entries)
+        this.walkDir(fullPath, rootDir, excludePatterns, maxFiles, entries, state)
+        if (state.fileCount >= maxFiles) return
       } else if (stat.isFile()) {
+        if (state.fileCount >= maxFiles) return
         const ext = extname(item).toLowerCase()
         if (BINARY_EXTENSIONS.has(ext)) continue
         if (stat.size > 1024 * 1024) continue // skip > 1MB
@@ -295,8 +296,8 @@ export class ProjectAnatomy {
         if (!entries.has(sectionKey)) entries.set(sectionKey, [])
         entries.get(sectionKey)!.push({ file: item, description: desc, tokens })
 
-        totalFiles++
-        if (totalFiles >= maxFiles) return
+        state.fileCount++
+        if (state.fileCount >= maxFiles) return
       }
     }
   }
