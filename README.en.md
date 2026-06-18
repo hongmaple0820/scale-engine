@@ -41,7 +41,8 @@ npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --
 This generates governance files you can commit to a project:
 
 - `.scale/verification.json`: service matrix and verification profiles
-- `.scale/skills.json`: skill routing and evidence requirements
+- `.scale/skills.json`: skill routing, source roots, and evidence requirements
+- `.scale/skills/`: committed source of truth for reusable workflow skills; legacy `skills/` is fallback-only
 - `.scale/tools.json`: CLI/MCP/browser/desktop orchestration policy
 - `docs/workflow/templates/`: Mini-PRD, plan, verification, review, and summary templates
 - `docs/standards/`: engineering, Git collaboration, and resource governance rules

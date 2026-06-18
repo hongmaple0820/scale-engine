@@ -72,9 +72,11 @@ make verify-docs-health
 node scripts/workflow/docs-health.mjs --json
 ```
 
-`G8` runs the full gate and writes `.agent/logs/docs-health/g8-docs-health-report.json`. `G17` runs the link-health subset and writes `.agent/logs/docs-health/g17-link-health-report.json`. `npm run release:check` also runs `npm run docs:health` before typecheck, lint, tests, smoke checks, build, audit, diff hygiene, and package dry-run.
+`learning-health` is the companion gate for self-learning governance. It checks that repo-local reusable skills live under `.scale/skills/`, release packages include those skills and the learning gate script, memory provider routing still requires evidence, and default/CI verification profiles run the learning gate.
 
-GitHub source CI, published-package gate checks, and tag-based publish workflows also run `npm run docs:health` so Linux/macOS CI and release automation enforce the same documentation and artifact policy as local verification.
+`G8` runs the full docs-health gate and writes `.agent/logs/docs-health/g8-docs-health-report.json`. `G17` runs the link-health subset and writes `.agent/logs/docs-health/g17-link-health-report.json`. `npm run release:check` runs `npm run learning:health` and `npm run docs:health` before typecheck, lint, tests, smoke checks, build, audit, diff hygiene, and package dry-run.
+
+GitHub source CI, published-package gate checks, and tag-based publish workflows also run `npm run learning:health` and `npm run docs:health` so Linux/macOS CI and release automation enforce the same documentation, artifact, skill-source, and memory-evidence policy as local verification.
 
 See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md) for the deterministic prompt rewrite layer used by `scale prompt optimize` and `scale define`.
 

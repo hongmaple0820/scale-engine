@@ -50,6 +50,12 @@ function makeSkillReport(overrides: Partial<SkillDoctorReport> = {}): SkillDocto
     total: 2,
     installed: 2,
     missing: 0,
+    waived: 0,
+    sourceRoots: {
+      primaryRoot: '.scale/skills',
+      fallbackRoots: ['skills'],
+      globalRoots: ['~/.agents/skills'],
+    },
     skills: [
       {
         id: 'web-access',
@@ -80,6 +86,7 @@ function makeSkillReport(overrides: Partial<SkillDoctorReport> = {}): SkillDocto
     ],
     missingByReadiness: { required: [], recommended: [], optional: [] },
     installedByReadiness: { required: ['web-access', 'ui-ux-pro-max'], recommended: [], optional: [] },
+    waivedByReadiness: { required: [], recommended: [], optional: [] },
     ...overrides,
   }
 }

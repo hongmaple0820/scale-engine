@@ -75,6 +75,7 @@ fi
 
 if [ "$PROFILE" = "scaffold" ] && [ -z "$SERVICE" ]; then
   node "$ROOT/scripts/workflow/docs-health.mjs" --report .agent/logs/docs-health/verify-scaffold-report.json
+  node "$ROOT/scripts/workflow/learning-health.mjs" --report .agent/logs/learning-health/verify-scaffold-report.json
   bash "$ROOT/scripts/workflow/lint-scaffold.sh"
   bash "$ROOT/scripts/gates/all.sh" --dry-run
   echo "[VERIFY] profile scaffold passed"

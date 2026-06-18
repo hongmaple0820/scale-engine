@@ -10,6 +10,7 @@ import type { SkillRegistry } from './SkillRegistry.js'
 import type { SkillInstallConfig, ISkillInstaller, InstallMethod } from './SkillInstaller.js'
 import type { AgentPlatform, SkillRef, SkillScanResult, DevelopmentPhase } from '../artifact/types.js'
 import { logger } from '../core/logger.js'
+import { loadSkillRoutingPolicy } from './routing/SkillPolicy.js'
 
 // Phase-based skill directory structure
 const PHASE_DIRS: DevelopmentPhase[] = ['DEFINE', 'PLAN', 'BUILD', 'VERIFY', 'REVIEW', 'SHIP', 'ANTI-PATTERNS']
@@ -307,18 +308,20 @@ export class SkillDiscovery implements ISkillDiscovery {
 
   /**
    * Scan skills organized by development phase
-   * @param projectDir - Project directory containing skills/ folder
+   * @param projectDir - Project directory containing the configured project-local skills root
    * @returns Map of phase to skill scan results
    */
   scanPhaseSkills(projectDir?: string): Map<DevelopmentPhase, PhaseSkillScanResult> {
     const dir = projectDir ?? this.projectDir
     const result = new Map<DevelopmentPhase, PhaseSkillScanResult>()
+    const roots = this.projectSkillRoots(dir)
 
     for (const phase of PHASE_DIRS) {
-      const phaseDir = join(dir, 'skills', phase)
       const skills: SkillRef[] = []
 
-      if (existsSync(phaseDir)) {
+      for (const root of roots) {
+        const phaseDir = join(root, phase)
+        if (!existsSync(phaseDir)) continue
         try {
           for (const entry of readdirSync(phaseDir)) {
             if (entry.endsWith('.md')) {
@@ -391,6 +394,15 @@ export class SkillDiscovery implements ISkillDiscovery {
   }
 
   // ========== Private Methods ==========
+
+  private projectSkillRoots(projectDir: string): string[] {
+    try {
+      const sources = loadSkillRoutingPolicy(projectDir).skillSources
+      return [sources.primaryRoot, ...sources.fallbackRoots].map(root => join(projectDir, root))
+    } catch {
+      return [join(projectDir, '.scale', 'skills'), join(projectDir, 'skills')]
+    }
+  }
 
   private matchCategory(taskType: string, keywords: string[]): string | null {
     const typeToCategory: Record<string, string> = {

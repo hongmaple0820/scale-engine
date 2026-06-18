@@ -31,8 +31,10 @@ jobs:
       - name: Install source dependencies
         run: npm ci
 
-      - name: Documentation and artifact health
-        run: npm run docs:health
+      - name: Governance health
+        run: |
+          npm run learning:health
+          npm run docs:health
 
       - name: Install published SCALE Engine
         run: npm install -g @hongmaple0820/scale-engine

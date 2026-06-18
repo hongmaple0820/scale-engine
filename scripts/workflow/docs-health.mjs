@@ -19,6 +19,8 @@ const DEFAULT_CONFIG_FILES = [
   'package.json',
   '.agent/project.json',
   '.scale/verification.json',
+  '.scale/skills.json',
+  '.scale/memory-providers.json',
   '.scale/resource-policy.json',
   '.scale/workspace.json',
 ]

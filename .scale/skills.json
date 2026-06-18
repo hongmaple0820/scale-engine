@@ -16,6 +16,19 @@
       }
     ]
   },
+  "skillSources": {
+    "primaryRoot": ".scale/skills",
+    "fallbackRoots": [
+      "skills"
+    ],
+    "globalRoots": [
+      "~/.agents/skills",
+      "~/.codex/skills",
+      "~/.claude/skills",
+      "~/.gemini/skills",
+      "~/.omx/skills"
+    ]
+  },
   "domains": {
     "ui": {
       "detect": {

@@ -6,6 +6,7 @@
       "commands": {
         "build": "npm run build",
         "docs-health": "node scripts/workflow/docs-health.mjs --report .agent/logs/docs-health/verification-default-report.json",
+        "learning-health": "node scripts/workflow/learning-health.mjs --report .agent/logs/learning-health/verification-default-report.json",
         "lint": "npm run lint",
         "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 900000 --testTimeout=120000"
       },
@@ -25,6 +26,7 @@
       "commands": {
         "build": "npm run build",
         "docs-health": "node scripts/workflow/docs-health.mjs --report .agent/logs/docs-health/verification-quick-report.json",
+        "learning-health": "node scripts/workflow/learning-health.mjs --report .agent/logs/learning-health/verification-quick-report.json",
         "lint": "npm run lint",
         "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts --testTimeout=120000"
       },
@@ -36,6 +38,7 @@
       "commands": {
         "build": "npm run build",
         "docs-health": "node scripts/workflow/docs-health.mjs --report .agent/logs/docs-health/verification-fast-lane-report.json",
+        "learning-health": "node scripts/workflow/learning-health.mjs --report .agent/logs/learning-health/verification-fast-lane-report.json",
         "lint": "npm run lint",
         "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts tests/workflow/gateSystem.test.ts tests/api/runtimeCli.test.ts --testTimeout=120000"
       },
@@ -47,6 +50,7 @@
       "commands": {
         "build": "npm run build",
         "docs-health": "node scripts/workflow/docs-health.mjs --report .agent/logs/docs-health/verification-ci-report.json",
+        "learning-health": "node scripts/workflow/learning-health.mjs --report .agent/logs/learning-health/verification-ci-report.json",
         "lint": "npm run lint",
         "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts tests/workflow/gateSystem.test.ts tests/api/runtimeCli.test.ts --testTimeout=120000",
         "coverage": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.include=src/workflow/GateCatalog.ts --coverage.include=src/workflow/VerificationProfile.ts --testTimeout=120000"

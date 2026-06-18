@@ -10,8 +10,9 @@ SCALE Engine 不以“代码已写完”作为发版标准。发版前必须确�
 npm run release:check
 ```
 
-`release:check` 是本地发版唯一门禁。它会依次执行 typecheck、lint、全量测试、
-安装烟测、build、生产依赖审计、`git diff --check` 和 `npm pack --dry-run`。
+`release:check` 是本地发版唯一门禁。它会依次执行学习/记忆健康检查、文档健康检查、
+typecheck、lint、全量测试、安装烟测、provider 回放、build、生产依赖审计、
+`git diff --check` 和 `npm pack --dry-run`。
 `npm run test:serial` 只用于排查卡死或顺序相关的测试问题，不作为默认发版替代项。
 
 ## GitHub/Gitee 发行版同步
@@ -83,6 +84,7 @@ npx vitest run tests/api/officialDemoWorkflow.test.ts
 出现以下任一情况，不得发版：
 
 - 全量测试失败。
+- `npm run learning:health` 失败，或 `.scale/skills/`、记忆 provider、学习证据模板、发布包清单未满足门禁。
 - 官方仓库缺少 GitHub Actions secret `GITEE_TOKEN`，导致 Gitee 发行版无法自动同步。
 - 官方 demo smoke 失败。
 - npm pack dry-run 失败，或包内缺失关键 dist 文件。

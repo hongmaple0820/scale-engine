@@ -37,6 +37,59 @@ describe('SkillDoctor', () => {
     }
   })
 
+  it('prefers project-local .scale/skills as the canonical workflow skill source', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))
+    try {
+      const canonicalDir = join(projectDir, '.scale', 'skills', 'frontend-design')
+      const legacyDir = join(projectDir, 'skills', 'frontend-design')
+      mkdirSync(canonicalDir, { recursive: true })
+      mkdirSync(legacyDir, { recursive: true })
+      writeFileSync(join(canonicalDir, 'SKILL.md'), '---\nname: frontend-design\n---\n# Canonical\n', 'utf-8')
+      writeFileSync(join(legacyDir, 'SKILL.md'), '---\nname: frontend-design\n---\n# Legacy\n', 'utf-8')
+
+      const report = inspectWorkflowSkills({ projectDir, homeDir })
+      const frontend = report.skills.find(skill => skill.id === 'frontend-design')
+
+      expect(report.sourceRoots.primaryRoot).toBe('.scale/skills')
+      expect(report.sourceRoots.fallbackRoots).toContain('skills')
+      expect(frontend?.detectedPath).toBe(join(canonicalDir, 'SKILL.md'))
+      expect(frontend?.checkedPaths[0]).toBe(join(projectDir, '.scale', 'skills', 'frontend-design', 'SKILL.md'))
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('honors skill source roots declared by .scale/skills.json', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))
+    const scaleDir = join(projectDir, '.scale')
+    try {
+      mkdirSync(join(projectDir, '.agent', 'skills', 'frontend-design'), { recursive: true })
+      mkdirSync(scaleDir, { recursive: true })
+      writeFileSync(join(projectDir, '.agent', 'skills', 'frontend-design', 'SKILL.md'), '---\nname: frontend-design\n---\n', 'utf-8')
+      writeFileSync(join(scaleDir, 'skills.json'), JSON.stringify({
+        version: 1,
+        skillSources: {
+          primaryRoot: '.agent/skills',
+          fallbackRoots: ['.scale/skills', 'skills'],
+          globalRoots: [],
+        },
+      }, null, 2), 'utf-8')
+
+      const report = inspectWorkflowSkills({ projectDir, homeDir })
+      const frontend = report.skills.find(skill => skill.id === 'frontend-design')
+
+      expect(report.sourceRoots.primaryRoot).toBe('.agent/skills')
+      expect(frontend?.detectedPath).toBe(join(projectDir, '.agent', 'skills', 'frontend-design', 'SKILL.md'))
+      expect(frontend?.checkedPaths[0]).toBe(join(projectDir, '.agent', 'skills', 'frontend-design', 'SKILL.md'))
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
   it('reports required skill installation gaps for a task', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))

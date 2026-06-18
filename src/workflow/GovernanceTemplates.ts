@@ -1066,6 +1066,20 @@ TBD
 
 TBD
 
+## Regression / Stability Checks
+
+- Previously stable path reviewed:
+- Live/runtime path checked:
+- Cross-OS path checked:
+- Same-pattern scan result:
+
+## Learning Evidence
+
+- Memory recall query/result:
+- Project knowledge updated:
+- Cortex instinct/failure replay recorded:
+- Prevention gate or test added:
+
 ## Final Status
 TBD
 `
@@ -1101,6 +1115,13 @@ TBD
 ## Remaining Risks
 
 TBD
+
+## Learning And Prevention
+
+- What failed or nearly escaped:
+- Root cause:
+- Memory/Cortex entry or failure replay:
+- New gate, test, or checklist that prevents repeat:
 
 ## Follow-Ups
 

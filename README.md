@@ -41,7 +41,8 @@ npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --
 你会得到一套可提交到项目里的治理文件：
 
 - `.scale/verification.json`：服务矩阵和验证 profile
-- `.scale/skills.json`：skill 路由和证据要求
+- `.scale/skills.json`：skill 路由、统一来源和证据要求
+- `.scale/skills/`：随仓库提交的通用 workflow skills 主来源；旧 `skills/` 仅作为兼容 fallback
 - `.scale/tools.json`：CLI/MCP/browser/desktop 工具编排规则
 - `docs/workflow/templates/`：Mini-PRD、plan、verification、review、summary 模板
 - `docs/standards/`：工程规范、Git 协作、资源治理规则

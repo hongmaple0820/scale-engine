@@ -24,15 +24,36 @@ export interface SkillRoutingPolicySettings {
   requireSkillPlan?: boolean
 }
 
+export interface SkillSourcePolicy {
+  /**
+   * Project-local canonical skill root. New SCALE projects should keep
+   * reusable workflow skills here so they travel with project governance.
+   */
+  primaryRoot?: string
+  /**
+   * Backward-compatible project-local roots. They are searched after the
+   * primary root and should not become a second source of truth.
+   */
+  fallbackRoots?: string[]
+  /**
+   * User/platform-global roots such as ~/.agents/skills. These are useful for
+   * installed third-party skills, but project governance should not depend on
+   * them as the only copy.
+   */
+  globalRoots?: string[]
+}
+
 export interface SkillRoutingPolicyFile {
   version?: number
   policy?: SkillRoutingPolicySettings
+  skillSources?: SkillSourcePolicy
   domains?: Record<string, SkillDomainPolicy>
 }
 
 export interface ResolvedSkillRoutingPolicy {
   version: number
   policy: Required<SkillRoutingPolicySettings>
+  skillSources: Required<SkillSourcePolicy>
   domains: Record<string, SkillDomainPolicy>
   warnings: string[]
 }

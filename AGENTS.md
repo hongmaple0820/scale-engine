@@ -39,17 +39,17 @@ make setup-smoke
 
 | Trigger | Skill |
 | --- | --- |
-| api, endpoint, rest | `skills/api-design/SKILL.md` |
-| review, check, quality | `skills/code-review/SKILL.md` |
-| debug, fix, error, bug | `skills/debugging/SKILL.md` |
-| document, readme, doc | `skills/documentation/SKILL.md` |
-| commit, pr, merge | `skills/git-workflow/SKILL.md` |
-| performance, optimize, slow, latency | `skills/performance/SKILL.md` |
-| plan, design, architecture | `skills/planning/SKILL.md` |
-| refactor, clean, improve | `skills/refactoring/SKILL.md` |
-| release, publish, 发版, 发布 | `skills/release/SKILL.md` |
-| security, audit, vulnerability, owasp | `skills/security-audit/SKILL.md` |
-| test, tdd, coverage | `skills/tdd/SKILL.md` |
+| api, endpoint, rest | `.scale/skills/api-design/SKILL.md` |
+| review, check, quality | `.scale/skills/code-review/SKILL.md` |
+| debug, fix, error, bug | `.scale/skills/debugging/SKILL.md` |
+| document, readme, doc | `.scale/skills/documentation/SKILL.md` |
+| commit, pr, merge | `.scale/skills/git-workflow/SKILL.md` |
+| performance, optimize, slow, latency | `.scale/skills/performance/SKILL.md` |
+| plan, design, architecture | `.scale/skills/planning/SKILL.md` |
+| refactor, clean, improve | `.scale/skills/refactoring/SKILL.md` |
+| release, publish, 发版, 发布 | `.scale/skills/release/SKILL.md` |
+| security, audit, vulnerability, owasp | `.scale/skills/security-audit/SKILL.md` |
+| test, tdd, coverage | `.scale/skills/tdd/SKILL.md` |
 
 ## SCALE 2.0 三引擎命令
 

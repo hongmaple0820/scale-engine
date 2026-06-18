@@ -667,12 +667,23 @@ function skillReport(input: {
     total: input.total,
     installed: input.installed,
     missing,
+    waived: 0,
+    sourceRoots: {
+      primaryRoot: '.scale/skills',
+      fallbackRoots: ['skills'],
+      globalRoots: ['~/.agents/skills'],
+    },
     missingByReadiness: {
       required: missingRequired,
       recommended: missingRecommended,
       optional: missingOptional,
     },
     installedByReadiness: {
+      required: [],
+      recommended: [],
+      optional: [],
+    },
+    waivedByReadiness: {
       required: [],
       recommended: [],
       optional: [],

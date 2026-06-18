@@ -2,6 +2,13 @@
 
 这个仓库视图用于让 Agent 按任务渐进式发现、激活和编排 skills/MCP/CLI，而不是一次性把所有能力塞进上下文。
 
+## 统一来源
+
+- `.scale/skills/` 是项目随仓库维护的通用 workflow skills 主来源，发包时必须包含。
+- `.scale/skills.json` 只负责路由、证据要求和 `skillSources` 配置，不再承载 skill 内容本身。
+- `skills/` 只作为旧项目 fallback；新模板、新扫描和新门禁都优先读取 `.scale/skills/`。
+- `~/.agents/skills`、`~/.codex/skills`、`~/.claude/skills` 等用户目录只代表本机安装状态，不能替代项目主来源。
+
 ## 渐进式披露
 
 1. 启动时只读取 Skill 元数据和一句话描述。

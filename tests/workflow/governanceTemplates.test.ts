@@ -63,6 +63,8 @@ describe('writeGovernanceTemplates', () => {
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'skill-plan.md'), 'utf-8')).toContain('## Tool Orchestration')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'skill-evidence.md'), 'utf-8')).toContain('## Browser Or Web Evidence')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Credential-Gated')
+    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'verification.md'), 'utf-8')).toContain('## Learning Evidence')
+    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'summary.md'), 'utf-8')).toContain('## Learning And Prevention')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Real Product Path')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Quick Setup')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('scale preflight --profile productSmoke --json')
@@ -99,6 +101,10 @@ describe('writeGovernanceTemplates', () => {
       requireSkillPlan: true,
     })
     const skills = JSON.parse(readFileSync(join(dir, '.scale', 'skills.json'), 'utf-8'))
+    expect(skills.skillSources).toMatchObject({
+      primaryRoot: '.scale/skills',
+      fallbackRoots: ['skills'],
+    })
     expect(skills.domains.ui.requiredSkills).toContain('awesome-design-md')
     expect(skills.domains.ui.requiredSkills).toContain('ui-ux-pro-max')
     expect(skills.domains.ui.recommendedSkills).toContain('frontend-design')

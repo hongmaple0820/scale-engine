@@ -2,12 +2,24 @@ import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import type {
   ResolvedSkillRoutingPolicy,
+  SkillSourcePolicy,
   SkillRoutingMode,
   SkillRoutingPolicyFile,
   SkillTaskLevel,
 } from './SkillRoutingTypes.js'
 
 const DEFAULT_ENFORCE_LEVELS: SkillTaskLevel[] = ['M', 'L', 'CRITICAL']
+const DEFAULT_SKILL_SOURCES: Required<SkillSourcePolicy> = {
+  primaryRoot: '.scale/skills',
+  fallbackRoots: ['skills'],
+  globalRoots: [
+    '~/.agents/skills',
+    '~/.codex/skills',
+    '~/.claude/skills',
+    '~/.gemini/skills',
+    '~/.omx/skills',
+  ],
+}
 
 export const DEFAULT_SKILL_ROUTING_POLICY: ResolvedSkillRoutingPolicy = {
   version: 1,
@@ -17,6 +29,7 @@ export const DEFAULT_SKILL_ROUTING_POLICY: ResolvedSkillRoutingPolicy = {
     enforceLevels: DEFAULT_ENFORCE_LEVELS,
     requireSkillPlan: true,
   },
+  skillSources: DEFAULT_SKILL_SOURCES,
   domains: {
     ui: {
       detect: {
@@ -316,6 +329,7 @@ export function resolveSkillRoutingPolicy(input: SkillRoutingPolicyFile | null |
       enforceLevels: normalizeLevels(input?.policy?.enforceLevels),
       requireSkillPlan: input?.policy?.requireSkillPlan ?? DEFAULT_SKILL_ROUTING_POLICY.policy.requireSkillPlan,
     },
+    skillSources: normalizeSkillSources(input?.skillSources),
     domains: {
       ...DEFAULT_SKILL_ROUTING_POLICY.domains,
       ...(input?.domains ?? {}),
@@ -331,6 +345,7 @@ export function skillRoutingPolicyTemplate(mode: 'minimal' | 'standard' | 'criti
       enforceLevels: DEFAULT_ENFORCE_LEVELS,
       requireSkillPlan: true,
     },
+    skillSources: DEFAULT_SKILL_SOURCES,
     domains: DEFAULT_SKILL_ROUTING_POLICY.domains,
   }
   return JSON.stringify(policy, null, 2) + '\n'
@@ -347,4 +362,32 @@ function normalizeLevels(value: unknown): SkillTaskLevel[] {
     level === 'S' || level === 'M' || level === 'L' || level === 'CRITICAL',
   )
   return levels.length > 0 ? levels : DEFAULT_ENFORCE_LEVELS
+}
+
+function normalizeSkillSources(value: unknown): Required<SkillSourcePolicy> {
+  if (!value || typeof value !== 'object') return DEFAULT_SKILL_SOURCES
+  const record = value as Record<string, unknown>
+  const primaryRoot = normalizeRoot(record.primaryRoot) ?? DEFAULT_SKILL_SOURCES.primaryRoot
+  const fallbackRoots = normalizeRoots(record.fallbackRoots, DEFAULT_SKILL_SOURCES.fallbackRoots)
+    .filter(root => root !== primaryRoot)
+  const globalRoots = normalizeRoots(record.globalRoots, DEFAULT_SKILL_SOURCES.globalRoots)
+  return {
+    primaryRoot,
+    fallbackRoots,
+    globalRoots,
+  }
+}
+
+function normalizeRoots(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback
+  const roots = value
+    .map(normalizeRoot)
+    .filter((root): root is string => Boolean(root))
+  return roots.length > 0 ? [...new Set(roots)] : fallback
+}
+
+function normalizeRoot(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized || undefined
 }

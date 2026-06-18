@@ -20,6 +20,26 @@ describe('skill routing', () => {
 
     expect(intents[0].domain).toBe('ui')
     expect(intents[0].reasons.join(',')).toContain('keyword:ui')
+    expect(policy.skillSources).toMatchObject({
+      primaryRoot: '.scale/skills',
+      fallbackRoots: ['skills'],
+    })
+  })
+
+  it('keeps skill source roots explicit and normalized', () => {
+    const policy = resolveSkillRoutingPolicy({
+      skillSources: {
+        primaryRoot: '.agent/skills/',
+        fallbackRoots: ['.scale/skills', '.agent/skills', 'skills\\'],
+        globalRoots: ['~/.agents/skills/', '~/.codex/skills'],
+      },
+    })
+
+    expect(policy.skillSources).toEqual({
+      primaryRoot: '.agent/skills',
+      fallbackRoots: ['.scale/skills', 'skills'],
+      globalRoots: ['~/.agents/skills', '~/.codex/skills'],
+    })
   })
 
   it('creates a domain-specific skill plan with artifacts and skills', () => {

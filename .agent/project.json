@@ -7,6 +7,7 @@
       "description": "Validate the repository workflow scaffold itself.",
       "checks": [
         "docs-health",
+        "learning-health",
         "lint"
       ]
     },
@@ -17,6 +18,7 @@
       ],
       "checks": [
         "docs-health",
+        "learning-health",
         "lint",
         "typecheck",
         "test",
@@ -28,6 +30,7 @@
       "services": "*",
       "checks": [
         "docs-health",
+        "learning-health",
         "lint",
         "typecheck",
         "test",
@@ -43,6 +46,7 @@
       "required": true,
       "commands": {
         "docs-health": "node scripts/workflow/docs-health.mjs --report .agent/logs/docs-health/docs-health-report.json",
+        "learning-health": "node scripts/workflow/learning-health.mjs --report .agent/logs/learning-health/learning-health-report.json",
         "typecheck": "npm run typecheck"
       }
     }
@@ -55,6 +59,7 @@
       "commands": {
         "build": "npm run build",
         "docs-health": "node scripts/workflow/docs-health.mjs --report .agent/logs/docs-health/docs-health-report.json",
+        "learning-health": "node scripts/workflow/learning-health.mjs --report .agent/logs/learning-health/learning-health-report.json",
         "lint": "npm run lint",
         "typecheck": "npm run typecheck",
         "test": "npm run test",
@@ -66,6 +71,9 @@
           "npm"
         ],
         "docs-health": [
+          "node"
+        ],
+        "learning-health": [
           "node"
         ],
         "lint": [

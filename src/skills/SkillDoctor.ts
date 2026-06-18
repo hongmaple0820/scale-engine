@@ -4,6 +4,8 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { externalCommandExists, resolveExternalCommandPath } from '../core/ExternalCommand.js'
 import { WORKFLOW_AGENT_SKILL_CATALOG } from './SkillCatalog.js'
 import type { WorkflowSkillCatalogEntry, WorkflowSkillReadinessTier } from './SkillCatalog.js'
+import { loadSkillRoutingPolicy } from './routing/SkillPolicy.js'
+import type { SkillSourcePolicy } from './routing/SkillRoutingTypes.js'
 
 const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
   {
@@ -226,6 +228,7 @@ export interface SkillDoctorReport {
   installed: number
   missing: number
   waived: number
+  sourceRoots: Required<SkillSourcePolicy>
   missingByReadiness: Record<WorkflowSkillReadinessTier, string[]>
   installedByReadiness: Record<WorkflowSkillReadinessTier, string[]>
   waivedByReadiness: Record<WorkflowSkillReadinessTier, string[]>
@@ -246,9 +249,11 @@ export function inspectWorkflowSkills(options: SkillDoctorOptions = {}): SkillDo
   const scaleDir = resolveScaleDir(projectDir, options.scaleDir)
   const homeDir = options.homeDir ?? homedir()
   const waivers = loadWorkflowSkillWaivers({ projectDir, scaleDir, waivers: options.waivers })
+  const sourceRoots = loadWorkflowSkillSourceRoots({ projectDir, scaleDir })
   const skills = workflowSkillCatalog().map(entry => inspectWorkflowSkill(entry, {
     projectDir,
     homeDir,
+    sourceRoots,
     env: options.env ?? process.env,
     commandExists: options.commandExists ?? externalCommandExists,
     resolveCommandPath: options.resolveCommandPath ?? resolveExternalCommandPath,
@@ -265,6 +270,7 @@ export function inspectWorkflowSkills(options: SkillDoctorOptions = {}): SkillDo
     installed,
     missing,
     waived,
+    sourceRoots,
     missingByReadiness,
     installedByReadiness,
     waivedByReadiness,
@@ -306,6 +312,7 @@ export function inspectRequiredWorkflowSkills(requiredSkills: string[], options:
 interface InspectWorkflowSkillContext {
   projectDir: string
   homeDir: string
+  sourceRoots: Required<SkillSourcePolicy>
   env: Record<string, string | undefined>
   commandExists: (command: string) => boolean
   resolveCommandPath: (command: string) => string | null
@@ -326,15 +333,14 @@ function inspectWorkflowSkill(
 
 function inspectSkillFileWorkflowSkill(entry: WorkflowSkillCatalogEntry, context: InspectWorkflowSkillContext): SkillDoctorEntry {
   const declaredPath = entry.definition.execution.config.skillPath
+  const projectRoots = [context.sourceRoots.primaryRoot, ...context.sourceRoots.fallbackRoots]
+    .map(root => resolveSkillRoot(root, context.projectDir, context.homeDir))
+  const globalRoots = context.sourceRoots.globalRoots
+    .map(root => resolveSkillRoot(root, context.projectDir, context.homeDir))
   const checkedPaths = unique([
+    ...projectRoots.map(root => join(root, entry.id, 'SKILL.md')),
     declaredPath ? resolveSkillPath(declaredPath, context.projectDir, context.homeDir) : undefined,
-    join(context.homeDir, '.agents', 'skills', entry.id, 'SKILL.md'),
-    join(context.homeDir, '.codex', 'skills', entry.id, 'SKILL.md'),
-    join(context.homeDir, '.claude', 'skills', entry.id, 'SKILL.md'),
-    join(context.homeDir, '.gemini', 'skills', entry.id, 'SKILL.md'),
-    join(context.homeDir, '.omx', 'skills', entry.id, 'SKILL.md'),
-    join(context.projectDir, 'skills', entry.id, 'SKILL.md'),
-    join(context.projectDir, '.scale', 'skills', entry.id, 'SKILL.md'),
+    ...globalRoots.map(root => join(root, entry.id, 'SKILL.md')),
   ].filter((path): path is string => Boolean(path)))
 
   const detectedPath = checkedPaths.find(path => existsSync(path))
@@ -445,6 +451,10 @@ function resolveSkillPath(path: string, projectDir: string, homeDir: string): st
   return resolve(projectDir, path)
 }
 
+function resolveSkillRoot(root: string, projectDir: string, homeDir: string): string {
+  return resolveSkillPath(root, projectDir, homeDir)
+}
+
 function resolveScaleDir(projectDir: string, scaleDir = '.scale'): string {
   return isAbsolute(scaleDir) ? scaleDir : resolve(projectDir, scaleDir)
 }
@@ -474,6 +484,13 @@ function loadWorkflowSkillWaivers(options: {
     return waiverMap
   }
   return waiverMap
+}
+
+function loadWorkflowSkillSourceRoots(options: {
+  projectDir: string
+  scaleDir: string
+}): Required<SkillSourcePolicy> {
+  return loadSkillRoutingPolicy(options.projectDir, options.scaleDir).skillSources
 }
 
 function normalizeWorkflowSkillWaivers(value: unknown): WorkflowSkillWaiver[] {
