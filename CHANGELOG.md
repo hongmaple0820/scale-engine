@@ -1,3 +1,13 @@
+## 0.50.10 - 2026-06-18
+
+### Workflow Governance
+- Move repo-local reusable workflow skills under `.scale/skills/` and keep legacy `skills/` as fallback-only.
+- Add a blocking learning-health gate for skill source policy, memory evidence wiring, verification-chain coverage, package surface checks, and learning artifact templates.
+- Wire learning-health into release checks, GitHub source and publish gates, generated verification profiles, and setup smoke expectations.
+- Package `.scale/skills/manifest.json` and `scripts/workflow/learning-health.mjs` so installed projects keep the same governance surface.
+
+---
+
 ## 0.50.9 - 2026-06-18
 
 ### CI and Workflow
