@@ -270,6 +270,7 @@ function checkChangeDocumentationCoupling(root) {
   const workflowImpact = changedFiles.filter(file =>
     file.startsWith('src/') ||
     file.startsWith('scripts/') ||
+    file.startsWith('.github/workflows/') ||
     file.startsWith('.agent/') ||
     file.startsWith('.scale/') ||
     file === 'package.json' ||
