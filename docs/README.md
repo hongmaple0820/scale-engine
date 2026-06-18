@@ -98,9 +98,9 @@
 | 文档 | 说明 |
 | --- | --- |
 | [promote-article-v2.md](promote-article-v2.md) | 推广文章草稿 v2 |
-| [promote-article-v2.html](promote-article-v2.html) | 推广文章 HTML v2 |
+| `promote-article-v2.html` | 推广文章 HTML v2（本地生成产物，未作为主来源入库） |
 | [promote-article-v3.md](promote-article-v3.md) | 推广文章草稿 v3 |
-| [promote-article-v3.html](promote-article-v3.html) | 推广文章 HTML v3 |
+| `promote-article-v3.html` | 推广文章 HTML v3（本地生成产物，未作为主来源入库） |
 | [imgs/](imgs/) | 社群二维码和推广图片 |
 
 ## 维护规则
