@@ -1,6 +1,6 @@
 param(
   [switch]$DryRun,
-  [ValidateSet('workflow', 'quality', 'all')]
+  [ValidateSet('workflow', 'quality', 'fast-lane', 'all')]
   [string]$Mode = 'all'
 )
 

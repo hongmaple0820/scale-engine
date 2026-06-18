@@ -1,4 +1,4 @@
-.PHONY: help preflight preflight-ci new-task plan explore checkpoint gate gate-workflow gate-quality gate-fast-lane resume status lint-scaffold verify verify-list validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt setup-smoke scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
+.PHONY: help preflight preflight-ci new-task plan explore checkpoint gate gate-workflow gate-quality gate-fast-lane resume status lint-scaffold verify verify-list verify-docs-health validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt setup-smoke scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
 
 SCALE ?= scale
 SCALE_SMOKE ?= node --import tsx src/api/cli.ts
@@ -57,6 +57,9 @@ verify:
 
 verify-list:
 	bash scripts/workflow/verify.sh --list
+
+verify-docs-health:
+	node scripts/workflow/docs-health.mjs
 
 validate:
 	bash scripts/validate-config.sh

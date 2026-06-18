@@ -4,6 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 DRY_RUN=false
 MODE="all"
@@ -151,6 +152,24 @@ if [ -n "$GATE_TIMES" ]; then
   echo -e "$GATE_TIMES" | while IFS=: read -r g d; do
     if [ -n "$g" ]; then
       echo "  $g: $d"
+    fi
+  done
+fi
+
+if [ "$DRY_RUN" = true ]; then
+  for node_script in \
+    scripts/workflow/docs-health.mjs \
+    scripts/workflow/run-vitest.mjs \
+    scripts/workflow/setup-smoke.mjs
+  do
+    if [ -f "$PROJECT_ROOT/$node_script" ]; then
+      echo "[DRY-RUN] node --check $node_script"
+      if node --check "$PROJECT_ROOT/$node_script" >/dev/null; then
+        echo "  schedulable"
+      else
+        echo "  syntax failed"
+        FAILED=$((FAILED + 1))
+      fi
     fi
   done
 fi

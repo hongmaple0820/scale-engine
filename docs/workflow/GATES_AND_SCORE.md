@@ -87,3 +87,11 @@ Default thresholds:
 - `CRITICAL`: 90
 
 Use `--warn-only` when the score should be reported without failing the command.
+
+## Documentation Health Gate
+
+`scripts/workflow/docs-health.mjs` is the shared implementation behind `G8`, `G17`, `make verify-docs-health`, `npm run docs:health`, and release checks.
+
+The gate is intentionally broader than whitespace checks. It blocks on maintained docs with merge markers or mojibake, duplicate keys in workflow JSON, workflow/source/config changes without an entry-doc update, root-level generated artifacts, oversized changed files, and broken internal Markdown links.
+
+Reports are written under `.agent/logs/docs-health/` when invoked from G8, G17, or verification profiles.

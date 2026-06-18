@@ -11,6 +11,7 @@
     ".turbo"
   ],
   "retainedRuntimeDirectories": [
+    ".agent/logs",
     ".scale/tmp",
     ".scale/evidence",
     ".scale/reports",
@@ -25,8 +26,10 @@
     "docs": "engineering",
     "docs/standards": "engineering",
     "docs/workflow": "engineering",
+    "docs/assets": "engineering",
     "docs/decisions": "architecture",
     "docs/modules": "module-owner",
+    "tests/artifacts": "engineering",
     ".scale": "engineering"
   },
   "modules": {
