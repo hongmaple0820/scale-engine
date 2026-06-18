@@ -1,3 +1,12 @@
+## 0.50.9 - 2026-06-18
+
+### CI and Workflow
+- Add a blocking docs-health gate for maintained docs, workflow JSON duplicate keys, documentation coupling, root-level runtime artifacts, changed-file size limits, and internal Markdown links.
+- Wire docs-health into G8, G17, local verification profiles, release checks, GitHub source CI, published-package gate checks, and tag-based publish workflows.
+- Make artifact governance block by default and package the docs-health scripts in the npm tarball.
+
+---
+
 ## 0.50.8 - 2026-06-16
 
 ### Agent Ecosystem
