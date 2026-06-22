@@ -21,6 +21,10 @@ on:
         default: '3'
         type: string
 
+concurrency:
+  group: performance-baseline
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -57,5 +61,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add performance-trend.csv
-          git diff --cached --quiet || git commit -m "perf: update gate performance baseline"
+          git diff --cached --quiet || git commit -m "perf: update gate performance baseline [skip ci]"
           git push

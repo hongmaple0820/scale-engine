@@ -78,6 +78,14 @@ node scripts/workflow/docs-health.mjs --json
 
 GitHub source CI, published-package gate checks, and tag-based publish workflows also run `npm run learning:health` and `npm run docs:health` so Linux/macOS CI and release automation enforce the same documentation, artifact, skill-source, and memory-evidence policy as local verification.
 
+### GitHub Actions CI Policy
+
+Repository GitHub Actions follow the `dev -> master` branch policy from `.scale/workspace.json`. Source and package gate workflows run on pull requests and pushes to `dev` or `master`; no workflow should target a non-existent primary branch.
+
+Every workflow must define explicit `permissions` and `concurrency`. Push and pull request checks cancel older in-progress runs for the same ref, while release and scheduled baseline jobs do not cancel in-progress runs because they publish or write baseline evidence.
+
+The npm publish workflow runs on Node.js 20, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`.
+
 See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md) for the deterministic prompt rewrite layer used by `scale prompt optimize` and `scale define`.
 
 See [../VIBE-TEMPLATES.md](../VIBE-TEMPLATES.md) for built-in vibe coding templates. The default live dashboard is the Vue 3 + Naive UI app at the server root `/`. The Vue dashboard includes Overview, Workflow, Topology, Monitoring, Token/Cost, Documents, Knowledge, and Prompt Studio pages. Prompt Studio covers templates, packs, custom prompts, copy/download/export, deterministic optimization, and safe one-click agent planning. The built-in Vibe packs include Agentic company flow, multi-agent governed delivery, and budget-aware long-task autopilot prompts that connect agent profiles, role reviews, runtime evidence, gbrain, repository knowledge, token budgets, and gates. For machine-readable orchestration, use `scale agent plan --task "<task>" --json`, `scale ai-os plan --task "<task>" --json`, or the dashboard `/api/agent/plan` action; all emit `agentCollaboration` with selected roles, DAG edges, handoffs, review gates, and per-role token budget. Guarded AI OS runs with verification commands add `agentExecution` settlement evidence for roles, handoffs, and review gates, and `scale ai-os status --json` reports the `agent-collaboration` intelligence signal. The Knowledge page separates repo knowledge base, gbrain memory, and graph visualization instead of treating memory as the whole knowledge system. Documents and knowledge documents support preview, copy, single-file download, and governed online editing; the Knowledge page can import new files into `.scale/knowledge/imports/`. The graph view uses an Apache ECharts graph workbench with a large canvas, force layout, wheel zoom, drag pan, draggable nodes, node-count limiting for large graphs, node inspector, document jump, and graph export.
