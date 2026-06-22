@@ -2,11 +2,17 @@ name: SCALE QA Check
 
 on:
   deployment_status:
-    states: [success]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scale-qa-${{ github.event.deployment_status.environment }}-${{ github.event.deployment.ref }}
+  cancel-in-progress: true
 
 jobs:
   scale-browser-qa:
-    if: github.event.deployment_status.environment == 'preview' || github.event.deployment_status.environment == 'production'
+    if: github.event.deployment_status.state == 'success' && (github.event.deployment_status.environment == 'preview' || github.event.deployment_status.environment == 'production')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -16,6 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
       - name: Install SCALE Engine
         run: npm install -g @hongmaple0820/scale-engine

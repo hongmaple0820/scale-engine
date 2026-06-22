@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   id-token: write
@@ -21,9 +25,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: '20'
           registry-url: https://registry.npmjs.org
-          package-manager-cache: false
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -51,7 +55,9 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish
-        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
 
       - name: Create GitHub Release
         env:

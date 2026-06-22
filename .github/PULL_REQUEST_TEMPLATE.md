@@ -12,9 +12,9 @@
 
 ## Test Plan
 
-- [ ] `pnpm test` passes
-- [ ] `pnpm lint` passes
-- [ ] `pnpm typecheck` passes
+- [ ] `npm test` passes
+- [ ] `npm run lint` passes
+- [ ] `npm run typecheck` passes
 - [ ] New tests added for new functionality
 - [ ] Coverage remains above 80%
 
