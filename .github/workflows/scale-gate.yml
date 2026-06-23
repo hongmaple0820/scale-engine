@@ -41,7 +41,10 @@ jobs:
           npm run docs:health
 
       - name: Install published SCALE Engine
-        run: npm install -g @hongmaple0820/scale-engine
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          npm install -g "@hongmaple0820/scale-engine@${PKG_VERSION}" || \
+            npm install -g @hongmaple0820/scale-engine@latest
 
       - name: Run published package preflight gates
         id: gates

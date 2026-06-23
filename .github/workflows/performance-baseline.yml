@@ -19,7 +19,7 @@ on:
         description: 'Number of measurement runs'
         required: false
         default: '3'
-        type: string
+        type: number
 
 concurrency:
   group: performance-baseline
@@ -45,8 +45,8 @@ jobs:
       - name: Measure gate performance
         run: |
           bash scripts/performance/measure-gates.sh \
-            --runs ${{ github.event.inputs.runs || '3' }} \
-            --mode ${{ github.event.inputs.mode || 'fast-lane' }} \
+            --runs ${{ inputs.runs || 3 }} \
+            --mode ${{ inputs.mode || 'fast-lane' }} \
             --output performance-trend.csv
 
       - name: Upload performance data
@@ -61,5 +61,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add performance-trend.csv
-          git diff --cached --quiet || git commit -m "perf: update gate performance baseline [skip ci]"
-          git push
+          if ! git diff --cached --quiet; then
+            git commit -m "perf: update gate performance baseline [skip ci]"
+            git push origin HEAD:master
+          fi
