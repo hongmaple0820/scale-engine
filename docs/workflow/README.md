@@ -84,6 +84,12 @@ Repository GitHub Actions follow the `dev -> master` branch policy from `.scale/
 
 Every workflow must define explicit `permissions` and `concurrency`. Push and pull request checks cancel older in-progress runs for the same ref, while release and scheduled baseline jobs do not cancel in-progress runs because they publish or write baseline evidence.
 
+Source CI runs learning health, docs health, lint, typecheck, build, tests, a high-severity production dependency audit, and the source fast-lane preflight before changes can land.
+
+Published-package gates install the package version declared in `package.json` first, then fall back to `@latest` only when that exact version is not yet published.
+
+The performance baseline workflow uses typed `workflow_dispatch` inputs and pushes baseline updates to the explicit `origin HEAD:master` ref.
+
 The npm publish workflow runs on Node.js 20, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`.
 
 See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md) for the deterministic prompt rewrite layer used by `scale prompt optimize` and `scale define`.
