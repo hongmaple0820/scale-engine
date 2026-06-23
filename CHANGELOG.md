@@ -1,3 +1,13 @@
+## 0.50.11 - 2026-06-23
+
+### CI and Release
+- Add Source CI lint and high-severity production dependency audit gates.
+- Make published-package gates prefer the package version declared in `package.json` before falling back to `@latest`.
+- Harden performance baseline dispatch inputs and push the generated baseline update to an explicit `origin HEAD:master` ref.
+- Keep npm publish provenance and release-note generation behavior aligned with the current GitHub Actions and GitHub CLI capabilities.
+
+---
+
 ## 0.50.10 - 2026-06-18
 
 ### Workflow Governance
