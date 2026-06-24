@@ -32,16 +32,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate Gitee release sync secret
-        if: github.repository == 'hongmaple0820/scale-engine'
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          if [ -z "$GITEE_TOKEN" ]; then
-            echo "::error::GITEE_TOKEN is required for official releases so Gitee releases cannot silently drift from GitHub/npm."
-            exit 1
-          fi
-
       - name: Verify
         run: |
           npm run learning:health
@@ -70,12 +60,3 @@ jobs:
             --title "v${VERSION}" \
             --notes "${NOTES:-Release v${VERSION}}" \
             --generate-notes
-
-      - name: Sync releases to Gitee
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          npm run release:sync-gitee -- \
-            --gitee-owner hongmaple \
-            --gitee-repo scale-engine
