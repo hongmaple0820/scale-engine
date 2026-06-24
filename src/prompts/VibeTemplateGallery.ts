@@ -91,7 +91,7 @@ export const VISUAL_VIBE_TEMPLATES: VisualVibeTemplate[] = [
     scenario: '把功能需求转成可执行的界面体验方案',
     bestFor: ['界面设计', '交互体验', '视觉审美', '前端原型'],
     scaleWorkflow: ['explore', 'plan', 'build', 'verify'],
-    suggestedSkills: ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'design-review'],
+    suggestedSkills: ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'design-review'],
     suggestedTools: ['agent-browser', 'mcp-chrome-devtools', 'webapp-testing'],
     outputs: ['ui-spec.md', 'design-system-impact.md', 'visual-review.md'],
     coachingQuestions: [
@@ -111,7 +111,7 @@ export const VISUAL_VIBE_TEMPLATES: VisualVibeTemplate[] = [
 4. verify：要求截图、浏览器检查、控制台/网络检查和移动端适配证据。
 
 必须主动使用 skills/MCP/CLI：
-- 设计方向用 awesome-design-md / ui-ux-pro-max / frontend-design。
+- 设计方向用 impeccable / taste-skill / awesome-design-md / ui-ux-pro-max / frontend-design。
 - 浏览器验证用 agent-browser / Chrome DevTools MCP / webapp-testing。
 - 如需真实网页或竞品参考，使用 web-access 并记录来源。
 

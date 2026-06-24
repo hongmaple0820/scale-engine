@@ -42,7 +42,7 @@ function uiPlan(projectDir: string) {
     policy: resolveToolPolicy({ mode: 'evidence-required' }),
     capabilityReport: inspectToolCapabilities({
       projectDir,
-      toolIds: ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
+      toolIds: ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
     }),
   })
   return orchestrator.plan({ skillPlan })
@@ -51,8 +51,7 @@ function uiPlan(projectDir: string) {
 describe('ToolEvidenceGate', () => {
   it('blocks M level required tools when no execution evidence exists', () => {
     const projectDir = makeProject()
-    writeSkill(projectDir, 'awesome-design-md')
-    writeSkill(projectDir, 'ui-ux-pro-max')
+    writeSkill(projectDir, 'impeccable')
     const evidenceStore = new ToolEvidenceStore({ projectDir })
 
     const result = evaluateToolEvidenceGate({
@@ -69,20 +68,19 @@ describe('ToolEvidenceGate', () => {
       complete: false,
       blocked: true,
     })
-    expect(result.missing.map(item => item.toolId)).toEqual(expect.arrayContaining(['awesome-design-md', 'ui-ux-pro-max']))
+    expect(result.missing.map(item => item.toolId)).toEqual(expect.arrayContaining(['impeccable']))
   })
 
   it('requires passed evidence and treats dry-run skipped evidence as incomplete by default', () => {
     const projectDir = makeProject()
-    writeSkill(projectDir, 'awesome-design-md')
-    writeSkill(projectDir, 'ui-ux-pro-max')
+    writeSkill(projectDir, 'impeccable')
     const evidenceStore = new ToolEvidenceStore({ projectDir })
     const plan = uiPlan(projectDir)
 
     evidenceStore.save({
       taskId: plan.taskId,
       domain: 'ui',
-      tool: 'awesome-design-md',
+      tool: 'impeccable',
       adapter: 'skill',
       status: 'skipped',
       sanitizedInput: {},
@@ -93,7 +91,7 @@ describe('ToolEvidenceGate', () => {
     evidenceStore.save({
       taskId: plan.taskId,
       domain: 'ui',
-      tool: 'ui-ux-pro-max',
+      tool: 'taste-skill',
       adapter: 'skill',
       status: 'passed',
       sanitizedInput: {},
@@ -111,14 +109,13 @@ describe('ToolEvidenceGate', () => {
 
     expect(result.complete).toBe(false)
     expect(result.blocked).toBe(true)
-    expect(result.skipped.map(item => item.toolId)).toEqual(['awesome-design-md'])
-    expect(result.passed.map(item => item.toolId)).toEqual(['ui-ux-pro-max'])
+    expect(result.skipped.map(item => item.toolId)).toEqual(['impeccable'])
+    expect(result.passed.map(item => item.toolId)).toEqual([])
   })
 
   it('passes when every required tool has passed evidence and skips S level checks', () => {
     const projectDir = makeProject()
-    writeSkill(projectDir, 'awesome-design-md')
-    writeSkill(projectDir, 'ui-ux-pro-max')
+    writeSkill(projectDir, 'impeccable')
     const evidenceStore = new ToolEvidenceStore({ projectDir })
     const plan = uiPlan(projectDir)
 

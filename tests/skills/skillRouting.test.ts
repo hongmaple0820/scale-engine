@@ -94,13 +94,68 @@ describe('skill routing', () => {
     })
 
     expect(plan.intents.map(intent => intent.domain)).toContain('ui')
-    expect(plan.requiredSkills).toContain('awesome-design-md')
-    expect(plan.requiredSkills).toContain('ui-ux-pro-max')
+    expect(plan.requiredSkills).toContain('impeccable')
+    expect(plan.requiredSkills).not.toContain('awesome-design-md')
+    expect(plan.requiredSkills).not.toContain('ui-ux-pro-max')
+    expect(plan.recommendedSkills).toContain('taste-skill')
+    expect(plan.recommendedSkills).toContain('awesome-design-md')
+    expect(plan.recommendedSkills).toContain('ui-ux-pro-max')
     expect(plan.recommendedSkills).toContain('frontend-design')
     expect(plan.recommendedSkills).toContain('webapp-testing')
     expect(plan.recommendedSkills).toEqual(expect.arrayContaining(['agent-browser', 'mcp-chrome-devtools']))
     expect(plan.requiredArtifacts).toEqual(expect.arrayContaining(['skill-evidence.md', 'ui-spec.md', 'visual-review.md']))
     expect(plan.requiredVerification).toEqual(expect.arrayContaining(['design-system', 'screenshot', 'responsive-check', 'browser-run', 'visual-review']))
+  })
+
+  it('routes document parsing work to LiteParse evidence', () => {
+    const policy = resolveSkillRoutingPolicy(null)
+    const plan = createSkillPlan({
+      taskId: 'TASK-DOC-PARSE',
+      taskName: 'Parse vendor PDF',
+      description: 'Parse PDF with OCR and source citation before knowledge ingestion',
+      level: 'M',
+      files: ['docs/source/vendor.pdf'],
+      policy,
+    })
+
+    expect(plan.intents.map(intent => intent.domain)).toContain('documentParsing')
+    expect(plan.recommendedSkills).toContain('liteparse')
+    expect(plan.requiredArtifacts).toEqual(expect.arrayContaining(['docs-impact.md', 'skill-evidence.md']))
+    expect(plan.requiredVerification).toEqual(expect.arrayContaining(['parse-output', 'source-citation']))
+  })
+
+  it('routes diagramming work to D2 validation evidence', () => {
+    const policy = resolveSkillRoutingPolicy(null)
+    const plan = createSkillPlan({
+      taskId: 'TASK-DIAGRAM',
+      taskName: 'Architecture diagram',
+      description: 'Create a D2 architecture diagram and validate it',
+      level: 'M',
+      files: ['docs/diagrams/runtime.d2'],
+      policy,
+    })
+
+    expect(plan.intents.map(intent => intent.domain)).toContain('diagramming')
+    expect(plan.recommendedSkills).toContain('d2-diagram')
+    expect(plan.requiredArtifacts).toEqual(expect.arrayContaining(['architecture-review.md', 'skill-evidence.md']))
+    expect(plan.requiredVerification).toContain('diagram-validate')
+  })
+
+  it('routes orchestration work to optional OpenSquilla review evidence', () => {
+    const policy = resolveSkillRoutingPolicy(null)
+    const plan = createSkillPlan({
+      taskId: 'TASK-ORCH',
+      taskName: 'Workflow orchestrator routing',
+      description: 'Review agent orchestration, MetaSkill routing, and token cost tradeoffs',
+      level: 'L',
+      files: ['src/orchestration/EffectsWiring.ts'],
+      policy,
+    })
+
+    expect(plan.intents.map(intent => intent.domain)).toContain('orchestration')
+    expect(plan.recommendedSkills).toContain('opensquilla')
+    expect(plan.requiredArtifacts).toEqual(expect.arrayContaining(['architecture-review.md', 'skill-evidence.md']))
+    expect(plan.requiredVerification).toContain('orchestration-review')
   })
 
   it('routes web research and logged-in browser work to web access evidence', () => {

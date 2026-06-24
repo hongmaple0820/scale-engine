@@ -13,8 +13,13 @@ describe('SkillRepository', () => {
     expect(ids).toEqual(expect.arrayContaining([
       'planning-with-files',
       'gbrain',
+      'impeccable',
+      'taste-skill',
       'awesome-design-md',
       'ui-ux-pro-max',
+      'liteparse',
+      'd2-diagram',
+      'opensquilla',
       'web-access',
       'agent-browser',
       'mcp-chrome-devtools',
@@ -49,10 +54,24 @@ describe('SkillRepository', () => {
       phase: 'design',
     })
 
-    expect(plan.primarySkills).toEqual(expect.arrayContaining(['awesome-design-md', 'ui-ux-pro-max']))
-    expect(plan.supportingSkills).toEqual(expect.arrayContaining(['frontend-design', 'webapp-testing', 'agent-browser', 'mcp-chrome-devtools']))
+    expect(plan.primarySkills).toContain('impeccable')
+    expect(plan.supportingSkills).toEqual(expect.arrayContaining(['taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'webapp-testing', 'agent-browser', 'mcp-chrome-devtools']))
     expect(plan.safetyRequired).toBe(true)
-    expect(plan.requiredEvidence).toEqual(expect.arrayContaining(['skill-safety-scan', 'design-spec', 'browser-evidence']))
+    expect(plan.requiredEvidence).toEqual(expect.arrayContaining(['skill-safety-scan', 'impeccable-report', 'design-spec', 'browser-evidence']))
+  })
+
+  it('recommends document parsing, diagramming, and orchestration references', () => {
+    const documentPlan = recommendSkillWorkflow({ description: 'Parse PDF with OCR for knowledge ingestion' })
+    expect(documentPlan.primarySkills).toContain('liteparse')
+    expect(documentPlan.requiredEvidence).toEqual(expect.arrayContaining(['parse-output', 'source-citation']))
+
+    const diagramPlan = recommendSkillWorkflow({ description: 'Create a D2 architecture diagram' })
+    expect(diagramPlan.primarySkills).toContain('d2-diagram')
+    expect(diagramPlan.requiredEvidence).toContain('diagram-validate')
+
+    const orchestrationPlan = recommendSkillWorkflow({ description: 'Review MetaSkill orchestration and model routing cost' })
+    expect(orchestrationPlan.supportingSkills).toContain('opensquilla')
+    expect(orchestrationPlan.requiredEvidence).toContain('orchestration-review')
   })
 
   it('recommends desktop automation with stricter safety boundaries', () => {
@@ -105,6 +124,8 @@ describe('SkillRepository', () => {
     expect(markdown).toContain('安全安装')
     expect(markdown).toContain('供应链')
     expect(markdown).toContain('awesome-design-md')
+    expect(markdown).toContain('impeccable')
+    expect(markdown).toContain('liteparse')
     expect(markdown).toContain('Third-Party Attribution')
     expect(markdown).toContain('planning-with-files')
     expect(markdown).toContain('gbrain')

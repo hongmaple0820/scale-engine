@@ -46,12 +46,10 @@ describe('ToolOrchestrator', () => {
   it('builds a tool execution plan from skill plan, tool policy, and capability status', () => {
     const projectDir = makeProject()
     const homeDir = makeProject()
-    writeSkill(projectDir, 'awesome-design-md')
-
     const capabilityReport = inspectToolCapabilities({
       projectDir,
       homeDir,
-      toolIds: ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'agent-browser'],
+      toolIds: ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'agent-browser'],
       commandExists: () => false,
     })
     const orchestrator = new ToolOrchestrator({
@@ -63,25 +61,23 @@ describe('ToolOrchestrator', () => {
     const plan = orchestrator.plan({ skillPlan: uiSkillPlan() })
 
     expect(plan.mode).toBe('block')
-    expect(plan.steps.map(step => step.toolId)).toEqual(expect.arrayContaining(['awesome-design-md', 'ui-ux-pro-max']))
-    expect(plan.steps.find(step => step.toolId === 'awesome-design-md')).toMatchObject({
-      required: true,
-      status: 'ready',
-      adapter: 'skill',
-    })
-    expect(plan.steps.find(step => step.toolId === 'ui-ux-pro-max')).toMatchObject({
+    expect(plan.steps.map(step => step.toolId)).toEqual(expect.arrayContaining(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max']))
+    expect(plan.steps.find(step => step.toolId === 'impeccable')).toMatchObject({
       required: true,
       status: 'missing',
     })
+    expect(plan.steps.find(step => step.toolId === 'taste-skill')).toMatchObject({
+      required: false,
+      status: 'missing',
+    })
     expect(plan.blockers).toEqual(expect.arrayContaining([
-      expect.stringContaining('ui-ux-pro-max'),
+      expect.stringContaining('impeccable'),
     ]))
   })
 
   it('runs ready steps in dry-run mode and writes skipped evidence', async () => {
     const projectDir = makeProject()
-    writeSkill(projectDir, 'awesome-design-md')
-    writeSkill(projectDir, 'ui-ux-pro-max')
+    writeSkill(projectDir, 'impeccable')
 
     const evidenceStore = new ToolEvidenceStore({ projectDir })
     const orchestrator = new ToolOrchestrator({
@@ -90,7 +86,7 @@ describe('ToolOrchestrator', () => {
       evidenceStore,
       capabilityReport: inspectToolCapabilities({
         projectDir,
-        toolIds: ['awesome-design-md', 'ui-ux-pro-max'],
+        toolIds: ['impeccable'],
       }),
     })
     const plan = orchestrator.plan({ skillPlan: uiSkillPlan() })
@@ -98,10 +94,10 @@ describe('ToolOrchestrator', () => {
     const report = await orchestrator.run(plan, { dryRun: true })
 
     expect(report.ok).toBe(true)
-    expect(report.evidence.map(item => item.status)).toEqual(['skipped', 'skipped'])
+    expect(report.evidence.map(item => item.status)).toEqual(['skipped'])
     expect(evidenceStore.summary('TASK-UI')).toMatchObject({
-      total: 2,
-      skipped: 2,
+      total: 1,
+      skipped: 1,
       ok: true,
     })
   })

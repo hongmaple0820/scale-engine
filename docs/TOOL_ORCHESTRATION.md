@@ -13,7 +13,7 @@ SCALE Engine 的技能路由不只推荐 Skills，还要约束 Agent 什么时�
 
 | 场景 | 主能力 | 备选能力 | 必须证据 |
 | --- | --- | --- | --- |
-| UI/UX 设计与实现 | `awesome-design-md`, `ui-ux-pro-max` | `frontend-design`, `design-review` | `ui-spec.md`, `visual-review.md`, design-system 记录 |
+| UI/UX 设计与实现 | `impeccable` | `taste-skill`, `awesome-design-md`, `ui-ux-pro-max`, `frontend-design`, `design-review` | `ui-spec.md`, `impeccable-report`, `visual-review.md`, design-system 记录 |
 | 登录态网页、动态网页、联网研究 | `web-access` | `agent-browser`, Chrome DevTools MCP | 来源引用、浏览器证据、网络/控制台记录 |
 | 浏览器 E2E | `webapp-testing`, Playwright | `agent-browser`, `web-access`, Chrome DevTools MCP | 截图、console、network、E2E 运行结果 |
 | 桌面/端侧 GUI 自动化 | CUA/computer-use | 手工验证、只读脚本 | 桌面截图、操作边界、测试账号或人工确认 |
@@ -31,13 +31,15 @@ SCALE Engine 的技能路由不只推荐 Skills，还要约束 Agent 什么时�
 ## 已沉淀到引擎的契约
 
 - `.scale/skills.json` 默认包含 `webResearch`, `browserAutomation`, `desktopAutomation`, `externalCli` 四类路由。
-- UI 任务默认 required skills 包含 `awesome-design-md` 和 `ui-ux-pro-max`，`frontend-design` 作为实现陪跑能力保留在 recommended。
+- UI 任务默认 required skill 包含 `impeccable`；`taste-skill`、`awesome-design-md`、`ui-ux-pro-max` 和 `frontend-design` 作为 recommended 支撑方向、设计系统、UX 验收与实现陪跑。
 - Web research 任务默认 required skill 包含 `web-access`。
 - Desktop automation 任务默认 required skill 包含 `cua`，并要求 operator-safety 与 side-effect-boundary 证据。
 - `docs/workflow/templates/skill-plan.md` 和 `skill-evidence.md` 包含工具编排、浏览器证据、桌面/外部 CLI 证据表。
 
 ## 参考来源
 
+- [pbakaus impeccable](https://github.com/pbakaus/impeccable)
+- [LeonxlnX taste-skill](https://github.com/LeonxlnX/taste-skill)
 - [VoltAgent awesome-design-md](https://github.com/VoltAgent/awesome-design-md)
 - [nextlevelbuilder ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
 - [vercel-labs agent-browser](https://github.com/vercel-labs/agent-browser)

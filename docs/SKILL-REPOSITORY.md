@@ -36,6 +36,8 @@
 | --- | --- | --- | --- | --- |
 | `planning-with-files` | planning | community | Use persistent planning files, progress logs, findings, active-plan selection, and plan attestation for long-running agent work. | memory-brain, web-access, code-reviewer |
 | `gbrain` | memory | community | Use as the default graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance. | memory-brain, codegraph |
+| `impeccable` | ui | ecosystem | Run as the required UI quality gate for deterministic anti-pattern detection before visual acceptance. | taste-skill, awesome-design-md, ui-ux-pro-max, webapp-testing |
+| `taste-skill` | ui | ecosystem | Choose the product visual direction and taste parameters before UI implementation starts. | impeccable, frontend-design, awesome-design-md |
 | `frontend-design` | ui | official | 在 DESIGN.md 和 UX 验收之后补齐前端实现约束、组件状态和落地方式。 | awesome-design-md, ui-ux-pro-max, webapp-testing |
 | `awesome-design-md` | ui | ecosystem | 建立产品级设计规范、品牌语言和 DESIGN.md。 | ui-ux-pro-max, frontend-design |
 | `ui-ux-pro-max` | ui | ecosystem | 补齐体验策略、交互状态和 UI 验收维度。 | awesome-design-md, webapp-testing |
@@ -44,6 +46,9 @@
 | `agent-browser` | browser | ecosystem | 与 Web 页面真实交互，补齐手工验收证据。 | web-access, webapp-testing, mcp-chrome-devtools |
 | `mcp-chrome-devtools` | browser | ecosystem | 调试控制台错误、网络请求、页面状态和性能问题。 | agent-browser, webapp-testing |
 | `cua` | desktop | ecosystem | 操作桌面应用并收集端侧截图、状态和副作用边界证据。 | web-access, agent-browser |
+| `liteparse` | document-parsing | ecosystem | Parse documents into structured outputs and screenshots for knowledge ingestion with source citation evidence. | graphify, memory-brain, web-access |
+| `d2-diagram` | diagramming | ecosystem | Use text-first diagrams with validation and formatting for architecture planning artifacts. | planning-with-files, architecture-diagram-generator |
+| `opensquilla` | orchestration | ecosystem | Reference external routing, context, MetaSkill orchestration, and feedback-loop ideas without making them required runtime dependencies. | gbrain, codegraph, codex-cli |
 | `code-reviewer` | review | official | 合并前分级审查缺陷、安全、可维护性和测试风险。 | security-and-hardening, update-docs |
 | `fix` | review | official | 提交前清理格式和 lint 问题。 | code-reviewer |
 | `pr-creator` | review | official | 生成标准 PR 描述和合并前说明。 | code-reviewer, update-docs |
@@ -60,3 +65,8 @@
 | --- | --- | --- | --- |
 | `planning-with-files` | MIT | adapted-concept | Inspired by and compatible with OthmanAdi/planning-with-files. SCALE should not copy upstream files unless the MIT license text and attribution are included. |
 | `gbrain` | MIT | external-reference | Optional external provider only. Do not vendor GBrain code into SCALE without preserving MIT license text, source revision, and modification notices. |
+| `impeccable` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
+| `taste-skill` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
+| `liteparse` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
+| `d2-diagram` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
+| `opensquilla` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |

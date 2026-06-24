@@ -15,11 +15,15 @@ describe('ToolPolicy', () => {
       enabled: true,
       requiredFor: ['webResearch'],
     })
-    expect(requiredToolsForDomains(policy, ['webResearch', 'ui']).map(tool => tool.id)).toEqual(expect.arrayContaining([
+    const required = requiredToolsForDomains(policy, ['webResearch', 'ui']).map(tool => tool.id)
+    expect(required).toEqual(expect.arrayContaining([
       'web-access',
-      'awesome-design-md',
-      'ui-ux-pro-max',
+      'impeccable',
     ]))
+    expect(requiredToolsForDomains(policy, ['ui']).map(tool => tool.id)).toEqual(['impeccable'])
+    expect(policy.tools['taste-skill'].recommendedFor).toContain('ui')
+    expect(policy.tools['awesome-design-md'].recommendedFor).toContain('ui')
+    expect(policy.tools['ui-ux-pro-max'].recommendedFor).toContain('ui')
   })
 
   it('merges project policy overrides without losing default tool contracts', () => {

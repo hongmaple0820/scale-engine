@@ -35,12 +35,21 @@ const KNOWN_SKILL_SOURCES = {
     { id: 'cua', source: 'https://github.com/trycua/cua', quality: 90, description: 'Computer use agent' },
   ],
   uiDesign: [
+    { id: 'impeccable', source: 'https://github.com/pbakaus/impeccable', quality: 98, description: 'Deterministic UI anti-pattern detection and design refinement' },
+    { id: 'taste-skill', source: 'https://github.com/LeonxlnX/taste-skill', quality: 93, description: 'Design-language generation and aesthetic direction setting' },
     { id: 'awesome-design-md', source: 'https://github.com/VoltAgent/awesome-design-md', quality: 88, description: 'DESIGN.md brand and product design system references' },
     { id: 'ui-ux-pro-max', source: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill', quality: 85, description: 'UX guidelines database' },
   ],
+  documentParsing: [
+    { id: 'liteparse', source: 'https://github.com/run-llama/llamaparse-agent-skills', quality: 88, description: 'Agent-first document parsing, OCR, screenshots, and batch ingestion' },
+  ],
   diagrams: [
+    { id: 'd2-diagram', source: 'https://github.com/terrastruct/d2', quality: 80, description: 'Declarative diagram-as-code workflow for architecture and flow diagrams' },
     { id: 'fireworks-tech-graph', source: 'https://github.com/yizhiyanhua-ai/fireworks-tech-graph', quality: 82, description: 'Tech flow diagrams' },
     { id: 'architecture-diagram-generator', source: 'https://github.com/Cocoon-AI/architecture-diagram-generator', quality: 85, description: 'System architecture diagrams' },
+  ],
+  agentInfrastructure: [
+    { id: 'opensquilla', source: 'https://github.com/opensquilla/opensquilla', quality: 75, description: 'Agent harness reference for routing, context management, orchestration, and feedback loops' },
   ],
   videoGeneration: [
     { id: 'hyperframes', source: 'https://github.com/heygen-com/hyperframes', quality: 75, description: 'HeyGen video generation' },
@@ -408,13 +417,16 @@ export class SkillDiscovery implements ISkillDiscovery {
     const typeToCategory: Record<string, string> = {
       'web-scraping': 'browserAutomation', 'e2e-testing': 'testing', 'ui-design': 'uiDesign',
       'diagram': 'diagrams', 'video-generation': 'videoGeneration', 'ppt-generation': 'pptGeneration',
-      'knowledge-graph': 'knowledgeGraph',
+      'knowledge-graph': 'knowledgeGraph', 'document-parsing': 'documentParsing', 'pdf-extraction': 'documentParsing',
+      'agent-orchestration': 'agentInfrastructure',
     }
     if (typeToCategory[taskType]) return typeToCategory[taskType]
     for (const kw of keywords) {
       if (kw.includes('browser')) return 'browserAutomation'
       if (kw.includes('design')) return 'uiDesign'
+      if (kw.includes('pdf') || kw.includes('ocr') || kw.includes('document')) return 'documentParsing'
       if (kw.includes('diagram')) return 'diagrams'
+      if (kw.includes('orchestrat') || kw.includes('agent harness') || kw.includes('routing')) return 'agentInfrastructure'
       if (kw.includes('test')) return 'testing'
     }
     return null

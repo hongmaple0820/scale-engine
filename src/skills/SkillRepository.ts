@@ -7,6 +7,9 @@ export type SkillRepositoryCategory =
   | 'testing'
   | 'review'
   | 'docs'
+  | 'document-parsing'
+  | 'diagramming'
+  | 'orchestration'
   | 'agent-cli'
   | 'role-library'
   | 'discovery'
@@ -126,6 +129,30 @@ export const SKILL_REPOSITORY: SkillRepositoryEntry[] = [
     },
   }),
   skill({
+    id: 'impeccable',
+    name: 'Impeccable',
+    category: 'ui',
+    description: 'Deterministic UI anti-pattern detection and design refinement workflow for AI-generated interfaces.',
+    sourceUrl: 'https://github.com/pbakaus/impeccable',
+    installCommand: 'npx impeccable skills install',
+    trust: 'ecosystem',
+    primaryUse: 'Run as the required UI quality gate for deterministic anti-pattern detection before visual acceptance.',
+    combineWith: ['taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'webapp-testing'],
+    evidence: ['impeccable-report', 'visual-review', 'screenshot'],
+  }),
+  skill({
+    id: 'taste-skill',
+    name: 'Taste Skill',
+    category: 'ui',
+    description: 'Design-language generation workflow for selecting aesthetic direction before UI implementation.',
+    sourceUrl: 'https://github.com/LeonxlnX/taste-skill',
+    installCommand: 'npx skills add LeonxlnX/taste-skill',
+    trust: 'ecosystem',
+    primaryUse: 'Choose the product visual direction and taste parameters before UI implementation starts.',
+    combineWith: ['impeccable', 'frontend-design', 'awesome-design-md'],
+    evidence: ['design-direction', 'taste-parameters', 'ui-spec'],
+  }),
+  skill({
     id: 'frontend-design',
     name: 'Frontend Design',
     category: 'ui',
@@ -220,6 +247,42 @@ export const SKILL_REPOSITORY: SkillRepositoryEntry[] = [
     primaryUse: '操作桌面应用并收集端侧截图、状态和副作用边界证据。',
     combineWith: ['web-access', 'agent-browser'],
     evidence: ['desktop-screenshot', 'operator-safety', 'side-effect-boundary'],
+  }),
+  skill({
+    id: 'liteparse',
+    name: 'LiteParse',
+    category: 'document-parsing',
+    description: 'Agent-first document parsing workflow for PDF, Office, image, OCR, screenshots, and batch ingestion.',
+    sourceUrl: 'https://github.com/run-llama/llamaparse-agent-skills',
+    installCommand: 'npx skills add run-llama/llamaparse-agent-skills --skill liteparse',
+    trust: 'ecosystem',
+    primaryUse: 'Parse documents into structured outputs and screenshots for knowledge ingestion with source citation evidence.',
+    combineWith: ['graphify', 'memory-brain', 'web-access'],
+    evidence: ['parse-output', 'source-citation', 'docs-impact'],
+  }),
+  skill({
+    id: 'd2-diagram',
+    name: 'D2 Diagram',
+    category: 'diagramming',
+    description: 'Declarative diagram-as-code workflow for architecture, flow, sequence, and ER diagrams.',
+    sourceUrl: 'https://github.com/terrastruct/d2',
+    installCommand: 'Install D2 from https://d2lang.com, then verify with d2 --version',
+    trust: 'ecosystem',
+    primaryUse: 'Use text-first diagrams with validation and formatting for architecture planning artifacts.',
+    combineWith: ['planning-with-files', 'architecture-diagram-generator'],
+    evidence: ['diagram-validate', 'architecture-review'],
+  }),
+  skill({
+    id: 'opensquilla',
+    name: 'OpenSquilla Harness',
+    category: 'orchestration',
+    description: 'Optional agent harness reference for model routing, context loading, MetaSkill orchestration, and feedback loops.',
+    sourceUrl: 'https://github.com/opensquilla/opensquilla',
+    installCommand: 'npx skills add opensquilla/opensquilla',
+    trust: 'ecosystem',
+    primaryUse: 'Reference external routing, context, MetaSkill orchestration, and feedback-loop ideas without making them required runtime dependencies.',
+    combineWith: ['gbrain', 'codegraph', 'codex-cli'],
+    evidence: ['orchestration-review', 'cost-risk-note'],
   }),
   skill({
     id: 'code-reviewer',
@@ -381,9 +444,9 @@ export function recommendSkillWorkflow(input: SkillWorkflowRecommendationInput):
   const rationale: string[] = []
 
   if (matches(text, ['ui', 'ux', 'design', 'frontend', '视觉', '审美', '交互', '前端'])) {
-    add(primary, ['awesome-design-md', 'ui-ux-pro-max'])
-    add(supporting, ['frontend-design', 'webapp-testing', 'agent-browser', 'mcp-chrome-devtools'])
-    add(evidence, ['design-spec', 'browser-evidence'])
+    add(primary, ['impeccable'])
+    add(supporting, ['taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'webapp-testing', 'agent-browser', 'mcp-chrome-devtools'])
+    add(evidence, ['impeccable-report', 'design-spec', 'browser-evidence'])
     rationale.push('检测到 UI/UX 或前端体验任务，需要设计 Skill 和浏览器证据组合。')
   }
 
@@ -399,6 +462,26 @@ export function recommendSkillWorkflow(input: SkillWorkflowRecommendationInput):
     add(supporting, ['web-access', 'agent-browser'])
     add(evidence, ['desktop-screenshot', 'operator-safety', 'side-effect-boundary'])
     rationale.push('检测到桌面/GUI 自动化任务，需要操作安全边界和截图证据。')
+  }
+
+  if (matches(text, ['pdf', 'docx', 'pptx', 'xlsx', 'ocr', 'document parsing', 'parse document', 'knowledge ingestion'])) {
+    add(primary, ['liteparse'])
+    add(supporting, ['graphify', 'memory-brain'])
+    add(evidence, ['parse-output', 'source-citation'])
+    rationale.push('Document parsing work needs structured extraction evidence before ingestion.')
+  }
+
+  if (matches(text, ['diagram', 'd2', 'architecture diagram', 'flow chart', 'sequence diagram', 'er diagram'])) {
+    add(primary, ['d2-diagram'])
+    add(supporting, ['planning-with-files'])
+    add(evidence, ['diagram-validate', 'architecture-review'])
+    rationale.push('Diagramming work needs source-controlled diagram validation evidence.')
+  }
+
+  if (matches(text, ['orchestration', 'metaskill', 'agent harness', 'model routing', 'token cost', 'opensquilla'])) {
+    add(supporting, ['opensquilla'])
+    add(evidence, ['orchestration-review'])
+    rationale.push('Agent orchestration work should review external harness ideas as optional references.')
   }
 
   if (matches(text, ['codex', 'gemini', 'opencode', 'cli', '外部 agent'])) {

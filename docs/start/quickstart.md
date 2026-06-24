@@ -115,11 +115,13 @@ npx -y @hongmaple0820/scale-engine@latest setup --pack memory --memory-provider 
 
 | 能力 | 默认定位 | 安装方式 | 关键验证 |
 | --- | --- | --- | --- |
-| `awesome-design-md` | 品牌、视觉语言、`DESIGN.md` 来源 | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include awesome-design-md --apply --dir .` | 生成 `~/.agents/skills/awesome-design-md/SKILL.md`，同步 `~/.scale/vendor/awesome-design-md` |
-| `ui-ux-pro-max` | UX、状态、可访问性、响应式验收 | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include ui-ux-pro-max --apply --dir .` | 生成 `~/.agents/skills/ui-ux-pro-max/SKILL.md`，同步 `~/.scale/vendor/ui-ux-pro-max` |
+| `impeccable` | Required UI anti-pattern gate | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include impeccable --apply --dir .` | `npx impeccable --version` |
+| `taste-skill` | Recommended UI direction and aesthetic parameters | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include taste-skill --apply --dir .` | `scale skill doctor --json` |
+| `awesome-design-md` | Supporting brand, visual language, and `DESIGN.md` source | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include awesome-design-md --apply --dir .` | 生成 `~/.agents/skills/awesome-design-md/SKILL.md`，同步 `~/.scale/vendor/awesome-design-md` |
+| `ui-ux-pro-max` | Supporting UX, state, accessibility, and responsive acceptance | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include ui-ux-pro-max --apply --dir .` | 生成 `~/.agents/skills/ui-ux-pro-max/SKILL.md`，同步 `~/.scale/vendor/ui-ux-pro-max` |
 | `frontend-design` | 可选实现陪跑，不再是 UI 默认必装项 | `npx -y @hongmaple0820/scale-engine@latest setup --pack ui --include frontend-design --apply --dir .` | 需要时显式安装 |
 
-安装器优先使用 `git clone --depth 1` 同步上游仓库；如果没有 Git 但有 npx，会退回 `npx degit`。缺少两者时不会硬跑失败，会在安装计划里标记为需要人工处理并给出下一步。
+安装器会按每个 skill 的接入方式选择 npx installer 或受治理的 vendor adapter。缺少所需运行时或包管理器时不会硬跑失败，会在安装计划里标记为需要人工处理并给出下一步。
 
 ## 5. 其他第三方能力边界
 

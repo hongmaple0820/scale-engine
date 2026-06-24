@@ -36,10 +36,37 @@ export const DEFAULT_SKILL_ROUTING_POLICY: ResolvedSkillRoutingPolicy = {
         files: ['src/**/*.tsx', 'src/**/*.jsx', 'app/**/*.tsx', 'pages/**/*.tsx', 'components/**/*.tsx', '**/*.css', '**/*.scss'],
         keywords: ['ui', 'ux', 'frontend', 'component', 'page', 'layout', 'responsive', 'visual', '界面', '页面', '交互', '视觉', '前端'],
       },
-      requiredSkills: ['awesome-design-md', 'ui-ux-pro-max'],
-      recommendedSkills: ['frontend-design', 'webapp-testing', 'agent-browser', 'mcp-chrome-devtools', 'browser-testing-with-devtools', 'design-review'],
+      requiredSkills: ['impeccable'],
+      recommendedSkills: ['taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'webapp-testing', 'agent-browser', 'mcp-chrome-devtools', 'browser-testing-with-devtools', 'design-review'],
       requiredArtifacts: ['skill-plan.md', 'skill-evidence.md', 'mini-prd.md', 'ui-spec.md', 'visual-review.md'],
       requiredVerification: ['design-system', 'screenshot', 'responsive-check', 'browser-run', 'visual-review'],
+    },
+    documentParsing: {
+      detect: {
+        files: ['**/*.pdf', '**/*.docx', '**/*.pptx', '**/*.xlsx', '**/*.csv', '**/*.png', '**/*.tiff'],
+        keywords: ['pdf', 'document parsing', 'parse document', 'ocr', 'extract text', 'knowledge ingestion', 'liteparse', 'llamaparse'],
+      },
+      recommendedSkills: ['liteparse'],
+      requiredArtifacts: ['skill-plan.md', 'skill-evidence.md', 'docs-impact.md'],
+      requiredVerification: ['parse-output', 'source-citation'],
+    },
+    diagramming: {
+      detect: {
+        files: ['**/*.d2', 'docs/architecture/**', 'docs/diagrams/**'],
+        keywords: ['diagram', 'architecture diagram', 'flow chart', 'sequence diagram', 'er diagram', 'd2'],
+      },
+      recommendedSkills: ['d2-diagram'],
+      requiredArtifacts: ['skill-plan.md', 'skill-evidence.md', 'architecture-review.md'],
+      requiredVerification: ['diagram-validate'],
+    },
+    orchestration: {
+      detect: {
+        files: ['src/orchestrator/**', 'src/orchestration/**', 'src/workflow/**', 'src/runtime/**'],
+        keywords: ['agent orchestration', 'workflow orchestration', 'routing', 'metaskill', 'model routing', 'token cost', 'opensquilla'],
+      },
+      recommendedSkills: ['opensquilla'],
+      requiredArtifacts: ['skill-plan.md', 'skill-evidence.md', 'architecture-review.md'],
+      requiredVerification: ['orchestration-review'],
     },
     webResearch: {
       detect: {

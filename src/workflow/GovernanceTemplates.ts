@@ -353,7 +353,7 @@ SCALE plans required skills from task description, service selection, and change
 
 Tool orchestration is part of the workflow contract:
 
-- UI/UX work requires \`awesome-design-md\` and \`ui-ux-pro-max\`, and should use \`frontend-design\` as an implementation companion alongside browser screenshots, responsive checks, and visual review evidence.
+- UI/UX work requires \`impeccable\` as the deterministic anti-pattern gate, and should use \`taste-skill\`, \`awesome-design-md\`, \`ui-ux-pro-max\`, and \`frontend-design\` as direction/supporting skills alongside browser screenshots, responsive checks, and visual review evidence.
 - Web research, logged-in pages, and dynamic browser work require \`web-access\` evidence, source citations, and browser/network/console evidence when available.
 - Browser E2E work should combine \`webapp-testing\`, Playwright, Agent Browser, web-access, or Chrome DevTools MCP according to the target and record screenshots plus console/network findings.
 - Desktop or client-side GUI automation uses CUA/computer-use only with explicit operator-safety notes, desktop screenshots, and a side-effect boundary.
@@ -546,7 +546,7 @@ function skillPlanTemplate(): string {
 
 | Capability | Primary Tool Or Skill | Fallback | Required Evidence |
 | --- | --- | --- | --- |
-| UI/UX design | awesome-design-md, ui-ux-pro-max | frontend-design | design-system, ui-spec.md, visual-review.md |
+| UI/UX design | impeccable | taste-skill, awesome-design-md, ui-ux-pro-max, frontend-design | design-system, impeccable-report, ui-spec.md, visual-review.md |
 | Web research or logged-in pages | web-access | agent-browser, Chrome DevTools MCP | source citations, browser evidence |
 | Browser E2E | webapp-testing, Playwright | agent-browser, web-access | screenshot, console, network evidence |
 | Desktop GUI automation | CUA/computer-use | manual verification | desktop screenshot, operator-safety notes |
