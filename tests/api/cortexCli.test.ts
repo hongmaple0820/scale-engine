@@ -9,6 +9,7 @@ import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 const dirs: string[] = []
 const CLI_ENTRY = join(process.cwd(), 'src/api/cli.ts')
 const TSX_LOADER = pathToFileURL(join(process.cwd(), 'node_modules/tsx/dist/loader.mjs')).href
+const CLI_TEST_TIMEOUT_MS = 30_000
 
 afterEach(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
@@ -119,7 +120,7 @@ describe('cortex CLI', () => {
     expect(result.stdout).toContain('Candidate review: accepted=1, stale=0, needs-review=0')
     expect(result.stdout).toContain('Dry run: no instincts saved')
     expect(countInstinctFiles(join(scaleDir, 'instincts'))).toBe(0)
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('does not save stale candidates when later passing gate evidence exists', async () => {
     const projectDir = makeProject('scale-cortex-cli-stale-')
@@ -152,7 +153,7 @@ describe('cortex CLI', () => {
     expect(result.stdout).toContain('Filtered out: 1 stale/review-only candidate(s)')
     expect(result.stdout).toContain('Saved: 0 instincts')
     expect(countInstinctFiles(join(scaleDir, 'instincts'))).toBe(0)
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('treats stale-filtered candidates as reviewed in cortex verify', async () => {
     const projectDir = makeProject('scale-cortex-cli-verify-stale-')
@@ -206,7 +207,7 @@ describe('cortex CLI', () => {
       status: 'PASS',
       detail: 'SCALE_LOCAL_MODEL not set — deterministic heuristic fallback available',
     })
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('fails cortex verify when local reflexion model is required but unavailable', async () => {
     const projectDir = makeProject('scale-cortex-cli-verify-require-model-')
@@ -225,7 +226,7 @@ describe('cortex CLI', () => {
       status: 'FAIL',
       detail: 'SCALE_LOCAL_MODEL not set and --require-local-model was requested',
     })
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('approves an accepted candidate into the injection store', async () => {
     const projectDir = makeProject('scale-cortex-cli-approve-')
@@ -272,7 +273,7 @@ describe('cortex CLI', () => {
     expect(auditReport.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ op: 'save', id: approveReport.savedId }),
     ]))
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('records applied instinct outcomes and exposes measured workflow effectiveness', async () => {
     const projectDir = makeProject('scale-cortex-cli-apply-')
@@ -361,7 +362,7 @@ describe('cortex CLI', () => {
     expect(auditReport.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ op: 'apply', reason: 'application-succeeded' }),
     ]))
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('rejects a candidate with audit evidence without writing an instinct', async () => {
     const projectDir = makeProject('scale-cortex-cli-reject-')
@@ -416,7 +417,7 @@ describe('cortex CLI', () => {
         reasons: expect.arrayContaining([`candidate-id:${candidateId}`]),
       }),
     ]))
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 
   it('blocks stale candidate approval unless explicitly allowed', async () => {
     const projectDir = makeProject('scale-cortex-cli-approve-stale-')
@@ -460,5 +461,5 @@ describe('cortex CLI', () => {
     expect(allowedReport).toMatchObject({ approved: true, status: 'stale' })
     expect(allowedReport.savedId).toMatch(/^instinct-/)
     expect(countInstinctFiles(join(scaleDir, 'instincts'))).toBe(1)
-  })
+  }, CLI_TEST_TIMEOUT_MS)
 })

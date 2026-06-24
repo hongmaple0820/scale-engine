@@ -40,7 +40,7 @@ GITEE_TOKEN=<gitee-api-token> npm run release:sync-gitee -- --gitee-owner hongma
 注意：
 
 - `GITEE_TOKEN` 必须是 Gitee API 可用的私人令牌；普通 Git HTTPS 密码不一定能调用 `https://gitee.com/api/v5`。
-- `gh secret list --repo hongmaple0820/scale-engine` 必须能看到 `GITEE_TOKEN` 后，才允许打正式发布 tag。
+- `gh secret list --repo hongmaple0820/scale-engine --env npm` 必须能看到 `GITEE_TOKEN` 后，才允许打正式发布 tag。
 - 当前脚本同步 release 元数据。GitHub release asset 会以下载链接写入 Gitee release notes，不做二进制附件镜像上传。
 - 如果 Gitee release 已存在同名 tag，脚本会跳过，不覆盖用户手工编辑过的 Gitee release。
 

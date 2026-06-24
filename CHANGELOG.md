@@ -1,3 +1,17 @@
+## 0.51.0 - 2026-06-24
+
+### Skill Ecosystem
+- Add catalog, routing, tool policy, bootstrap, radar, repository, and documentation support for `impeccable`, `taste-skill`, `liteparse`, `d2-diagram`, and `opensquilla`.
+- Make `impeccable` the required UI design gate and keep `taste-skill` as the recommended UI design-direction skill.
+- Add `documentParsing`, `diagramming`, and `orchestration` skill domains with explicit verification expectations.
+
+### CI and Quality Gates
+- Parallelize source CI into fan-out jobs, add PR coverage threshold enforcement, and add Dependabot coverage for npm and GitHub Actions.
+- Harden QA, publish, scale-gate, and performance-baseline workflows so missing deployment URLs, stale action versions, and regressions fail or warn explicitly.
+- Give Cortex CLI integration tests an explicit timeout budget for multi-process CLI scenarios.
+
+---
+
 ## 0.50.11 - 2026-06-23
 
 ### CI and Release
