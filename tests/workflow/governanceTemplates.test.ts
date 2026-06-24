@@ -105,10 +105,15 @@ describe('writeGovernanceTemplates', () => {
       primaryRoot: '.scale/skills',
       fallbackRoots: ['skills'],
     })
-    expect(skills.domains.ui.requiredSkills).toContain('awesome-design-md')
-    expect(skills.domains.ui.requiredSkills).toContain('ui-ux-pro-max')
+    expect(skills.domains.ui.requiredSkills).toContain('impeccable')
+    expect(skills.domains.ui.recommendedSkills).toContain('taste-skill')
+    expect(skills.domains.ui.recommendedSkills).toContain('awesome-design-md')
+    expect(skills.domains.ui.recommendedSkills).toContain('ui-ux-pro-max')
     expect(skills.domains.ui.recommendedSkills).toContain('frontend-design')
     expect(skills.domains.ui.recommendedSkills).toContain('webapp-testing')
+    expect(skills.domains.documentParsing.recommendedSkills).toContain('liteparse')
+    expect(skills.domains.diagramming.recommendedSkills).toContain('d2-diagram')
+    expect(skills.domains.orchestration.recommendedSkills).toContain('opensquilla')
     expect(skills.domains.webResearch.requiredSkills).toContain('web-access')
     expect(skills.domains.browserAutomation.recommendedSkills).toEqual(expect.arrayContaining(['agent-browser', 'mcp-chrome-devtools']))
     expect(skills.domains.desktopAutomation.requiredSkills).toContain('turix-cua')

@@ -45,15 +45,30 @@ export const DEFAULT_TOOL_POLICY: ResolvedToolPolicy = {
       destructiveActions: 'block',
       evidenceRequired: true,
     },
-    'awesome-design-md': {
+    impeccable: {
       enabled: true,
       requiredFor: ['ui'],
       destructiveActions: 'block',
       evidenceRequired: true,
     },
+    'taste-skill': {
+      enabled: true,
+      requiredFor: [],
+      recommendedFor: ['ui'],
+      destructiveActions: 'block',
+      evidenceRequired: true,
+    },
+    'awesome-design-md': {
+      enabled: true,
+      requiredFor: [],
+      recommendedFor: ['ui'],
+      destructiveActions: 'block',
+      evidenceRequired: true,
+    },
     'ui-ux-pro-max': {
       enabled: true,
-      requiredFor: ['ui'],
+      requiredFor: [],
+      recommendedFor: ['ui'],
       destructiveActions: 'block',
       evidenceRequired: true,
     },

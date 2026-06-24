@@ -137,6 +137,8 @@ type DependencyBootstrapDefinition = {
 }
 
 const UI_SKILL_INSTALLS = {
+  impeccable: 'npx impeccable skills install',
+  'taste-skill': 'npx skills add LeonxlnX/taste-skill',
   'awesome-design-md': (ctx: BootstrapInstallContext) => {
     const skillDir = quotePath(join(ctx.homeDir, '.agents', 'skills', 'awesome-design-md'))
     const vendorDir = quotePath(join(ctx.homeDir, '.scale', 'vendor', 'awesome-design-md'))
@@ -166,6 +168,28 @@ const GBRAIN_SOURCE = 'https://github.com/garrytan/gbrain'
 const GITNEXUS_SOURCE = 'https://github.com/abhigyanpatwari/GitNexus'
 
 const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
+  {
+    id: 'impeccable',
+    name: 'Impeccable',
+    kind: 'skill',
+    packs: ['ui'],
+    source: 'https://github.com/pbakaus/impeccable',
+    detectSkillId: 'impeccable',
+    prerequisites: ['npx'],
+    manualReason: 'Requires npm/npx to install the deterministic UI anti-pattern gate skill.',
+    installCommand: ctx => ctx.commandExists('npx') ? UI_SKILL_INSTALLS.impeccable : null,
+  },
+  {
+    id: 'taste-skill',
+    name: 'Taste Skill',
+    kind: 'skill',
+    packs: ['ui'],
+    source: 'https://github.com/LeonxlnX/taste-skill',
+    detectSkillId: 'taste-skill',
+    prerequisites: ['npx'],
+    manualReason: 'Requires npm/npx to install the UI design-language direction skill.',
+    installCommand: ctx => ctx.commandExists('npx') ? UI_SKILL_INSTALLS['taste-skill'] : null,
+  },
   {
     id: 'awesome-design-md',
     name: 'Awesome Design.md',
@@ -218,7 +242,7 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     source: 'https://github.com/anthropics/skills/tree/main/skills/frontend-design',
     detectSkillId: 'frontend-design',
     prerequisites: ['npx'],
-    manualReason: 'Optional implementation companion only; awesome-design-md and ui-ux-pro-max are the default UI stack.',
+    manualReason: 'Optional implementation companion only; impeccable is the required UI gate and taste-skill plus design references provide direction.',
     installCommand: ctx => ctx.commandExists('npx') ? UI_SKILL_INSTALLS['frontend-design'] : null,
   },
   {
@@ -380,6 +404,8 @@ function buildReport(
   if (summary.needsInit > 0) recommendations.push('Run the listed initialization commands before treating installed CLIs as ready for autonomous use.')
   if (summary.versionDrift > 0) recommendations.push('Resolve version-drift items before relying on their generated skills, hooks, or artifacts.')
   if (items.some(item => item.id === 'frontend-design')) recommendations.push('frontend-design is optional; keep it as an explicit companion only when implementation ideation is needed.')
+  if (items.some(item => item.id === 'impeccable')) recommendations.push('Use impeccable as the required deterministic UI anti-pattern gate before visual acceptance.')
+  if (items.some(item => item.id === 'taste-skill')) recommendations.push('Use taste-skill to set product visual direction before UI implementation.')
   if (items.some(item => item.id === 'awesome-design-md')) recommendations.push('Use awesome-design-md as the source of DESIGN.md, brand direction, and visual-language selection.')
   if (items.some(item => item.id === 'ui-ux-pro-max')) recommendations.push('Use ui-ux-pro-max for UX flow, UI state, accessibility, and responsive acceptance checks.')
   if (items.some(item => item.id === 'gbrain')) recommendations.push('After GBrain is installed, validate remote or thin-client health with `scale memory provider status --json`.')
@@ -417,7 +443,7 @@ function buildRuntimeChecks(items: DependencyBootstrapItemReport[]): DependencyB
     requirements.set(runtimeId, existing)
   }
 
-  const uiIds = ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design'].filter(id => ids.has(id))
+  const uiIds = ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design'].filter(id => ids.has(id))
   if (uiIds.length > 0) {
     requireRuntime('node', uiIds)
     requireRuntime('npx', uiIds)
@@ -678,7 +704,7 @@ export function runDependencyBootstrapPostChecks(input: {
   const inspectMemory = deps.inspectMemory ?? inspectMemoryProviders
   const inspectCode = deps.inspectCode ?? inspectCodeIntelligence
   const toolIds = unique(input.items.map(item => item.id).filter(id =>
-    ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'rtk', 'gbrain', 'codegraph', 'graphify', 'gitnexus'].includes(id)))
+    ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'rtk', 'gbrain', 'codegraph', 'graphify', 'gitnexus'].includes(id)))
   const results: DependencyBootstrapPostCheckResult[] = []
   const memoryReport = input.items.some(item => item.id === 'gbrain')
     ? inspectMemory({ projectDir: input.projectDir, scaleDir: input.scaleDir })
@@ -1260,6 +1286,8 @@ function buildRollbackHints(items: DependencyBootstrapItemReport[]): string[] {
       case 'gbrain':
         hints.add('GBrain rollback: bun unlink gbrain, then remove ~/.scale/vendor/gbrain if you want a full local cleanup')
         break
+      case 'impeccable':
+      case 'taste-skill':
       case 'awesome-design-md':
       case 'ui-ux-pro-max':
       case 'frontend-design':

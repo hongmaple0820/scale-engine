@@ -35,7 +35,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/VoltAgent/awesome-design-md',
     installCommand: 'scale setup --pack ui --include awesome-design-md --apply',
     trust: 'ecosystem',
-    readiness: 'required',
+    readiness: 'recommended',
     definition: {
       id: 'awesome-design-md',
       name: 'Awesome Design.md',
@@ -55,7 +55,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     source: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
     installCommand: 'scale setup --pack ui --include ui-ux-pro-max --apply',
     trust: 'ecosystem',
-    readiness: 'required',
+    readiness: 'recommended',
     definition: {
       id: 'ui-ux-pro-max',
       name: 'UI/UX Pro Max',

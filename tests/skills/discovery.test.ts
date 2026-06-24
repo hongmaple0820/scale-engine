@@ -52,8 +52,39 @@ describe('SkillDiscovery', () => {
       keywords: ['brand design system'],
     })
     expect(uiResults.map(result => result.sourceUrl)).toEqual(expect.arrayContaining([
+      'https://github.com/pbakaus/impeccable',
+      'https://github.com/LeonxlnX/taste-skill',
       'https://github.com/VoltAgent/awesome-design-md',
       'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
+    ]))
+  })
+
+  it('discovers document parsing, D2 diagrams, and orchestration references', async () => {
+    expect(await discovery.discover({
+      taskType: 'document-parsing',
+      missingCapabilities: ['pdf', 'ocr'],
+      phase: 'plan',
+      keywords: ['document parsing'],
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ skillId: 'liteparse', sourceUrl: 'https://github.com/run-llama/llamaparse-agent-skills' }),
+    ]))
+
+    expect(await discovery.discover({
+      taskType: 'diagram',
+      missingCapabilities: ['diagram'],
+      phase: 'plan',
+      keywords: ['d2'],
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ skillId: 'd2-diagram', sourceUrl: 'https://github.com/terrastruct/d2' }),
+    ]))
+
+    expect(await discovery.discover({
+      taskType: 'agent-orchestration',
+      missingCapabilities: ['routing'],
+      phase: 'plan',
+      keywords: ['metaskill'],
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ skillId: 'opensquilla', sourceUrl: 'https://github.com/opensquilla/opensquilla' }),
     ]))
   })
 

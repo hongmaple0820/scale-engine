@@ -17,8 +17,13 @@ This document records external skill projects that SCALE may learn from, recomme
 | --- | --- | --- | --- | --- |
 | Planning with Files | MIT | [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files) | Adapt concepts for file-backed plans, findings, progress logs, active-plan routing, and plan attestation. | Not vendored. |
 | GBrain | MIT | [garrytan/gbrain](https://github.com/garrytan/gbrain) | Default memory provider route for graph-backed cross-session recall. SCALE verifies that a brain is configured and recall-critical health checks pass; CLI existence alone is not enough. | Not vendored. |
+| impeccable | review-required | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | Required UI anti-pattern gate in skill routing and tool policy. Used as a deterministic check before visual acceptance. | External skill reference; not vendored. |
+| taste-skill | review-required | [LeonxlnX/taste-skill](https://github.com/LeonxlnX/taste-skill) | Recommended UI direction skill for setting visual language before implementation. | External skill reference; not vendored. |
 | awesome-design-md | MIT | [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md) | DESIGN.md catalog for brand, visual language, typography, and design-system direction. `scale setup --pack ui --apply` syncs upstream under `~/.scale/vendor/awesome-design-md` and creates `~/.agents/skills/awesome-design-md/SKILL.md`. | Installed only with explicit setup/apply. |
 | ui-ux-pro-max | Upstream project license | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | UX, UI state, accessibility, responsive, and acceptance-review skill. `scale setup --pack ui --apply` syncs upstream under `~/.scale/vendor/ui-ux-pro-max` and creates `~/.agents/skills/ui-ux-pro-max/SKILL.md`. | Installed only with explicit setup/apply. |
+| LiteParse | review-required | [run-llama/llamaparse-agent-skills](https://github.com/run-llama/llamaparse-agent-skills) | Recommended document parsing skill for PDF, Office, OCR, screenshots, and batch knowledge ingestion. | External skill reference; not vendored. |
+| D2 Diagram | review-required | [terrastruct/d2](https://github.com/terrastruct/d2) | Optional diagram-as-code reference for architecture, flow, sequence, and ER diagrams. | External CLI/skill reference; not vendored. |
+| OpenSquilla Harness | review-required | [opensquilla/opensquilla](https://github.com/opensquilla/opensquilla) | Optional orchestration reference for routing, context loading, MetaSkill design, and feedback loops. | External skill reference; not vendored. |
 | RTK | Upstream project license | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) | Governed CLI proxy for shell-output compression and token savings. SCALE checks `rtk gain` and hook initialization. | External CLI only. |
 | Graphify | Upstream project license | [safishamsi/graphify](https://github.com/safishamsi/graphify) | Knowledge graph artifact provider. SCALE expects `graphify-out/graph.json` and Codex hook/skill freshness before relying on it. | Generated artifacts are project-local. |
 | CodeGraph | Upstream project license | [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) | Code structure provider for symbol/context exploration. SCALE expects a project `.codegraph/` index. | External CLI/index only. |
@@ -91,10 +96,11 @@ make setup-smoke
 
 The smoke is intentionally non-destructive: it validates bilingual output, `runtimeChecks`, memory-provider routing writes in a temp `.scale`, and CodeGraph/Graphify status discovery without running third-party installers.
 
-For a real installer smoke in an isolated home directory, verify both the skill adapter and the upstream vendor checkout:
+For a real installer smoke in an isolated home directory, verify the required UI gate and any supporting skill adapters you include:
 
 ```bash
-scale setup --pack ui --include awesome-design-md --apply --yes
+scale setup --pack ui --apply --yes
+npx impeccable --version
 test -f ~/.agents/skills/awesome-design-md/SKILL.md
 test -d ~/.scale/vendor/awesome-design-md
 ```
@@ -107,8 +113,10 @@ scale doctor env --json
 
 This reports platform, shell discovery, PATH shape, core tools, package managers, and optional third-party runtimes in one machine-readable payload.
 
-`frontend-design` is no longer part of the default UI install path. The default UI stack is:
+`frontend-design` is no longer part of the default UI install path. The default UI routing stack is:
 
+- `impeccable` as the required deterministic UI anti-pattern gate.
+- `taste-skill` for product visual direction and aesthetic parameters.
 - `awesome-design-md` for brand, visual language, and `DESIGN.md`.
 - `ui-ux-pro-max` for UX flow, UI state, accessibility, and responsive acceptance.
 - `frontend-design` only when explicitly requested with `--include frontend-design`.

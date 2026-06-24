@@ -20,8 +20,13 @@ describe('SkillInstaller', () => {
 
   it('should detect uninstalled optional skills', async () => {
     const pending = await installer.checkAndPrompt()
-    expect(pending).toHaveLength(15)
+    expect(pending).toHaveLength(20)
     expect(pending.map(c => c.skillId)).toEqual(expect.arrayContaining([
+      'impeccable',
+      'taste-skill',
+      'liteparse',
+      'd2-diagram',
+      'opensquilla',
       'agent-browser',
       'mcp-chrome-devtools',
       'codex-cli',
@@ -60,6 +65,37 @@ describe('SkillInstaller', () => {
       expect(config?.method).toBe('manual')
       expect(config?.sourceUrl).toContain('github.com')
     }
+  })
+
+  it('should expose safe install configs for the integrated ecosystem skills', async () => {
+    const pending = await installer.checkAndPrompt()
+    expect(pending.find(c => c.skillId === 'impeccable')).toMatchObject({
+      method: 'npm-install',
+      sourceUrl: 'https://github.com/pbakaus/impeccable',
+      command: 'npx impeccable skills install',
+    })
+    expect(pending.find(c => c.skillId === 'taste-skill')).toMatchObject({
+      method: 'npm-install',
+      sourceUrl: 'https://github.com/LeonxlnX/taste-skill',
+    })
+    expect(pending.find(c => c.skillId === 'liteparse')).toMatchObject({
+      method: 'npm-install',
+      sourceUrl: 'https://github.com/run-llama/llamaparse-agent-skills',
+    })
+    expect(pending.find(c => c.skillId === 'opensquilla')).toMatchObject({
+      method: 'npm-install',
+      sourceUrl: 'https://github.com/opensquilla/opensquilla',
+    })
+  })
+
+  it('keeps D2 as a manual install instead of pipe-to-shell', async () => {
+    const pending = await installer.checkAndPrompt()
+    const config = pending.find(c => c.skillId === 'd2-diagram')
+    expect(config).toMatchObject({
+      method: 'manual',
+      sourceUrl: 'https://github.com/terrastruct/d2',
+    })
+    expect(config?.command).not.toMatch(/\|\s*(bash|sh|iex|Invoke-Expression)/i)
   })
 
   it('should emit install-prompt event', async () => {

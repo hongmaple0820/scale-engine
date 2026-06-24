@@ -17,10 +17,15 @@ describe('External Skills Integration', () => {
 
   it('should register workflow official and ecosystem skills', () => {
     const all = registry.listAll()
-    expect(all.length).toBe(29)
+    expect(all.length).toBe(34)
     expect(all.map(skill => skill.id)).toEqual(expect.arrayContaining([
+      'impeccable',
+      'taste-skill',
       'frontend-design',
       'webapp-testing',
+      'liteparse',
+      'd2-diagram',
+      'opensquilla',
       'code-reviewer',
       'fix',
       'pr-creator',
@@ -118,13 +123,41 @@ describe('External Skills Integration', () => {
   })
 
   it('should recommend frontend-design for UI design tasks', () => {
+    expect(registry.listAll()[0].id).toBe('impeccable')
+    registry.setInstalled('impeccable', true)
+    registry.setInstalled('taste-skill', true)
+
     const recommendations = registry.recommend({
       taskType: 'ui-design',
       phase: 'plan',
       keywords: ['frontend', 'visual', 'responsive'],
     })
 
+    expect(recommendations.some(r => r.skillId === 'impeccable')).toBe(true)
+    expect(recommendations.some(r => r.skillId === 'taste-skill')).toBe(true)
     expect(recommendations.some(r => r.skillId === 'frontend-design')).toBe(true)
+  })
+
+  it('should recommend document parsing, diagramming, and orchestration ecosystem skills', () => {
+    registry.setInstalled('liteparse', true)
+    registry.setInstalled('d2-diagram', true)
+    registry.setInstalled('opensquilla', true)
+
+    expect(registry.recommend({
+      taskType: 'document-parsing',
+      keywords: ['pdf', 'ocr'],
+    }).some(r => r.skillId === 'liteparse')).toBe(true)
+
+    expect(registry.recommend({
+      taskType: 'architecture-diagram',
+      phase: 'plan',
+      keywords: ['d2', 'diagram'],
+    }).some(r => r.skillId === 'd2-diagram')).toBe(true)
+
+    expect(registry.recommend({
+      taskType: 'agent-orchestration',
+      keywords: ['metaskill', 'routing'],
+    }).some(r => r.skillId === 'opensquilla')).toBe(true)
   })
 
   it('should recommend code-reviewer for review tasks', () => {

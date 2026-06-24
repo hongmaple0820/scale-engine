@@ -59,32 +59,36 @@ describe('bootstrap CLI', () => {
     }
     expect(report.apply).toBe(false)
     expect(report.packIds).toEqual(['ui'])
-    expect(report.summary.total).toBe(2)
-    expect(report.summary.ready).toBe(2)
+    expect(report.summary.total).toBe(4)
+    expect(report.summary.ready).toBe(4)
     expect(report.summary.manualReview).toBe(0)
     expect(report.runtimeChecks).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'node', status: 'ok' }),
       expect.objectContaining({ id: 'npx', status: 'ok' }),
     ]))
-    expect(report.runtimeChecks.find(check => check.id === 'npx')?.requiredFor).toEqual(['awesome-design-md', 'ui-ux-pro-max'])
+    expect(report.runtimeChecks.find(check => check.id === 'npx')?.requiredFor).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
     expect(report.postChecks).toEqual([])
     expect(report.postCheckSummary).toMatchObject({ total: 0, passed: 0, warned: 0, failed: 0 })
-    expect(report.items.map(item => item.id)).toEqual(['awesome-design-md', 'ui-ux-pro-max'])
+    expect(report.items.map(item => item.id)).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
     expect(report.items.every(item => item.status === 'ready')).toBe(true)
+    expect(report.items.find(item => item.id === 'impeccable')?.installCommand).toContain('npx impeccable skills install')
+    expect(report.items.find(item => item.id === 'taste-skill')?.installCommand).toContain('LeonxlnX/taste-skill')
     expect(report.items.find(item => item.id === 'awesome-design-md')?.installCommand).toContain('install skill adapter')
     expect(report.items.find(item => item.id === 'awesome-design-md')?.installCommand).toContain('VoltAgent/awesome-design-md')
     expect(report.items.find(item => item.id === 'ui-ux-pro-max')?.installCommand).toContain('install skill adapter')
     expect(report.items.find(item => item.id === 'ui-ux-pro-max')?.installCommand).toContain('nextlevelbuilder/ui-ux-pro-max-skill')
     expect(report.postCheckCommands).toEqual(expect.arrayContaining([
-      'scale tool doctor --tools awesome-design-md,ui-ux-pro-max --json',
+      'scale tool doctor --tools impeccable,taste-skill,awesome-design-md,ui-ux-pro-max --json',
       'scale skill doctor --json',
       'scale doctor',
     ]))
     expect(report.rollbackHints).toEqual(expect.arrayContaining([
+      'Skill rollback (impeccable): remove the installed skill directory under ~/.agents/skills/impeccable after review',
       'Skill rollback (awesome-design-md): remove the installed skill directory under ~/.agents/skills/awesome-design-md after review',
     ]))
     expect(report.recommendations).toEqual(expect.arrayContaining([
       'Re-run with --apply to install all ready dependencies in one pass.',
+      'Use impeccable as the required deterministic UI anti-pattern gate before visual acceptance.',
       'Use awesome-design-md as the source of DESIGN.md, brand direction, and visual-language selection.',
     ]))
   }, CLI_TEST_TIMEOUT_MS)
@@ -124,7 +128,7 @@ describe('bootstrap CLI', () => {
     expect(report.applied).toBe(false)
     expect(report.final.packIds).toEqual(['ui'])
     expect(report.final.runtimeChecks.map(check => check.id)).toEqual(expect.arrayContaining(['node', 'npx']))
-    expect(report.final.items.map(item => item.id)).toEqual(['awesome-design-md', 'ui-ux-pro-max'])
+    expect(report.final.items.map(item => item.id)).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
   }, CLI_TEST_TIMEOUT_MS)
 
   it('switches gbrain memory provider through setup without hand-editing config', async () => {
@@ -184,14 +188,14 @@ describe('bootstrap CLI', () => {
     expect(report.ok).toBe(false)
     expect(report.packIds).toEqual(['ui'])
     expect(report.dependencyBootstrap.packIds).toEqual(['ui'])
-    expect(report.dependencyBootstrap.items.map(item => item.id)).toEqual(['awesome-design-md', 'ui-ux-pro-max'])
-    expect(report.toolCapabilities.summary.total).toBe(2)
-    expect(report.toolCapabilities.summary.missing).toBe(2)
+    expect(report.dependencyBootstrap.items.map(item => item.id)).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
+    expect(report.toolCapabilities.summary.total).toBe(4)
+    expect(report.toolCapabilities.summary.missing).toBe(4)
     expect(report.summary.blockingIssues).toEqual(expect.arrayContaining([
-      expect.stringContaining('Missing governed capabilities: awesome-design-md, ui-ux-pro-max'),
+      expect.stringContaining('Missing governed capabilities: impeccable, taste-skill, awesome-design-md, ui-ux-pro-max'),
     ]))
     expect(report.recommendations).toEqual(expect.arrayContaining([
-      'scale tool doctor --tools awesome-design-md,ui-ux-pro-max --json',
+      'scale tool doctor --tools impeccable,taste-skill,awesome-design-md,ui-ux-pro-max --json',
     ]))
   }, CLI_TEST_TIMEOUT_MS)
 
@@ -239,6 +243,8 @@ describe('bootstrap CLI', () => {
       'gbrain',
       'codegraph',
       'graphify',
+      'impeccable',
+      'taste-skill',
       'awesome-design-md',
       'ui-ux-pro-max',
     ]))
@@ -246,7 +252,7 @@ describe('bootstrap CLI', () => {
       'scale tool doctor --tools rtk --json',
       'scale memory provider status --json',
       'scale tool doctor --tools codegraph,graphify --json',
-      'scale tool doctor --tools awesome-design-md,ui-ux-pro-max --json',
+      'scale tool doctor --tools impeccable,taste-skill,awesome-design-md,ui-ux-pro-max --json',
     ]))
   }, CLI_TEST_TIMEOUT_MS)
 

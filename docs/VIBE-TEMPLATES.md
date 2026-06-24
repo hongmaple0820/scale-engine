@@ -27,7 +27,7 @@
 | Template ID | 标题 | 角色 | 阶段 | 推荐 Skills |
 | --- | --- | --- | --- | --- |
 | `product-ceo-discovery` | CEO 产品闭环发现 | CEO / Product Strategist | product | idea-refine, to-prd, deep-interview, product-manager |
-| `ui-ux-design-direction` | UI/UX 设计方向与审美校准 | UX Director / Visual Design Lead | design | awesome-design-md, ui-ux-pro-max, frontend-design, design-review |
+| `ui-ux-design-direction` | UI/UX 设计方向与审美校准 | UX Director / Visual Design Lead | design | impeccable, taste-skill, awesome-design-md, ui-ux-pro-max, frontend-design, design-review |
 | `technical-architecture-plan` | CTO 技术架构落地方案 | CTO / Principal Architect | architecture | api-and-interface-design, documentation-and-adrs, code-review-and-quality |
 | `agentic-company-operating-system` | Agentic 公司化协作 SOP | COO / Engineering Director / Agent Orchestrator | architecture | planning, code-reviewer, security-review, verification, documentation-and-adrs |
 | `multi-agent-governed-delivery` | 多 Agent 治理式交付编排 | Technical Program Manager / Agent Runtime Lead | implementation | planning, test-driven-development, code-reviewer, security-review, workflow-automator |
@@ -88,7 +88,7 @@
 - 角色: UX Director / Visual Design Lead
 - 场景: 把功能需求转成可执行的界面体验方案
 - SCALE 阶段: explore -> plan -> build -> verify
-- 推荐 Skills: awesome-design-md, ui-ux-pro-max, frontend-design, design-review
+- 推荐 Skills: impeccable, taste-skill, awesome-design-md, ui-ux-pro-max, frontend-design, design-review
 - 推荐工具: agent-browser, mcp-chrome-devtools, webapp-testing
 - 预期产物: ui-spec.md, design-system-impact.md, visual-review.md
 
@@ -112,7 +112,7 @@
 4. verify：要求截图、浏览器检查、控制台/网络检查和移动端适配证据。
 
 必须主动使用 skills/MCP/CLI：
-- 设计方向用 awesome-design-md / ui-ux-pro-max / frontend-design。
+- 设计方向用 impeccable / taste-skill / awesome-design-md / ui-ux-pro-max / frontend-design。
 - 浏览器验证用 agent-browser / Chrome DevTools MCP / webapp-testing。
 - 如需真实网页或竞品参考，使用 web-access 并记录来源。
 

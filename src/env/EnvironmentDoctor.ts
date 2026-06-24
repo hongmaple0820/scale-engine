@@ -108,7 +108,7 @@ const CHECK_DEFINITIONS: Array<{
     category: 'core',
     required: true,
     candidates: [{ command: 'npx', args: ['--version'], display: 'npx' }],
-    requiredFor: ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
+    requiredFor: ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
     installHint: 'Install Node.js 20+; npx is bundled with npm.',
   },
   {

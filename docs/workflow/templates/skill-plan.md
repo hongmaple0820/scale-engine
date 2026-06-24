@@ -26,7 +26,7 @@
 
 | Capability | Primary Tool Or Skill | Fallback | Required Evidence |
 | --- | --- | --- | --- |
-| UI/UX design | awesome-design-md, ui-ux-pro-max | frontend-design | design-system, ui-spec.md, visual-review.md |
+| UI/UX design | impeccable | taste-skill, awesome-design-md, ui-ux-pro-max, frontend-design | design-system, impeccable-report, ui-spec.md, visual-review.md |
 | Web research or logged-in pages | web-access | agent-browser, Chrome DevTools MCP | source citations, browser evidence |
 | Browser E2E | webapp-testing, Playwright | agent-browser, web-access | screenshot, console, network evidence |
 | Desktop GUI automation | CUA/computer-use | manual verification | desktop screenshot, operator-safety notes |

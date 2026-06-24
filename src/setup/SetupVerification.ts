@@ -222,7 +222,7 @@ const ENVIRONMENT_WARNING_TOOL_MAP: Record<string, string[]> = {
   python: ['graphify'],
   'python-installer': ['graphify'],
   npm: ['codegraph'],
-  npx: ['awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
+  npx: ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
 }
 
 function resolveNonBlockingDependencyIds(
