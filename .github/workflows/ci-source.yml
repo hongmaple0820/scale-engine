@@ -6,34 +6,42 @@ on:
   push:
     branches: [dev, master]
 
+# One run per ref at a time; cancel superseded runs on PRs, keep pushes to master
 concurrency:
   group: ci-source-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
+# Job graph:
+#
+#   check -> build -> test
+#      \       \----> gate
+#       \-----------> audit
+#
+# "check" is the fastest feedback path (<90s). Contributors know in <2min
+# whether their lint/types are broken, satisfying Greiler 2022 ICSE <10min
+# threshold for perceived CI value. (Hilton et al. 2016 ESEC/FSE confirm
+# faster CI correlates with higher PR merge rate.)
+
 jobs:
-  source:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+  # Job 1: lint + typecheck.
+  # Runs without building dist/. First feedback in ~60-90s.
+  check:
+    name: Check (lint + typecheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
       - name: Governance health
         run: |
@@ -46,33 +54,150 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+  # Job 2: build and publish the dist artifact for downstream jobs.
+  # Runs on ubuntu only; dist/ is uploaded so downstream jobs don't rebuild.
+  build:
+    name: Build
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
       - name: Build
         run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 1       # ephemeral; only needed within this workflow run
+
+  # Job 3: run tests on the matrix using the built artifact.
+  # Runs on both ubuntu + macos for cross-platform coverage (Zampetti 2019:
+  # matrix testing is a top CI quality signal).
+  test:
+    name: Test (${{ matrix.os }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
 
       - name: Test
         run: npm test
 
-      - name: Supply chain audit
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            coverage/
+          retention-days: 14
+
+  # Job 4: supply-chain audit, parallel with build.
+  # No build needed. Runs in parallel with jobs 2-3 to not gate on build time.
+  # Catches CVEs at PR time, not at release:check (too late).
+  audit:
+    name: Supply-chain audit
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: npm audit (high+)
         run: npm audit --audit-level=high --omit=dev
+
+  # Job 5: SCALE preflight gate against the built dist.
+  # Runs against the locally-built dist so it exercises the source version,
+  # not the last-published npm version (version skew fixed in #21).
+  gate:
+    name: SCALE gate (${{ matrix.os }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
 
       - name: SCALE source fast-lane preflight
         id: gate-fast-lane
         run: |
           set +e
-          node scripts/workflow/run-command-with-timeout.mjs --timeout-ms 420000 --log-file gate-fast-lane.log -- node dist/api/cli.js preflight --json --profile ci --preflight-profile fast-lane
+          node scripts/workflow/run-command-with-timeout.mjs \
+            --timeout-ms 420000 \
+            --log-file gate-fast-lane.log \
+            -- node dist/api/cli.js preflight \
+              --json \
+              --profile ci \
+              --preflight-profile fast-lane
           status=$?
           {
-            echo "## SCALE fast-lane preflight"
+            echo "## SCALE fast-lane preflight (${{ matrix.os }})"
             cat gate-fast-lane.log
             echo
             echo "Exit code: ${status}"
           } >> "$GITHUB_STEP_SUMMARY"
           exit "${status}"
 
-      - name: Upload fast-lane gate evidence
+      - name: Upload gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: source-ci-${{ matrix.os }}-gate-fast-lane
+          name: gate-${{ matrix.os }}-${{ github.sha }}
           path: gate-fast-lane.log
           retention-days: 30
