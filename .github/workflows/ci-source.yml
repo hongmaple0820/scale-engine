@@ -76,7 +76,7 @@ jobs:
         run: npm run build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ github.sha }}
           path: dist/
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}-${{ github.sha }}
           path: |
@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload gate evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gate-${{ matrix.os }}-${{ github.sha }}
           path: gate-fast-lane.log
