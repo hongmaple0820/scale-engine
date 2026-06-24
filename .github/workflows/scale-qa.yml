@@ -12,7 +12,10 @@ concurrency:
 
 jobs:
   scale-browser-qa:
-    if: github.event.deployment_status.state == 'success' && (github.event.deployment_status.environment == 'preview' || github.event.deployment_status.environment == 'production')
+    if: >
+      github.event.deployment_status.state == 'success' &&
+      (github.event.deployment_status.environment == 'preview' ||
+       github.event.deployment_status.environment == 'production')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -24,22 +27,49 @@ jobs:
           node-version: '20'
           cache: npm
 
+      - name: Validate deploy URL
+        # Guard against empty/missing target_url. An empty URL causes scale qa
+        # to silently succeed against localhost, which is a false-positive pass.
+        run: |
+          DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::deployment_status.target_url is empty; cannot run QA"
+            exit 1
+          fi
+          echo "DEPLOY_URL=${DEPLOY_URL}" >> "$GITHUB_ENV"
+
       - name: Install SCALE Engine
         run: npm install -g @hongmaple0820/scale-engine
 
-      - name: Install Playwright
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright (Chromium only)
+        # Only re-download if cache missed.
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cached hit path)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Run Browser QA
         run: |
-          DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
           scale qa e2e --url "$DEPLOY_URL" --json 2>&1 | tee scale-qa.json
+          echo "## SCALE QA Results" >> "$GITHUB_STEP_SUMMARY"
+          cat scale-qa.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload QA Evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-qa-evidence
+          name: scale-qa-evidence-${{ github.run_number }}
           path: |
             .scale/qa/screenshots/
             scale-qa.json

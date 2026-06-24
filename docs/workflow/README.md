@@ -84,11 +84,17 @@ Repository GitHub Actions follow the `dev -> master` branch policy from `.scale/
 
 Every workflow must define explicit `permissions` and `concurrency`. Push and pull request checks cancel older in-progress runs for the same ref, while release and scheduled baseline jobs do not cancel in-progress runs because they publish or write baseline evidence.
 
-Source CI runs learning health, docs health, lint, typecheck, build, tests, a high-severity production dependency audit, and the source fast-lane preflight before changes can land.
+Source CI runs learning health, docs health, lint, typecheck, build, tests, a high-severity production dependency audit, and the source fast-lane preflight before changes can land. The workflow is split into fan-out jobs: `check` gives the first lint/typecheck signal, `build` uploads the source `dist/` artifact, `test` and source `gate` consume that artifact on the OS matrix, and `audit` runs independently after `check`.
+
+Coverage enforcement is a separate PR and `master` workflow. It runs `npm run coverage`, relies on Vitest coverage thresholds, appends a coverage table to the step summary, and uploads the generated coverage report as evidence.
 
 Published-package gates install the package version declared in `package.json` first, then fall back to `@latest` only when that exact version is not yet published.
 
-The performance baseline workflow uses typed `workflow_dispatch` inputs and pushes baseline updates to the explicit `origin HEAD:master` ref.
+The deployment QA workflow fails fast when `deployment_status.target_url` is missing and caches Chromium browser downloads for Playwright-backed QA.
+
+The performance baseline workflow uses typed `workflow_dispatch` inputs, emits warnings when gate timing regresses by more than 20% within the current measurement sample, and pushes baseline updates to the explicit `origin HEAD:master` ref.
+
+Dependabot opens weekly non-major npm dependency updates and monthly GitHub Actions updates so dependency maintenance stays visible without automatically taking major-version risk.
 
 The npm publish workflow runs on Node.js 20, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`.
 

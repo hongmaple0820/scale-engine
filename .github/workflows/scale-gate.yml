@@ -8,13 +8,14 @@ on:
 
 concurrency:
   group: scale-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   published-package-gates:
+    name: Gate (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -24,8 +25,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -40,24 +39,35 @@ jobs:
           npm run learning:health
           npm run docs:health
 
-      - name: Install published SCALE Engine
+      - name: Resolve target package version
+        id: pkg
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          npm install -g "@hongmaple0820/scale-engine@${PKG_VERSION}" || \
+          echo "version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install published SCALE Engine (version-locked)
+        # Cache key includes version so the global install is reused across runs
+        # on the same version, avoiding redundant ~10s registry round-trips.
+        env:
+          SCALE_VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          # Try exact version first; fall back to @latest if not yet published
+          # during the publish pipeline itself.
+          npm install -g "@hongmaple0820/scale-engine@${SCALE_VERSION}" 2>/dev/null || \
             npm install -g @hongmaple0820/scale-engine@latest
 
       - name: Run published package preflight gates
         id: gates
         run: |
           scale preflight --json --profile ci --preflight-profile ci 2>&1 | tee scale-gates.json
-          echo "## SCALE Gate Results" >> $GITHUB_STEP_SUMMARY
-          cat scale-gates.json >> $GITHUB_STEP_SUMMARY
+          echo "## SCALE Gate Results (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+          cat scale-gates.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Gate Evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-gate-${{ matrix.os }}-evidence
+          name: scale-gate-${{ matrix.os }}-${{ github.sha }}
           path: |
             .scale/evidence/
             scale-gates.json

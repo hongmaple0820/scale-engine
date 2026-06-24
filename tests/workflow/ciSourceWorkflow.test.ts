@@ -12,6 +12,12 @@ type WorkflowStep = {
 }
 
 type WorkflowJob = {
+  needs?: string | string[]
+  strategy?: {
+    matrix?: {
+      os?: string[]
+    }
+  }
   steps: WorkflowStep[]
   ['timeout-minutes']?: number
 }
@@ -29,12 +35,19 @@ function loadWorkflow(path: string): Workflow {
 describe('source CI workflow', () => {
   it('dogfoods the local source CLI and blocks failed SCALE fast-lane gates', () => {
     const workflow = loadWorkflow('.github/workflows/ci-source.yml')
-    const job = workflow.jobs.source
-    const scaleStep = job.steps.find(step => step.id === 'gate-fast-lane')
+    const gateJob = workflow.jobs.gate
+    const scaleStep = gateJob.steps.find(step => step.id === 'gate-fast-lane')
 
     expect(workflow.name).toBe('Source CI')
     expect(workflow.permissions).toMatchObject({ contents: 'read' })
-    expect(job['timeout-minutes']).toBeGreaterThanOrEqual(25)
+    expect(Object.keys(workflow.jobs).sort()).toEqual(['audit', 'build', 'check', 'gate', 'test'])
+    expect(workflow.jobs.check['timeout-minutes']).toBeGreaterThanOrEqual(8)
+    expect(workflow.jobs.build.needs).toBe('check')
+    expect(workflow.jobs.audit.needs).toBe('check')
+    expect(workflow.jobs.test.needs).toBe('build')
+    expect(gateJob.needs).toBe('build')
+    expect(gateJob.strategy?.matrix?.os).toEqual(['ubuntu-latest', 'macos-latest'])
+    expect(gateJob['timeout-minutes']).toBeGreaterThanOrEqual(12)
     expect(scaleStep).toBeDefined()
     expect(scaleStep?.['continue-on-error']).not.toBe(true)
     expect(scaleStep?.run).toContain('scripts/workflow/run-command-with-timeout.mjs')
