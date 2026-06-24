@@ -42,7 +42,7 @@ jobs:
         run: npm install -g @hongmaple0820/scale-engine
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
