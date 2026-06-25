@@ -242,6 +242,28 @@ describe('WorkflowArtifactWriter', () => {
         lastPlanId: 'plan-001',
       })
     })
+
+    it('keeps plan artifact files inside the state directory when planId contains traversal tokens', () => {
+      const planId = '../../../../escape-plan'
+      const artifact: PlanArtifact = {
+        timestamp: '2025-01-01T00:00:00Z',
+        planId,
+        specId: 'spec-001',
+        hasBoundaryAnalysis: true,
+        hasExceptionHandling: true,
+        hasRollbackStrategy: true,
+        modules: ['src/auth.ts'],
+        consensusRounds: 1,
+        verdict: 'APPROVE'
+      }
+
+      writer.writePlanResult(artifact)
+
+      expect(writer.readPlanResult(planId)).toEqual(artifact)
+      expect(writer.planArtifactPath(planId)).toBe(join(dir, 'state', 'plan-..-..-..-..-escape-plan.json'))
+      expect(existsSync(writer.planArtifactPath(planId))).toBe(true)
+      expect(existsSync(join(dir, 'state', `plan-${planId}.json`))).toBe(false)
+    })
   })
 
   // ─────────────────────────────────────────────────────────────
@@ -343,6 +365,27 @@ describe('WorkflowArtifactWriter', () => {
 
       expect(writer.hasValidTDDEvidence('task-001')).toBe(false)
       expect(writer.hasValidTDDEvidence('nonexistent')).toBe(false)
+    })
+
+    it('keeps TDD evidence files inside the state directory when taskId contains traversal tokens', () => {
+      const taskId = '../../../../escape-task'
+      const evidence: TDDEvidence = {
+        timestamp: '2025-01-01T00:00:00Z',
+        taskId,
+        red: true,
+        green: true,
+        refactor: true,
+        testFirst: true,
+        testFile: 'tests/auth.test.ts',
+        implFile: 'src/auth.ts',
+      }
+
+      writer.writeTDDEvidence(evidence)
+
+      expect(writer.readTDDEvidence(taskId)).toEqual(evidence)
+      expect(writer.tddEvidencePath(taskId)).toBe(join(dir, 'state', 'tdd-..-..-..-..-escape-task.json'))
+      expect(existsSync(writer.tddEvidencePath(taskId))).toBe(true)
+      expect(existsSync(join(dir, 'state', `tdd-${taskId}.json`))).toBe(false)
     })
   })
 

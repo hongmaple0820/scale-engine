@@ -17,7 +17,7 @@ describe('External Skills Integration', () => {
 
   it('should register workflow official and ecosystem skills', () => {
     const all = registry.listAll()
-    expect(all.length).toBe(34)
+    expect(all.length).toBe(35)
     expect(all.map(skill => skill.id)).toEqual(expect.arrayContaining([
       'impeccable',
       'taste-skill',
@@ -32,6 +32,7 @@ describe('External Skills Integration', () => {
       'update-docs',
       'find-skills',
       'fullstack-developer',
+      'storage-analyzer',
     ]))
   })
 

@@ -8,6 +8,9 @@ import { parseCommandLine } from '../tools/SafeCommandRunner.js'
 export const SKILLS_DIR = join(homedir(), '.claude', 'skills')
 export const AGENTS_SKILLS_DIR = join(homedir(), '.agents', 'skills')
 export const DEFAULT_SKILL_ROOTS = [AGENTS_SKILLS_DIR, SKILLS_DIR]
+const PDF_EXTRACT_CODE = "from pypdf import PdfReader; import sys; r=PdfReader(sys.argv[1]); print('\\n'.join([p.extract_text() for p in r.pages]))"
+const PDF_MERGE_CODE = 'from pypdf import PdfReader, PdfWriter; import sys; w=PdfWriter(); [w.add_page(page) for f in sys.argv[1:-1] for page in PdfReader(f).pages]; w.write(sys.argv[-1])'
+const XLSX_ANALYZE_CODE = 'import pandas as pd; import sys; df=pd.read_excel(sys.argv[1]); print(df.describe())'
 
 export interface SkillInvocationResult {
   success: boolean
@@ -212,20 +215,19 @@ export class InstalledSkillsInvoker {
   }
   // ========== Document Processing Skills ==========
   async pdfExtract(filePath: string): Promise<SkillInvocationResult> {
-    return this.runCommand(`python3 -c "from pypdf import PdfReader; r=PdfReader('${filePath}'); print('\\n'.join([p.extract_text() for p in r.pages]))"`, 30000, 'pdf')
+    return this.runCommandArgs('python3', ['-c', PDF_EXTRACT_CODE, filePath], 30000, 'pdf')
   }
   async pdfMerge(files: string[], outputPath: string): Promise<SkillInvocationResult> {
-    const filesList = files.map(f => `"${f}"`).join(' ')
-    return this.runCommand(`python3 -c "from pypdf import PdfReader, PdfWriter; import sys; w=PdfWriter(); [w.add_page(page) for f in sys.argv[1:-1] for page in PdfReader(f).pages]; w.write(sys.argv[-1])" ${filesList} "${outputPath}"`, 30000, 'pdf')
+    return this.runCommandArgs('python3', ['-c', PDF_MERGE_CODE, ...files, outputPath], 30000, 'pdf')
   }
   async docxToMarkdown(filePath: string): Promise<SkillInvocationResult> {
-    return this.runCommand(`pandoc "${filePath}" -o "${filePath}.md"`, 30000, 'docx')
+    return this.runCommandArgs('pandoc', [filePath, '-o', `${filePath}.md`], 30000, 'docx')
   }
   async xlsxAnalyze(filePath: string): Promise<SkillInvocationResult> {
-    return this.runCommand(`python3 -c "import pandas as pd; df=pd.read_excel('${filePath}'); print(df.describe())"`, 30000, 'xlsx')
+    return this.runCommandArgs('python3', ['-c', XLSX_ANALYZE_CODE, filePath], 30000, 'xlsx')
   }
   async pptxToMarkdown(filePath: string): Promise<SkillInvocationResult> {
-    return this.runCommand(`python -m markitdown "${filePath}"`, 30000, 'pptx')
+    return this.runCommandArgs('python', ['-m', 'markitdown', filePath], 30000, 'pptx')
   }
   // ========== Deployment Skills ==========
   async vercelDeploy(path?: string, scope?: string): Promise<SkillInvocationResult> {

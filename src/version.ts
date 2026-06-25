@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 
-export const FALLBACK_SCALE_ENGINE_VERSION = '0.52.0'
+export const FALLBACK_SCALE_ENGINE_VERSION = '0.53.0'
 
 export function getScaleEngineVersion(): string {
   try {

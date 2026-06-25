@@ -74,6 +74,8 @@ node scripts/workflow/docs-health.mjs --json
 
 `learning-health` is the companion gate for self-learning governance. It checks that repo-local reusable skills live under `.scale/skills/`, release packages include those skills and the learning gate script, memory provider routing still requires evidence, and default/CI verification profiles run the learning gate.
 
+Storage and disk-cleanup requests route through the bundled `storage-analyzer` skill under `.scale/skills/storage-analyzer`. The workflow treats it as a recommended capability with required read-only scan evidence, generated report evidence, and an explicit cleanup-confirmation boundary; destructive cleanup remains a user-confirmed action, not an automatic workflow step.
+
 Hook-sensitive CLI commands must stay safe in agent hook contexts. `scale gate before-stop` defaults to a hook-safe fast path that does not initialize the artifact engine; use `scale gate before-stop --enforce` only in explicit verification flows such as preflight or manual release checks.
 
 `G8` runs the full docs-health gate and writes `.agent/logs/docs-health/g8-docs-health-report.json`. `G17` runs the link-health subset and writes `.agent/logs/docs-health/g17-link-health-report.json`. `npm run release:check` runs `npm run learning:health` and `npm run docs:health` before typecheck, lint, tests, smoke checks, build, package smoke, audit, diff hygiene, and package dry-run.

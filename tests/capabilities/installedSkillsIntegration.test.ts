@@ -144,4 +144,117 @@ describe('installed skills integration', () => {
     }))
     expect(captured?.command).toContain(join('.agents', 'skills', 'playwright', 'scripts', 'playwright_cli.sh'))
   })
+
+  it('passes pdf_extract filePath as a literal argv entry instead of embedding it into Python code', async () => {
+    let captured: { command: string; args: string[]; timeout: number; skillId: string } | null = null
+    const invoker = new InstalledSkillsInvoker() as unknown as InstalledSkillsInvoker & {
+      runCommandArgs: (command: string, args: string[], timeout: number, skillId: string) => Promise<{
+        success: boolean
+        output?: string
+        error?: string
+        durationMs: number
+        skillId: string
+      }>
+    }
+    invoker.runCommandArgs = async (command, args, timeout, skillId) => {
+      captured = { command, args, timeout, skillId }
+      return { success: true, output: 'ok', durationMs: 0, skillId }
+    }
+
+    const filePath = `'); __import__('os').system('echo injected'); ('`
+    const result = await invoker.pdfExtract(filePath)
+
+    expect(result).toMatchObject({
+      success: true,
+      output: 'ok',
+      skillId: 'pdf',
+    })
+    expect(captured).toEqual(expect.objectContaining({
+      command: 'python3',
+      args: [
+        '-c',
+        "from pypdf import PdfReader; import sys; r=PdfReader(sys.argv[1]); print('\\n'.join([p.extract_text() for p in r.pages]))",
+        filePath,
+      ],
+      timeout: 30000,
+      skillId: 'pdf',
+    }))
+    expect(captured?.args[1]).not.toContain(filePath)
+  })
+
+  it('passes pdf_merge input paths as argv entries instead of embedding them into Python code', async () => {
+    let captured: { command: string; args: string[]; timeout: number; skillId: string } | null = null
+    const invoker = new InstalledSkillsInvoker() as unknown as InstalledSkillsInvoker & {
+      runCommandArgs: (command: string, args: string[], timeout: number, skillId: string) => Promise<{
+        success: boolean
+        output?: string
+        error?: string
+        durationMs: number
+        skillId: string
+      }>
+    }
+    invoker.runCommandArgs = async (command, args, timeout, skillId) => {
+      captured = { command, args, timeout, skillId }
+      return { success: true, output: 'ok', durationMs: 0, skillId }
+    }
+
+    const files = ['first.pdf', `second'); __import__('os').system('echo injected'); ('`]
+    const outputPath = 'merged.pdf'
+    const result = await invoker.pdfMerge(files, outputPath)
+
+    expect(result).toMatchObject({
+      success: true,
+      output: 'ok',
+      skillId: 'pdf',
+    })
+    expect(captured).toEqual(expect.objectContaining({
+      command: 'python3',
+      args: [
+        '-c',
+        'from pypdf import PdfReader, PdfWriter; import sys; w=PdfWriter(); [w.add_page(page) for f in sys.argv[1:-1] for page in PdfReader(f).pages]; w.write(sys.argv[-1])',
+        ...files,
+        outputPath,
+      ],
+      timeout: 30000,
+      skillId: 'pdf',
+    }))
+    expect(captured?.args[1]).not.toContain(files[1])
+  })
+
+  it('passes xlsx_analyze filePath as a literal argv entry instead of embedding it into Python code', async () => {
+    let captured: { command: string; args: string[]; timeout: number; skillId: string } | null = null
+    const invoker = new InstalledSkillsInvoker() as unknown as InstalledSkillsInvoker & {
+      runCommandArgs: (command: string, args: string[], timeout: number, skillId: string) => Promise<{
+        success: boolean
+        output?: string
+        error?: string
+        durationMs: number
+        skillId: string
+      }>
+    }
+    invoker.runCommandArgs = async (command, args, timeout, skillId) => {
+      captured = { command, args, timeout, skillId }
+      return { success: true, output: 'ok', durationMs: 0, skillId }
+    }
+
+    const filePath = `report'); __import__('os').system('echo injected'); ('`
+    const result = await invoker.xlsxAnalyze(filePath)
+
+    expect(result).toMatchObject({
+      success: true,
+      output: 'ok',
+      skillId: 'xlsx',
+    })
+    expect(captured).toEqual(expect.objectContaining({
+      command: 'python3',
+      args: [
+        '-c',
+        'import pandas as pd; import sys; df=pd.read_excel(sys.argv[1]); print(df.describe())',
+        filePath,
+      ],
+      timeout: 30000,
+      skillId: 'xlsx',
+    }))
+    expect(captured?.args[1]).not.toContain(filePath)
+  })
 })

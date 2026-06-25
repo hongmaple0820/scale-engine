@@ -149,4 +149,42 @@ describe('MemoryLearning', () => {
       }),
     ]))
   })
+
+  it('rejects relative scaleDir values that escape the project root', async () => {
+    const projectDir = makeProject()
+    const pack = await new MemoryFabric({ projectDir, scaleDir: '.scale' }).createContextPack({
+      taskId: 'TASK-ESCAPE-REL',
+      sessionId: 'SESSION-ESCAPE-REL',
+      task: 'Reject escaped relative scale dir',
+      level: 'M',
+    })
+
+    expect(() => settleMemoryLearning({
+      projectDir,
+      scaleDir: '../escaped-scale',
+      pack,
+    })).toThrow('Memory learning scale root path escapes allowed directories')
+  })
+
+  it('allows an explicit absolute scaleDir root and keeps output inside it', async () => {
+    const projectDir = makeProject()
+    const externalScaleRoot = join(makeProject(), 'external-scale')
+    const pack = await new MemoryFabric({ projectDir, scaleDir: '.scale' }).createContextPack({
+      taskId: 'TASK-ESCAPE-ABS',
+      sessionId: 'SESSION-ESCAPE-ABS',
+      task: 'Allow explicit absolute scale dir',
+      level: 'M',
+    })
+
+    const result = settleMemoryLearning({
+      projectDir,
+      scaleDir: externalScaleRoot,
+      pack,
+    })
+
+    expect(result.files.json).toBe(join(externalScaleRoot, 'memory', 'learning-candidates', `${result.candidate.id}.json`))
+    expect(result.files.markdown).toBe(join(externalScaleRoot, 'memory', 'learning-candidates', `${result.candidate.id}.md`))
+    expect(existsSync(result.files.json)).toBe(true)
+    expect(existsSync(result.files.markdown)).toBe(true)
+  })
 })

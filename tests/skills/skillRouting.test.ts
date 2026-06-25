@@ -124,6 +124,22 @@ describe('skill routing', () => {
     expect(plan.requiredVerification).toEqual(expect.arrayContaining(['parse-output', 'source-citation']))
   })
 
+  it('routes storage cleanup requests to Storage Analyzer evidence', () => {
+    const policy = resolveSkillRoutingPolicy(null)
+    const plan = createSkillPlan({
+      taskId: 'TASK-STORAGE',
+      taskName: 'Analyze disk usage',
+      description: 'C drive is full; run storage analysis and disk cleanup planning without deleting files automatically',
+      level: 'M',
+      policy,
+    })
+
+    expect(plan.intents.map(intent => intent.domain)).toContain('storageAnalysis')
+    expect(plan.recommendedSkills).toContain('storage-analyzer')
+    expect(plan.requiredArtifacts).toEqual(expect.arrayContaining(['storage-analysis.md', 'skill-evidence.md', 'verification.md']))
+    expect(plan.requiredVerification).toEqual(expect.arrayContaining(['read-only-scan', 'html-report', 'cleanup-confirmation-boundary']))
+  })
+
   it('routes diagramming work to D2 validation evidence', () => {
     const policy = resolveSkillRoutingPolicy(null)
     const plan = createSkillPlan({

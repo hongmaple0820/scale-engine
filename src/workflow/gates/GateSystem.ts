@@ -765,7 +765,7 @@ export class PlanningGate implements IGate {
           kind: 'file',
           label: 'Plan artifact (structured)',
           passed: blockers.length === 0,
-          path: `.scale/state/plan-${planArtifact.planId}.json`,
+          path: this.artifactWriter?.planArtifactPath(planArtifact.planId) ?? `.scale/state/plan-${planArtifact.planId}.json`,
           detail: blockers.length === 0
             ? `plan ${planArtifact.planId}: boundary ✓, exceptions ✓, rollback ✓, verdict=${planArtifact.verdict}`
             : blockers.join('; '),
@@ -877,7 +877,7 @@ export class TDDGate implements IGate {
         kind: 'file',
         label: 'TDD evidence (structured)',
         passed,
-        path: `.scale/state/tdd-${artifact.taskId}.json`,
+        path: this.artifactWriter?.tddEvidencePath(artifact.taskId) ?? `.scale/state/tdd-${artifact.taskId}.json`,
         detail: passed
           ? `TDD cycle complete: red ✓, green ✓, refactor ✓, testFirst ✓ (task ${artifact.taskId})`
           : blockers.join('; '),

@@ -142,7 +142,7 @@ export class WorkflowArtifactWriter {
   /** Write plan result to .scale/state/plan-{planId}.json */
   writePlanResult(result: PlanArtifact): void {
     this.ensureDir()
-    const filePath = join(this.stateDir, `plan-${result.planId}.json`)
+    const filePath = this.planArtifactPath(result.planId)
     writeFileSync(filePath, JSON.stringify(result, null, 2), 'utf-8')
     this.updateCurrentState({
       phase: 'plan',
@@ -154,7 +154,7 @@ export class WorkflowArtifactWriter {
 
   /** Read plan artifact by ID */
   readPlanResult(planId: string): PlanArtifact | null {
-    return this.readJson<PlanArtifact>(join(this.stateDir, `plan-${planId}.json`))
+    return this.readJson<PlanArtifact>(this.planArtifactPath(planId))
   }
 
   /** Read the most recent plan artifact */
@@ -181,7 +181,7 @@ export class WorkflowArtifactWriter {
   /** Write TDD evidence to .scale/state/tdd-{taskId}.json */
   writeTDDEvidence(evidence: TDDEvidence): void {
     this.ensureDir()
-    const filePath = join(this.stateDir, `tdd-${evidence.taskId}.json`)
+    const filePath = this.tddEvidencePath(evidence.taskId)
     writeFileSync(filePath, JSON.stringify(evidence, null, 2), 'utf-8')
     this.updateCurrentState({
       phase: 'verify',
@@ -192,7 +192,7 @@ export class WorkflowArtifactWriter {
 
   /** Read TDD evidence by task ID */
   readTDDEvidence(taskId: string): TDDEvidence | null {
-    return this.readJson<TDDEvidence>(join(this.stateDir, `tdd-${taskId}.json`))
+    return this.readJson<TDDEvidence>(this.tddEvidencePath(taskId))
   }
 
   /** Read the most recent TDD evidence */
@@ -251,6 +251,16 @@ export class WorkflowArtifactWriter {
 
   /** Get state directory path */
   getStateDir(): string { return this.stateDir }
+
+  /** Get the on-disk path for a plan artifact ID */
+  planArtifactPath(planId: string): string {
+    return this.artifactPath('plan', planId, 'artifact')
+  }
+
+  /** Get the on-disk path for a TDD evidence task ID */
+  tddEvidencePath(taskId: string): string {
+    return this.artifactPath('tdd', taskId, 'evidence')
+  }
 
   /** Write authoritative workflow state to .scale/state/current.json */
   writeCurrentState(state: WorkflowState): void {
@@ -345,4 +355,12 @@ export class WorkflowArtifactWriter {
   private isWorkflowPhase(phase: string): phase is WorkflowPhase {
     return ['define', 'explore', 'plan', 'build', 'verify', 'review', 'ship', 'done'].includes(phase)
   }
+
+  private artifactPath(prefix: 'plan' | 'tdd', id: string, fallback: string): string {
+    return join(this.stateDir, `${prefix}-${safePathSegment(id, fallback)}.json`)
+  }
+}
+
+function safePathSegment(value: string, fallback: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 120) || fallback
 }

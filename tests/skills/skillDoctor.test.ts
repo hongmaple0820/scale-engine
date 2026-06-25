@@ -114,6 +114,31 @@ describe('SkillDoctor', () => {
     }
   })
 
+  it('recognizes the repo-local Storage Analyzer workflow skill', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))
+    try {
+      const skillDir = join(projectDir, '.scale', 'skills', 'storage-analyzer')
+      mkdirSync(skillDir, { recursive: true })
+      writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: storage-analyzer\n---\n', 'utf-8')
+
+      const report = inspectWorkflowSkills({ projectDir, homeDir })
+      const storageAnalyzer = report.skills.find(skill => skill.id === 'storage-analyzer')
+
+      expect(storageAnalyzer).toMatchObject({
+        id: 'storage-analyzer',
+        installed: true,
+        status: 'installed',
+        readiness: 'recommended',
+        source: 'https://github.com/KKKKhazix/khazix-skills/tree/main/storage-analyzer',
+      })
+      expect(storageAnalyzer?.detectedPath).toBe(join(skillDir, 'SKILL.md'))
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
   it('understands tool orchestration skills required by routing policy', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'scale-skill-home-'))
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-skill-project-'))

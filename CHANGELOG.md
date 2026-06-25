@@ -2,6 +2,22 @@
 
 ---
 
+## 0.53.0 - 2026-06-25
+
+### Skill Ecosystem
+- Bundle the `storage-analyzer` workflow skill under `.scale/skills/storage-analyzer` with disk-usage scan scripts, a guarded cleanup report, and explicit routing/doctor coverage for storage-cleanup requests.
+- Keep the packaged skill surface clean by excluding Python bytecode caches from release artifacts.
+
+### Security Hardening
+- Stop embedding user-controlled file paths into inline `python -c` document-processing commands; `pdf_extract`, `pdf_merge`, `xlsx_analyze`, `docx_to_markdown`, and `pptx_to_markdown` now pass user input as literal argv entries.
+- Sanitize workflow artifact IDs before building `.scale/state` file paths so plan and TDD evidence writes cannot escape the state directory even when CLI task IDs contain traversal tokens.
+- Enforce project-root boundaries for memory-learning settlement so attacker-controlled `scaleDir` values cannot redirect candidate writes outside the repository.
+
+### Verification
+- Add regression coverage for installed-skill argv handling, workflow artifact path confinement, memory-learning scale-root validation, and storage-analyzer skill routing/doctor integration.
+
+---
+
 ## 0.52.0 - 2026-06-25
 
 ### Runtime Baseline

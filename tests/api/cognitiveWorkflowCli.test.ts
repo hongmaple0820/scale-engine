@@ -33,6 +33,10 @@ function parseJson<T>(stdout: string): T {
   return JSON.parse(stdout) as T
 }
 
+function safePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 120) || 'evidence'
+}
+
 describe('cognitive workflow CLI', () => {
   it('prints context grill checks as JSON', async () => {
     const scaleDir = makeDir('scale-cognitive-cli-scale-')
@@ -242,5 +246,47 @@ describe('cognitive workflow CLI', () => {
     expect(readFileSync(join(projectDir, artifactDir, 'verification.md'), 'utf-8')).toContain('SCALE TDD Vertical Slice')
     expect(output.tddStatePath).toBe(join(scaleDir, 'state', 'tdd-TDD-ARTIFACT.json'))
     expect(existsSync(join(scaleDir, 'state', 'tdd-TDD-ARTIFACT.json'))).toBe(true)
+  }, 120_000)
+
+  it('keeps TDD state output inside the state directory when task-id contains traversal tokens', async () => {
+    const scaleDir = makeDir('scale-cognitive-cli-scale-')
+    const projectDir = makeDir('scale-cognitive-cli-project-')
+    const taskId = '../../../../TDD-ESCAPE'
+
+    const result = await runScale([
+      'tdd',
+      'slice',
+      '--task-id',
+      taskId,
+      '--behavior',
+      'Mask access tokens in logs',
+      '--public-interface',
+      'logger.info',
+      '--failing-test',
+      'npm test -- logger.masking.test.ts',
+      '--test-file',
+      'tests/logger.masking.test.ts',
+      '--impl-files',
+      'src/logger.ts',
+      '--red-exit-code',
+      '1',
+      '--red-summary',
+      'expected masked token, received raw token',
+      '--green-exit-code',
+      '0',
+      '--green-summary',
+      'masking test passed',
+      '--refactor-exit-code',
+      '0',
+      '--refactor-summary',
+      'masking test stayed green after cleanup',
+      '--json',
+    ], scaleDir, projectDir)
+
+    expect(result.exitCode).toBe(0)
+    const output = parseJson<{ tddStatePath?: string }>(result.stdout)
+    expect(output.tddStatePath).toBe(join(scaleDir, 'state', `tdd-${safePathSegment(taskId)}.json`))
+    expect(existsSync(output.tddStatePath!)).toBe(true)
+    expect(existsSync(join(scaleDir, 'state', `tdd-${taskId}.json`))).toBe(false)
   }, 120_000)
 })

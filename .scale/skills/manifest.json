@@ -70,6 +70,11 @@
       "description": "OWASP Top 10 security checklist"
     },
     {
+      "name": "storage-analyzer",
+      "path": "storage-analyzer/SKILL.md",
+      "description": "macOS and Windows disk usage analysis workflow"
+    },
+    {
       "name": "tdd",
       "path": "tdd/SKILL.md",
       "description": "Test-driven development workflow"

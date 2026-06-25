@@ -48,7 +48,7 @@ npm test && curl https://example.com
 node scripts/check.js | tee out.txt
 ```
 
-Shell metacharacters such as `&&`, `|`, `;`, `<`, `>`, backticks, and unquoted `$` are rejected before execution. Use package scripts or checked-in helper scripts for composed commands. `SCALE_ALLOW_SHELL_COMMANDS=1` re-enables shell execution only for trusted local runs and must not be enabled for untrusted PR or user-controlled CI inputs. `workflow eval` attempts are stricter: they always keep shell expansion disabled, even when the environment override is set. Installed skill invocations are stricter as well: parse failures are rejected instead of retried with `shell: true`, and browser-style builtins such as `web-access` curl calls and `playwright` CLI launches now pass user-controlled values as argv entries rather than interpolated shell strings.
+Shell metacharacters such as `&&`, `|`, `;`, `<`, `>`, backticks, and unquoted `$` are rejected before execution. Use package scripts or checked-in helper scripts for composed commands. `SCALE_ALLOW_SHELL_COMMANDS=1` re-enables shell execution only for trusted local runs and must not be enabled for untrusted PR or user-controlled CI inputs. `workflow eval` attempts are stricter: they always keep shell expansion disabled, even when the environment override is set. Installed skill invocations are stricter as well: parse failures are rejected instead of retried with `shell: true`, browser-style builtins such as `web-access` curl calls and `playwright` CLI launches pass user-controlled values as argv entries, and document-processing builtins no longer embed user file paths into inline `python -c` code.
 
 ## G7 Integration
 

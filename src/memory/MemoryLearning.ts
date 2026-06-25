@@ -6,6 +6,7 @@ import type {
   RuntimeEvidenceContextItem,
   RuntimeSessionContextItem,
 } from './MemoryFabric.js'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 import { redactEvidenceText, redactEvidenceValue } from '../tools/ToolEvidenceStore.js'
 
 export type MemoryLearningCandidateStatus = 'candidate'
@@ -280,7 +281,12 @@ function ensureDir(dir: string): void {
 }
 
 function resolveScaleRoot(projectDir: string, scaleDir?: string): string {
-  return isAbsolute(scaleDir ?? '') ? scaleDir as string : join(projectDir, scaleDir ?? '.scale')
+  if (isAbsolute(scaleDir ?? '')) return resolve(scaleDir as string)
+  return resolvePathWithinRoots(scaleDir ?? '.scale', {
+    baseDir: projectDir,
+    allowedRoots: [projectDir],
+    label: 'Memory learning scale root',
+  })
 }
 
 function safePathSegment(value: string): string {

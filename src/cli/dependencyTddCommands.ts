@@ -13,7 +13,6 @@ import { WorkflowArtifactWriter } from '../workflow/WorkflowArtifactWriter.js'
 import {
   appendTddSliceArtifact,
 } from '../workflow/TaskArtifactScaffolder.js'
-import { join } from 'node:path'
 
 function parseCommaList(value: unknown): string[] {
   if (value === undefined || value === null || value === '') return []
@@ -118,7 +117,7 @@ export const tddSliceCommand = defineCommand({
         filesModified: slice.implementationFiles,
         openTasks: removeWorkflowOpenTask(writer.readCurrentState()?.openTasks, 'tdd-slice'),
       })
-      tddStatePath = join(writer.getStateDir(), `tdd-${slice.taskId}.json`)
+      tddStatePath = writer.tddEvidencePath(slice.taskId)
     }
     if (args.json) {
       console.log(JSON.stringify({ slice, evaluation, artifactPath, tddStatePath }, null, 2))
