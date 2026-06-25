@@ -1,6 +1,7 @@
 // SCALE Engine — Ship Pipeline Tests
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { execFileSync, execSync } from 'node:child_process'
 import {
   runShipPipeline,
   summarizeShipPipeline,
@@ -17,14 +18,23 @@ vi.mock('node:child_process', () => ({
     if (cmd.includes('git fetch')) return ''
     if (cmd.includes('git merge')) return ''
     if (cmd.includes('git diff --name-only')) return 'src/foo.ts\nsrc/bar.ts\n'
+    if (cmd.includes('git ls-files --others')) return 'src/new-file.ts\nnotes.tmp\n'
     if (cmd.includes('git describe --tags')) return 'v0.31.0\n'
     if (cmd.includes('git log')) return 'abc123 feat: add feature\ndef456 fix: bug fix\n'
-    if (cmd.includes('git add')) return ''
     if (cmd.includes('git diff --cached --quiet')) throw new Error('has changes')
     if (cmd.includes('git commit')) return ''
     if (cmd.includes('git rev-parse HEAD')) return 'abc1234567890\n'
     if (cmd.includes('git push')) return ''
     if (cmd.includes('gh pr create')) return 'https://github.com/org/repo/pull/42\n'
+    return ''
+  }),
+  execFileSync: vi.fn((cmd: string, args: string[]) => {
+    if (cmd === 'git' && args[0] === 'status') {
+      const path = args[args.length - 1]
+      if (path === 'package.json' || path === 'CHANGELOG.md') return ` M ${path}\n`
+      return ''
+    }
+    if (cmd === 'git' && args[0] === 'add') return ''
     return ''
   }),
 }))
@@ -86,6 +96,10 @@ vi.mock('node:fs', async () => {
 })
 
 describe('runShipPipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('executes all steps in dry-run mode', async () => {
     const result = await runShipPipeline({ dryRun: true })
     expect(result.success).toBe(true)
@@ -121,6 +135,8 @@ describe('runShipPipeline', () => {
     const result = await runShipPipeline({ dryRun: true })
     expect(result.changedFiles.length).toBeGreaterThan(0)
     expect(result.changedFiles).toContain('src/foo.ts')
+    expect(result.changedFiles).toContain('src/new-file.ts')
+    expect(result.changedFiles).not.toContain('notes.tmp')
   })
 
   it('records total duration', async () => {
@@ -143,6 +159,23 @@ describe('runShipPipeline', () => {
       versionBump: 'minor',
     })
     expect(result.success).toBe(true)
+  })
+
+  it('stages only reviewed and ship-generated files', async () => {
+    const result = await runShipPipeline({
+      skipSteps: ['sync-base', 'push', 'create-pr'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(vi.mocked(execFileSync)).toHaveBeenCalledWith(
+      'git',
+      ['add', '--', 'src/foo.ts', 'src/bar.ts', 'src/new-file.ts', 'package.json', 'CHANGELOG.md'],
+      expect.objectContaining({ encoding: 'utf-8' }),
+    )
+    expect(vi.mocked(execSync)).not.toHaveBeenCalledWith(
+      'git add -A',
+      expect.anything(),
+    )
   })
 })
 

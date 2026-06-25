@@ -57,7 +57,12 @@ describe('HTMLArtifactLayer', () => {
       gitPolicy: 'review',
       sourcePaths: ['summary.md', 'verification.md', 'review.md'],
     })
-    expect(manifest.artifacts[0].missingSources).toEqual(['resource-impact.md', 'standards-impact.md'])
+    expect(manifest.artifacts[0].missingSources).toEqual([
+      'db-change-plan.md',
+      'docs-impact.md',
+      'resource-impact.md',
+      'standards-impact.md',
+    ])
   })
 
   it('checks rendered artifacts for safety and traceability', () => {

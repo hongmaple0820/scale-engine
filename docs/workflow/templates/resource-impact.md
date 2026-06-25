@@ -10,6 +10,20 @@
 
 - TBD
 
+## Cross-Repository And Data Impact
+
+| Scope | Path / System | Required Action | Owner / Follow-up |
+| --- | --- | --- | --- |
+| Related repository | TBD | commit separately / no change / blocked | TBD |
+| Data file or generated artifact | TBD | commit / ignore / regenerate / archive | TBD |
+| Configuration file | TBD | document / deploy / rollback | TBD |
+
+## External Dependencies
+
+| Dependency | Type | Change | Verification |
+| --- | --- | --- | --- |
+| TBD | service / package / API / credential / scheduler | TBD | TBD |
+
 ## Resources Promoted To Maintained Docs
 
 - TBD

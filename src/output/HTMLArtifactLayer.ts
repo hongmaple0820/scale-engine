@@ -135,8 +135,8 @@ const DEFAULT_TEMPLATE_SOURCES: Record<HtmlArtifactType, HtmlArtifactPolicyTempl
   },
   'release-report': {
     label: 'Release Report',
-    sources: ['summary.md', 'verification.md', 'review.md', 'resource-impact.md', 'standards-impact.md'],
-    description: 'Package final release evidence, risk state, unverified items, and sign-off readiness.',
+    sources: ['summary.md', 'verification.md', 'review.md', 'db-change-plan.md', 'docs-impact.md', 'resource-impact.md', 'standards-impact.md'],
+    description: 'Package release evidence, SQL/data/config/docs/resource impact, risk state, unverified items, and sign-off readiness.',
   },
 }
 

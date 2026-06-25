@@ -799,6 +799,20 @@ function resourceImpactTemplate(): string {
 
 - TBD
 
+## Cross-Repository And Data Impact
+
+| Scope | Path / System | Required Action | Owner / Follow-up |
+| --- | --- | --- | --- |
+| Related repository | TBD | commit separately / no change / blocked | TBD |
+| Data file or generated artifact | TBD | commit / ignore / regenerate / archive | TBD |
+| Configuration file | TBD | document / deploy / rollback | TBD |
+
+## External Dependencies
+
+| Dependency | Type | Change | Verification |
+| --- | --- | --- | --- |
+| TBD | service / package / API / credential / scheduler | TBD | TBD |
+
 ## Resources Promoted To Maintained Docs
 
 - TBD
@@ -911,6 +925,18 @@ function dbChangePlanTemplate(): string {
 
 TBD
 
+## SQL / Migration Inventory
+
+| File Or Command | Operation | Environment | Owner |
+| --- | --- | --- | --- |
+| TBD | schema / data backfill / index / permission / seed | dev / test / prod | TBD |
+
+## Application And Service Coupling
+
+- Services that must be deployed with this DB change: TBD
+- Feature flags or compatibility mode: TBD
+- Third-party or reporting systems affected: TBD
+
 ## Backward Compatibility
 
 TBD
@@ -925,6 +951,11 @@ TBD
 
 ## Verification
 TBD
+
+## Release Note
+
+- Required in release report: yes / no
+- Operator instructions: TBD
 `
 }
 
@@ -1111,6 +1142,25 @@ function summaryTemplate(): string {
 ## Delivered Changes
 
 TBD
+
+## Files And Operations
+
+| Area | Paths Or Commands | Reason | User-Visible Impact |
+| --- | --- | --- | --- |
+| Code | TBD | TBD | TBD |
+| Config | TBD | TBD | TBD |
+| Data / Generated Files | TBD | TBD | TBD |
+| Related Repositories | TBD | TBD | TBD |
+
+## Release / Deployment Disclosure
+
+- Release or deployment requested: no
+- SQL or migration changes: none
+- Configuration changes: none
+- Related projects that must ship together: none
+- External services or third-party systems affected: none
+- Runtime/dashboard evidence: TBD
+- Rollback or disable path: TBD
 
 ## Remaining Risks
 

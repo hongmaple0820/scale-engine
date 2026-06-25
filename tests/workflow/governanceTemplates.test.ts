@@ -125,6 +125,12 @@ describe('writeGovernanceTemplates', () => {
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'resource-policy.json'), 'utf-8')).retainedRuntimeDirectories).toContain('test-results')
     const outputPolicy = JSON.parse(readFileSync(join(dir, '.scale', 'output-policy.json'), 'utf-8'))
     expect(outputPolicy.templates).toHaveProperty('release-report')
+    expect(outputPolicy.templates['release-report'].sources).toEqual(expect.arrayContaining([
+      'db-change-plan.md',
+      'docs-impact.md',
+      'resource-impact.md',
+      'standards-impact.md',
+    ]))
     expect(outputPolicy.safety.allowRemoteScripts).toBe(false)
     const tools = JSON.parse(readFileSync(join(dir, '.scale', 'tools.json'), 'utf-8'))
     expect(tools.mode).toBe('block')

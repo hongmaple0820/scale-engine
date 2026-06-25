@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { runSafeCommand, type SafeCommandResult } from '../tools/SafeCommandRunner.js'
 import { parseChangedFiles, shouldReviewFile, type ChangedFile } from './ReviewAnalyzer.js'
 import { resolveVerificationTargets } from './VerificationProfile.js'
@@ -241,19 +241,27 @@ async function executeReviewDiff(ctx: StepContext): Promise<StepOutput> {
       cwd: ctx.projectDir,
       encoding: 'utf-8',
     })
+    const untrackedOutput = execSync('git ls-files --others --exclude-standard', {
+      cwd: ctx.projectDir,
+      encoding: 'utf-8',
+    })
 
-    const changedFiles = parseChangedFiles(diffOutput)
+    const changedFiles = [
+      ...parseChangedFiles(diffOutput),
+      ...parseChangedFiles(untrackedOutput),
+    ]
       .filter(f => shouldReviewFile(f.path))
       .map(f => f.path)
+    const reviewableFiles = unique(changedFiles)
 
-    if (changedFiles.length === 0) {
+    if (reviewableFiles.length === 0) {
       return { status: 'passed', evidence: 'No reviewable changes', changedFiles: [] }
     }
 
     return {
       status: 'passed',
-      evidence: `${changedFiles.length} file(s) changed: ${changedFiles.slice(0, 5).join(', ')}${changedFiles.length > 5 ? '...' : ''}`,
-      changedFiles,
+      evidence: `${reviewableFiles.length} file(s) changed: ${reviewableFiles.slice(0, 5).join(', ')}${reviewableFiles.length > 5 ? '...' : ''}`,
+      changedFiles: reviewableFiles,
     }
   } catch (err) {
     return { status: 'failed', error: `Diff review failed: ${err instanceof Error ? err.message : String(err)}` }
@@ -268,11 +276,12 @@ async function executeBumpVersion(ctx: StepContext): Promise<StepOutput> {
 
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string }
-    if (!pkg.version) {
+    const previousVersion = pkg.version
+    if (!previousVersion) {
       return { status: 'passed', evidence: 'No version field in package.json' }
     }
 
-    const [major, minor, patch] = pkg.version.split('.').map(Number)
+    const [major, minor, patch] = previousVersion.split('.').map(Number)
     let newVersion: string
     switch (ctx.versionBump) {
       case 'major': newVersion = `${major + 1}.0.0`; break
@@ -281,20 +290,22 @@ async function executeBumpVersion(ctx: StepContext): Promise<StepOutput> {
     }
 
     if (ctx.dryRun) {
-      return { status: 'passed', evidence: `[dry-run] Would bump ${pkg.version} → ${newVersion}` }
+      return { status: 'passed', evidence: `[dry-run] Would bump ${previousVersion} -> ${newVersion}` }
     }
 
     pkg.version = newVersion
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8')
+    const changedFiles = mergeChangedFiles(ctx.changedFiles, ['package.json'])
 
     // Also update package-lock.json if it exists
     const lockPath = join(ctx.projectDir, 'package-lock.json')
     if (existsSync(lockPath)) {
       const lock = readFileSync(lockPath, 'utf-8')
-      writeFileSync(lockPath, lock.replace(`"version": "${pkg.version}"`, `"version": "${newVersion}"`), 'utf-8')
+      writeFileSync(lockPath, lock.replace(`"version": "${previousVersion}"`, `"version": "${newVersion}"`), 'utf-8')
+      changedFiles.push('package-lock.json')
     }
 
-    return { status: 'passed', evidence: `Version bumped: ${pkg.version} → ${newVersion}` }
+    return { status: 'passed', evidence: `Version bumped: ${previousVersion} -> ${newVersion}`, changedFiles: unique(changedFiles) }
   } catch (err) {
     return { status: 'failed', error: `Version bump failed: ${err instanceof Error ? err.message : String(err)}` }
   }
@@ -337,7 +348,7 @@ async function executeChangelog(ctx: StepContext): Promise<StepOutput> {
     const newEntry = `## ${version} - ${today}\n\n### Changes${commitSummary}\n\n---\n\n`
     writeFileSync(changelogPath, newEntry + changelog, 'utf-8')
 
-    return { status: 'passed', evidence: `CHANGELOG.md updated for v${version}` }
+    return { status: 'passed', evidence: `CHANGELOG.md updated for v${version}`, changedFiles: mergeChangedFiles(ctx.changedFiles, ['CHANGELOG.md']) }
   } catch (err) {
     return { status: 'failed', error: `Changelog update failed: ${err instanceof Error ? err.message : String(err)}` }
   }
@@ -345,8 +356,16 @@ async function executeChangelog(ctx: StepContext): Promise<StepOutput> {
 
 async function executeCommit(ctx: StepContext): Promise<StepOutput> {
   try {
-    // Stage all changes
-    execSync('git add -A', { cwd: ctx.projectDir, encoding: 'utf-8' })
+    const filesToStage = collectStageableFiles(ctx)
+    if (filesToStage.length === 0) {
+      return { status: 'passed', evidence: 'No reviewed changes to commit' }
+    }
+
+    if (ctx.dryRun) {
+      return { status: 'passed', evidence: `[dry-run] Would stage ${filesToStage.length} reviewed file(s): ${formatFileList(filesToStage)}` }
+    }
+
+    stageFiles(ctx.projectDir, filesToStage)
 
     // Check if there are changes to commit
     try {
@@ -354,10 +373,6 @@ async function executeCommit(ctx: StepContext): Promise<StepOutput> {
       return { status: 'passed', evidence: 'No changes to commit' }
     } catch {
       // There are changes, continue
-    }
-
-    if (ctx.dryRun) {
-      return { status: 'passed', evidence: '[dry-run] Would commit staged changes' }
     }
 
     // Get version for commit message
@@ -443,6 +458,38 @@ function extractPrUrl(steps: ShipStepResult[]): string | undefined {
   if (!prStep?.evidence) return undefined
   const match = prStep.evidence.match(/PR created: (https?:\/\/\S+)/)
   return match?.[1]
+}
+
+function collectStageableFiles(ctx: StepContext): string[] {
+  const shipGeneratedFiles = ['package.json', 'package-lock.json', 'CHANGELOG.md']
+    .filter(path => hasGitChange(ctx.projectDir, path))
+  return mergeChangedFiles(ctx.changedFiles, shipGeneratedFiles)
+}
+
+function stageFiles(projectDir: string, files: string[]): void {
+  execFileSync('git', ['add', '--', ...files], { cwd: projectDir, encoding: 'utf-8' })
+}
+
+function hasGitChange(projectDir: string, path: string): boolean {
+  try {
+    const output = execFileSync('git', ['status', '--porcelain', '--', path], { cwd: projectDir, encoding: 'utf-8' })
+    return output.trim().length > 0
+  } catch {
+    return false
+  }
+}
+
+function mergeChangedFiles(existing: string[], additional: string[]): string[] {
+  return unique([...existing, ...additional].filter(Boolean))
+}
+
+function formatFileList(files: string[], limit = 8): string {
+  const shown = files.slice(0, limit).join(', ')
+  return files.length > limit ? `${shown}, ...` : shown
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)]
 }
 
 // ============================================================================
