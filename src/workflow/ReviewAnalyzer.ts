@@ -81,8 +81,25 @@ function isSourcePath(path: string): boolean {
   return /\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(path)
 }
 
+function normalizeReviewPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
+function isNewFile(file: ChangedFile): boolean {
+  return file.status.includes('??') || file.status.includes('A')
+}
+
+function isPackageManifestPath(path: string): boolean {
+  return normalizeReviewPath(path).endsWith('package.json')
+}
+
+function isAbstractionShapedPath(path: string): boolean {
+  return /(?:^|[\/_.-])(helpers?|utils?|adapters?|wrappers?|managers?|factories|providers?|registries|strategies|builders?|orchestrators?|services?)(?:[\/_.-]|$)/i
+    .test(normalizeReviewPath(path))
+}
+
 function isTestPath(path: string): boolean {
-  return /(^|\/)(tests?|__tests__)\//i.test(path.replace(/\\/g, '/')) ||
+  return /(^|\/)(tests?|__tests__)\//i.test(normalizeReviewPath(path)) ||
     /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(path)
 }
 
@@ -207,6 +224,79 @@ function findEmptyCatch(lines: DiffLine[]): DiffLine | undefined {
     }
   }
   return undefined
+}
+
+function findAddedDependency(lines: DiffLine[]): DiffLine | undefined {
+  return firstMatch(
+    lines,
+    /^\s*"(@?[\w./-]+)"\s*:\s*"(?:(?:workspace:|file:|link:|npm:|git\+|https?:)|[\^~<>=]?\d)/,
+  )
+}
+
+function findNewAbstraction(lines: DiffLine[]): DiffLine | undefined {
+  return firstMatch(
+    lines,
+    /\b(?:export\s+)?(?:abstract\s+)?class\s+\w*(?:Factory|Manager|Registry|Strategy|Provider|Adapter|Wrapper|Builder|Orchestrator)\b|\b(?:export\s+)?interface\s+\w*(?:Factory|Manager|Registry|Strategy|Provider|Adapter|Wrapper|Builder|Config)\b|\b(?:export\s+)?(?:const|function)\s+\w*(?:Factory|Manager|Registry|Strategy|Provider|Adapter|Wrapper|Helper|Util|Builder)\b/,
+  )
+}
+
+function analyzeLazyGuardrails(changedFiles: ChangedFile[], diffs: DiffInput[]): ReviewFinding[] {
+  const findings: ReviewFinding[] = []
+  const newSourceFiles = changedFiles.filter(file => isNewFile(file) && isSourcePath(file.path) && !isTestPath(file.path))
+  const newAbstractionFiles = newSourceFiles.filter(file => isAbstractionShapedPath(file.path))
+
+  if (newSourceFiles.length >= 3) {
+    findings.push({
+      category: 'process',
+      severity: 'MEDIUM',
+      description: 'Multiple new source files were introduced; verify the request could not be handled by existing modules first.',
+      file: newSourceFiles[0]?.path,
+      evidence: newSourceFiles.map(file => file.path).slice(0, 5).join(', '),
+    })
+  }
+
+  if (newAbstractionFiles.length > 0) {
+    findings.push({
+      category: 'process',
+      severity: 'MEDIUM',
+      description: 'New helper/adapter/manager-style source file introduced; document why existing code, standard library, or platform capabilities were not enough.',
+      file: newAbstractionFiles[0]?.path,
+      evidence: newAbstractionFiles.map(file => file.path).slice(0, 5).join(', '),
+    })
+  }
+
+  for (const diff of diffs) {
+    const added = getExecutableAddedLines(diff)
+    if (added.length === 0) continue
+
+    if (isPackageManifestPath(diff.file)) {
+      const dependency = findAddedDependency(added)
+      if (dependency) {
+        findings.push({
+          category: 'process',
+          severity: 'MEDIUM',
+          description: 'New package dependency introduced; verify existing dependencies, standard library, or platform capability cannot cover this.',
+          file: diff.file,
+          evidence: evidence(dependency, 'dependency addition'),
+        })
+      }
+    }
+
+    if (isSourcePath(diff.file) && !isTestPath(diff.file)) {
+      const abstraction = findNewAbstraction(added)
+      if (abstraction) {
+        findings.push({
+          category: 'process',
+          severity: 'LOW',
+          description: 'New abstraction-shaped code introduced; confirm it earns its place for the current request.',
+          file: diff.file,
+          evidence: evidence(abstraction, 'abstraction-shaped code'),
+        })
+      }
+    }
+  }
+
+  return findings
 }
 
 function analyzeDiffRisk(diff: DiffInput): ReviewFinding[] {
@@ -380,6 +470,11 @@ export function analyzeReview(input: ReviewAnalysisInput): { changedFiles: Chang
     totalDiffLines += text.split('\n').filter(isDiffPayloadLine).length
     findings.push(...analyzeDiffRisk({ ...diff, text }))
   }
+
+  findings.push(...analyzeLazyGuardrails(
+    changedFiles,
+    input.diffs.map(diff => ({ ...diff, text: diff.text.slice(0, 20000) })),
+  ))
 
   if (input.diffs.length > 0 && changedFiles.length > input.diffs.length) {
     findings.push({

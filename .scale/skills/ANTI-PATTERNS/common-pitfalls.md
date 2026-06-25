@@ -23,10 +23,13 @@ Prerequisites:
 - Missing dependencies
 - No parallel execution opportunities
 - Ignoring existing solutions
+- Skipping the lazy ladder: existing code -> standard library -> platform capability -> installed dependency -> minimal implementation
 
 ## BUILD Phase Pitfalls
 
 - Writing code before tests
+- Adding helper/adapter/manager files before proving reuse is not enough
+- Adding dependencies before checking the standard library, platform capability, and installed packages
 - Premature optimization
 - Deep nesting (>4 levels)
 - Large functions (>50 lines)

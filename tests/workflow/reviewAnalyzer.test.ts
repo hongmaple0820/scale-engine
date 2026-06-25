@@ -340,6 +340,57 @@ describe('ReviewAnalyzer', () => {
     expect(complete.findings.some(f => f.description.includes('Review scanned diffs'))).toBe(false)
   })
 
+  it('flags new helper-shaped source files for reuse-first review', () => {
+    const result = analyzeReview({
+      statusOutput: '?? src/workflow/helpers/request-helper.ts',
+      diffs: [{ file: 'src/workflow/helpers/request-helper.ts', text: '+export function formatRequest(input: string) { return input.trim() }\n' }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+
+    expect(result.findings).toContainEqual(expect.objectContaining({
+      category: 'process',
+      severity: 'MEDIUM',
+      file: 'src/workflow/helpers/request-helper.ts',
+      description: expect.stringContaining('standard library'),
+    }))
+  })
+
+  it('flags package dependency additions for stdlib/platform review', () => {
+    const result = analyzeReview({
+      statusOutput: ' M package.json',
+      diffs: [{ file: 'package.json', text: '+"left-pad": "^1.3.0",\n' }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+
+    expect(result.findings).toContainEqual(expect.objectContaining({
+      category: 'process',
+      severity: 'MEDIUM',
+      file: 'package.json',
+      description: expect.stringContaining('standard library'),
+    }))
+  })
+
+  it('flags abstraction-shaped source additions without blocking simple changes', () => {
+    const abstraction = analyzeReview({
+      statusOutput: ' M src/workflow/run.ts',
+      diffs: [{ file: 'src/workflow/run.ts', text: '+export class TaskStrategy { run() { return true } }\n' }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+    const simple = analyzeReview({
+      statusOutput: ' M src/workflow/run.ts',
+      diffs: [{ file: 'src/workflow/run.ts', text: '+export const timeoutMs = 1000\n' }],
+      taskPayload: { verificationEvidenceIds: ['GATE-1'] },
+    })
+
+    expect(abstraction.findings).toContainEqual(expect.objectContaining({
+      category: 'process',
+      severity: 'LOW',
+      file: 'src/workflow/run.ts',
+      description: expect.stringContaining('earns its place'),
+    }))
+    expect(simple.findings.some(f => f.description.includes('abstraction-shaped'))).toBe(false)
+  })
+
   it('summarizes finding severity counts', () => {
     const summary = summarizeFindings([
       { category: 'security', severity: 'CRITICAL', description: 'a' },
