@@ -11,13 +11,22 @@
  * - 完整 CRUD + query + findChildren + findParents
  */
 
-import Database from 'better-sqlite3'
+import { createRequire } from 'node:module'
+import type BetterSqlite3 from 'better-sqlite3'
 import type { Artifact, ArtifactType, Gate, ArtifactId, Actor, StatusChange } from './types.js'
 import { ArtifactNotFoundError } from './types.js'
 import type { IEventBus } from '../core/eventBus.js'
 import type { IArtifactStore, CreateArtifactInput, ArtifactFilter } from './store.js'
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+
+const require = createRequire(import.meta.url)
+type BetterSqlite3Constructor = typeof BetterSqlite3
+
+function loadBetterSqlite3(): BetterSqlite3Constructor {
+  const loaded = require('better-sqlite3') as BetterSqlite3Constructor | { default?: BetterSqlite3Constructor }
+  return 'default' in loaded && loaded.default ? loaded.default : loaded as BetterSqlite3Constructor
+}
 
 // ============================================================================
 // Schema DDL
@@ -91,20 +100,20 @@ INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
 // ============================================================================
 
 export class SQLiteArtifactStore implements IArtifactStore {
-  private db: Database.Database
+  private db: BetterSqlite3.Database
   private seq = 0
   private artifactsDir: string
 
   // Prepared statements (性能优化)
-  private stmtInsert!: Database.Statement
-  private stmtGet!: Database.Statement
-  private stmtUpdate!: Database.Statement
-  private stmtDelete!: Database.Statement
-  private stmtInsertEdge!: Database.Statement
-  private stmtDeleteEdges!: Database.Statement
-  private stmtFindChildren!: Database.Statement
-  private stmtFindParents!: Database.Statement
-  private stmtInsertEvent!: Database.Statement
+  private stmtInsert!: BetterSqlite3.Statement
+  private stmtGet!: BetterSqlite3.Statement
+  private stmtUpdate!: BetterSqlite3.Statement
+  private stmtDelete!: BetterSqlite3.Statement
+  private stmtInsertEdge!: BetterSqlite3.Statement
+  private stmtDeleteEdges!: BetterSqlite3.Statement
+  private stmtFindChildren!: BetterSqlite3.Statement
+  private stmtFindParents!: BetterSqlite3.Statement
+  private stmtInsertEvent!: BetterSqlite3.Statement
 
   constructor(
     private eventBus: IEventBus,
@@ -118,6 +127,7 @@ export class SQLiteArtifactStore implements IArtifactStore {
     if (!existsSync(this.artifactsDir)) mkdirSync(this.artifactsDir, { recursive: true })
 
     // 创建 DB
+    const Database = loadBetterSqlite3()
     this.db = new Database(dbPath)
     this.db.pragma('journal_mode = WAL')
     this.db.pragma('foreign_keys = ON')

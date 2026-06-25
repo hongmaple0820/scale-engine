@@ -87,7 +87,7 @@ describe('skill radar CLI', () => {
     expect(report.requiredEvidence).toEqual(expect.arrayContaining(['screenshot', 'visual-review', 'console-summary']))
   }, 120_000)
 
-  it('blocks desktop automation by default through tool policy', async () => {
+  it('recommends desktop automation by default with restricted safety', async () => {
     const scaleDir = makeDir('scale-skill-radar-scale-')
     const projectDir = makeDir('scale-skill-radar-project-')
 
@@ -99,22 +99,21 @@ describe('skill radar CLI', () => {
       '--json',
     ], scaleDir, projectDir)
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(0)
     const report = parseJson<{
       ok: boolean
       recommendations: Array<{ id: string; safetyLevel: string; action: string; policyEnabled: boolean; fallback: string }>
       fallbacks: string[]
     }>(result.stdout)
-    expect(report.ok).toBe(false)
+    expect(report.ok).toBe(true)
     expect(report.recommendations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'cua',
-        safetyLevel: 'blocked',
-        action: 'blocked',
-        policyEnabled: false,
+        safetyLevel: 'restricted',
+        policyEnabled: true,
       }),
     ]))
-    expect(report.fallbacks.join('\n')).toContain('manual operator checklist')
+    expect(report.recommendations.find(item => item.id === 'cua')?.fallback).toContain('manual operator checklist')
   }, 120_000)
 
   it('recommends planning and memory capabilities with attribution-aware evidence', async () => {

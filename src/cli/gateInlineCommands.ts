@@ -50,11 +50,26 @@ export const gatePostTool = defineCommand({
 })
 
 export const gateBeforeStop = defineCommand({
-  meta: { name: 'before-stop', description: 'Before-stop gate check' },
-  args: { 'session-id': { type: 'string', required: true } },
+  meta: { name: 'before-stop', description: 'Before-stop hook check. Defaults to a non-blocking hook-safe path; pass --enforce for full gateway enforcement.' },
+  args: {
+    'session-id': { type: 'string' },
+    'hook-safe': { type: 'boolean', default: false, description: 'Document that this invocation is running inside an agent Stop hook' },
+    enforce: { type: 'boolean', default: false, description: 'Run the full gateway before-stop detector path' },
+  },
   async run({ args }) {
+    const sessionId = String(args['session-id'] ?? process.env.CLAUDE_SESSION_ID ?? process.env.SESSION_ID ?? '').trim()
+    if (!args.enforce) {
+      if (process.env.SCALE_GATE_VERBOSE === '1') {
+        process.stderr.write('[scale] before-stop hook-safe pass; run with --enforce for full gateway checks\n')
+      }
+      return
+    }
+    if (!sessionId) {
+      process.stderr.write('Missing --session-id for enforced before-stop gate')
+      process.exit(2)
+    }
     const { gateway } = getEngine()
-    const decision = await gateway.beforeStop({ sessionId: args['session-id'] })
+    const decision = await gateway.beforeStop({ sessionId })
     if (!decision.allow) {
       process.stderr.write(decision.reason ?? 'Cannot stop yet')
       if (decision.suggestion) process.stderr.write(`\nSuggestion: ${decision.suggestion}`)

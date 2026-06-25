@@ -46,7 +46,7 @@ export class WindsurfAdapter implements IAgentAdapter {
           { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json "$ARGS" --exit-code "$EXIT_CODE" --session-id "$SESSION_ID"' },
         ],
         'before-stop': [
-          { matcher: '', command: 'scale gate before-stop --session-id "$SESSION_ID"' },
+          { matcher: '', command: 'scale gate before-stop --session-id "$SESSION_ID" --hook-safe' },
         ],
       },
       permissions: {

@@ -14,6 +14,7 @@ import { inspectWorkspaceSafety } from '../workflow/WorkspaceSafety.js'
 import { inspectCodeIntelligence, type CodeIntelligenceStatusReport } from '../codegraph/CodeIntelligence.js'
 import { inspectMemoryProviders, type MemoryProviderStatusReport } from '../memory/MemoryProviders.js'
 import { inspectToolCapabilities, type ToolCapabilityReport } from '../tools/ToolCapabilityRegistry.js'
+import { inspectBetterSqlite3Runtime } from '../env/EnvironmentDoctor.js'
 
 export interface DiagnosticResult {
   name: string
@@ -73,6 +74,7 @@ export class Doctor {
     checks.push(this.checkRulesDir())
     checks.push(this.checkHooksDir())
     checks.push(this.checkNodeVersion())
+    checks.push(this.checkArtifactStoreNativeRuntime())
     checks.push(this.checkDiskUsage())
     checks.push(this.checkGitignore())
     const gitWorkspaceCheck = this.checkGitWorkspace()
@@ -277,6 +279,20 @@ export class Doctor {
         }
       }
       const hookCount = Object.values(content.hooks ?? {}).flat().length
+      const hasLegacyBeforeStopHook = hookEntries.some((entry) => {
+        const command = typeof entry.command === 'string' ? entry.command : ''
+        return /\bscale\s+gate\s+before-stop\b/.test(command)
+          && !/\s--hook-safe(?:\s|$)/.test(command)
+          && !/\s--enforce(?:\s|$)/.test(command)
+      })
+      if (hasLegacyBeforeStopHook) {
+        return {
+          name: 'Agent settings',
+          status: 'warn',
+          message: `${hookCount} hooks configured (${found.agent}); before-stop hook uses legacy command form`,
+          fix: 'Refresh hooks with: scale init --agent ' + found.agent + ' or add --hook-safe to scale gate before-stop hook commands',
+        }
+      }
       return { name: 'Agent settings', status: 'ok', message: `${hookCount} hooks configured (${found.agent})` }
     } catch {
       return { name: 'Agent settings', status: 'fail', message: `${found.path} is invalid JSON`, fix: 'Fix JSON syntax' }
@@ -323,6 +339,18 @@ export class Doctor {
       return { name: 'Node.js version', status: 'fail', message: `${version} — requires >=20`, fix: 'Upgrade Node.js to v20+' }
     }
     return { name: 'Node.js version', status: 'ok', message: version }
+  }
+
+  private checkArtifactStoreNativeRuntime(): DiagnosticResult {
+    const check = inspectBetterSqlite3Runtime()
+    return {
+      name: 'Artifact store native runtime',
+      status: check.status === 'fail' || check.status === 'missing'
+        ? 'fail'
+        : check.status === 'warn' ? 'warn' : 'ok',
+      message: check.reason,
+      fix: check.status === 'ok' ? undefined : check.installHint,
+    }
   }
 
   private checkDiskUsage(): DiagnosticResult {

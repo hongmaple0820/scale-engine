@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 
@@ -97,6 +97,33 @@ function writePassingSuite(scaleDir: string) {
             command: 'node -e "console.log(\'proof-ok\')"',
             expectedExitCode: 0,
             outputEquals: 'proof-ok',
+          },
+        ],
+      },
+    ],
+  }, null, 2), 'utf-8')
+}
+
+function writeSuite(path: string, id = 'project-suite') {
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, JSON.stringify({
+    version: '1.0',
+    id,
+    name: 'Project local suite',
+    cases: [
+      {
+        id: 'project-local-path',
+        type: 'bugfix',
+        title: 'Project local suite can run from an explicit JSON path',
+        task: 'Use a suite JSON stored under the project directory.',
+        phase: 'verify',
+        successCriteria: ['command exits 0'],
+        attempts: [
+          {
+            id: 'attempt-1',
+            command: 'node -e "console.log(\'project-local-suite-ok\')"',
+            expectedExitCode: 0,
+            outputEquals: 'project-local-suite-ok',
           },
         ],
       },
@@ -252,6 +279,64 @@ describe('workflow eval CLI', () => {
     expect(runReport.run.failureReplayIds.length).toBe(1)
   }, 120_000)
 
+  it('allows explicit suite and run JSON paths inside the project or eval roots', async () => {
+    const scaleDir = makeDir('scale-eval-cli-scale-')
+    const projectDir = makeDir('scale-eval-cli-project-')
+    const suitePath = join(projectDir, 'fixtures', 'project-suite.json')
+    writeSuite(suitePath)
+
+    const run = await runScale(['eval', 'run', '--suite', suitePath, '--json'], scaleDir, projectDir)
+    expect(run.exitCode).toBe(0)
+    const runReport = parseJson<{
+      run: { id: string; suiteId: string; ok: boolean }
+      runPath: string
+    }>(run.stdout, run.stderr)
+    expect(runReport.run.ok).toBe(true)
+    expect(runReport.run.suiteId).toBe('project-suite')
+
+    const compare = await runScale([
+      'eval',
+      'compare',
+      '--baseline',
+      runReport.runPath,
+      '--candidate',
+      runReport.runPath,
+      '--json',
+    ], scaleDir, projectDir)
+    expect(compare.exitCode).toBe(0)
+
+    const report = await runScale(['eval', 'report', '--run', runReport.runPath, '--json'], scaleDir, projectDir)
+    expect(report.exitCode).toBe(0)
+  }, 120_000)
+
+  it('rejects suite and run JSON paths that escape allowed directories', async () => {
+    const scaleDir = makeDir('scale-eval-cli-scale-')
+    const projectDir = makeDir('scale-eval-cli-project-')
+    const outsideDir = makeDir('scale-eval-cli-outside-')
+    const outsidePath = join(outsideDir, 'outside.json')
+    writeSuite(outsidePath, 'outside-suite')
+
+    const suiteRun = await runScale(['eval', 'run', '--suite', outsidePath, '--json'], scaleDir, projectDir)
+    expect(suiteRun.exitCode).toBe(1)
+    expect(`${suiteRun.stdout}\n${suiteRun.stderr}`).toContain('Eval suite path escapes allowed directories')
+
+    const compare = await runScale([
+      'eval',
+      'compare',
+      '--baseline',
+      outsidePath,
+      '--candidate',
+      outsidePath,
+      '--json',
+    ], scaleDir, projectDir)
+    expect(compare.exitCode).toBe(1)
+    expect(`${compare.stdout}\n${compare.stderr}`).toContain('Eval run path escapes allowed directories')
+
+    const report = await runScale(['eval', 'report', '--run', outsidePath, '--json'], scaleDir, projectDir)
+    expect(report.exitCode).toBe(1)
+    expect(`${report.stdout}\n${report.stderr}`).toContain('Eval run path escapes allowed directories')
+  }, 120_000)
+
   it('compares runs and renders a Markdown eval report', async () => {
     const scaleDir = makeDir('scale-eval-cli-scale-')
     const projectDir = makeDir('scale-eval-cli-project-')
@@ -260,16 +345,16 @@ describe('workflow eval CLI', () => {
     const second = await runScale(['eval', 'run', '--json'], scaleDir, projectDir)
     expect(first.exitCode).toBe(0)
     expect(second.exitCode).toBe(0)
-    const firstRun = parseJson<{ run: { id: string } }>(first.stdout, first.stderr)
-    const secondRun = parseJson<{ run: { id: string } }>(second.stdout, second.stderr)
+    const firstRun = parseJson<{ run: { id: string }; runPath: string }>(first.stdout, first.stderr)
+    const secondRun = parseJson<{ run: { id: string }; runPath: string }>(second.stdout, second.stderr)
 
     const compare = await runScale([
       'eval',
       'compare',
       '--baseline',
-      firstRun.run.id,
+      firstRun.runPath,
       '--candidate',
-      secondRun.run.id,
+      secondRun.runPath,
       '--json',
     ], scaleDir, projectDir)
     expect(compare.exitCode).toBe(0)
@@ -278,7 +363,7 @@ describe('workflow eval CLI', () => {
     expect(comparison.delta.passAt1Rate).toBe(0)
 
     const output = join(projectDir, 'reports', 'eval.md')
-    const report = await runScale(['eval', 'report', '--run', secondRun.run.id, '--output', output, '--json'], scaleDir, projectDir)
+    const report = await runScale(['eval', 'report', '--run', secondRun.runPath, '--output', output, '--json'], scaleDir, projectDir)
     expect(report.exitCode).toBe(0)
     const reportJson = parseJson<{ outputPath: string; markdown: string }>(report.stdout, report.stderr)
     expect(reportJson.outputPath).toBe(output)

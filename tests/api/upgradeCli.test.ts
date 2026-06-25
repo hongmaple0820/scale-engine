@@ -63,7 +63,7 @@ describe('upgrade CLI', () => {
     expect(check.exitCode).toBe(0)
     expect(parseJson<{ status: string; thirdParty: { policy: string } }>(check.stdout)).toMatchObject({
       status: 'clean',
-      thirdParty: { policy: 'check-only' },
+      thirdParty: { policy: 'default-install' },
     })
 
     const plan = await runScale(['upgrade', 'plan', '--dir', projectDir, '--json'], scaleDir, projectDir)
@@ -183,13 +183,13 @@ describe('upgrade CLI', () => {
     const tools = await runScale(['tools', 'outdated', '--dir', projectDir, '--json'], scaleDir, projectDir)
     expect(tools.exitCode).toBe(0)
     expect(parseJson<{ policy: string; entries: Array<{ category: string; updatePolicy: string }> }>(tools.stdout)).toMatchObject({
-      policy: 'check-only',
+      policy: 'default-install',
     })
 
     const skills = await runScale(['skill', 'outdated', '--dir', projectDir, '--json'], scaleDir, projectDir)
     expect(skills.exitCode).toBe(0)
     expect(parseJson<{ policy: string; entries: Array<{ category: string; updatePolicy: string }> }>(skills.stdout)).toMatchObject({
-      policy: 'check-only',
+      policy: 'default-install',
     })
   }, 45000)
 })

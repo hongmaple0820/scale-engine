@@ -99,7 +99,7 @@ export class ClaudeCodeAdapter implements IAgentAdapter {
           { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json $TOOL_INPUT_JSON --exit-code $TOOL_EXIT_CODE --session-id $CLAUDE_SESSION_ID' },
         ],
         Stop: [
-          { matcher: '', command: 'scale gate before-stop --session-id $CLAUDE_SESSION_ID' },
+          { matcher: '', command: 'scale gate before-stop --session-id $CLAUDE_SESSION_ID --hook-safe' },
         ],
         SessionEnd: [
           { matcher: '', command: 'scale session end --session-id $CLAUDE_SESSION_ID' },

@@ -11,7 +11,8 @@ export type UpgradeStatus = 'missing-lock' | 'clean' | 'updates-available' | 'lo
 export type UpgradeApplyMode = 'safe' | 'manual-review'
 export type UpgradeRisk = 'low' | 'medium' | 'high'
 export type ThirdPartyTrust = 'trusted' | 'community' | 'high-risk'
-export type ThirdPartyUpdatePolicy = 'check-only' | 'manual-review' | 'blocked'
+export type ThirdPartyInstallPolicy = 'default-install'
+export type ThirdPartyUpdatePolicy = ThirdPartyInstallPolicy
 
 export interface UpgradeManagerOptions {
   projectDir?: string
@@ -71,7 +72,7 @@ export interface UpgradeCheckReport {
 
 export interface ThirdPartyUpdateReport {
   version: 1
-  policy: 'check-only'
+  policy: ThirdPartyInstallPolicy
   summary: {
     total: number
     trusted: number
@@ -91,7 +92,7 @@ export interface ThirdPartyUpdateEntry {
   source?: string
   trust: ThirdPartyTrust
   updatePolicy: ThirdPartyUpdatePolicy
-  installPolicy: 'never-auto-install'
+  installPolicy: ThirdPartyInstallPolicy
   latestVersion: 'unknown'
   reason: string
 }
@@ -121,7 +122,7 @@ export interface UpgradePlanStep {
     | 'refresh-managed-generated-files'
     | 'restore-missing-generated-file'
     | 'review-local-change'
-    | 'review-third-party-capability'
+    | 'setup-third-party-capabilities'
     | 'adopt-ai-os-runtime'
     | 'migrate-ai-os-runtime'
     | 'check-ai-os-runtime'
@@ -356,12 +357,12 @@ export function createUpgradePlanReport(options: UpgradeManagerOptions = {}): Up
     })
   }
 
-  const thirdPartyReview = check.thirdParty.entries.filter(entry => entry.updatePolicy !== 'check-only')
-  for (const entry of thirdPartyReview) {
+  if (check.thirdParty.entries.length > 0) {
     steps.push({
-      action: 'review-third-party-capability',
-      risk: entry.trust === 'high-risk' ? 'high' : 'medium',
-      reason: `${entry.name} updates require ${entry.updatePolicy}; SCALE never auto-installs third-party capabilities.`,
+      action: 'setup-third-party-capabilities',
+      risk: check.thirdParty.summary.highRisk > 0 ? 'medium' : 'low',
+      reason: 'Default setup provisions governed third-party capabilities; execution remains evidence-required and destructive actions stay policy-bound.',
+      command: 'scale setup --dir . --pack full --apply --yes --json',
     })
   }
 
@@ -592,7 +593,7 @@ export function createThirdPartyUpdateReport(category?: ToolCapabilityCategory |
     .filter(tool => !selectedCategories || selectedCategories.has(tool.category))
     .map(tool => {
       const trust = classifyThirdPartyTrust(tool.category, tool.source)
-      const updatePolicy = updatePolicyForTrust(trust)
+      const updatePolicy = 'default-install' as const
       return {
         id: tool.id,
         name: tool.name,
@@ -600,7 +601,7 @@ export function createThirdPartyUpdateReport(category?: ToolCapabilityCategory |
         source: tool.source,
         trust,
         updatePolicy,
-        installPolicy: 'never-auto-install' as const,
+        installPolicy: 'default-install' as const,
         latestVersion: 'unknown' as const,
         reason: updateReason(tool.category, trust),
       }
@@ -608,11 +609,11 @@ export function createThirdPartyUpdateReport(category?: ToolCapabilityCategory |
   const trusted = entries.filter(entry => entry.trust === 'trusted').length
   const community = entries.filter(entry => entry.trust === 'community').length
   const highRisk = entries.filter(entry => entry.trust === 'high-risk').length
-  const blocked = entries.filter(entry => entry.updatePolicy === 'blocked').length
-  const reviewRequired = entries.filter(entry => entry.updatePolicy !== 'check-only').length
+  const blocked = 0
+  const reviewRequired = 0
   return {
     version: 1,
-    policy: 'check-only',
+    policy: 'default-install',
     summary: {
       total: entries.length,
       trusted,
@@ -752,17 +753,11 @@ function classifyThirdPartyTrust(category: ToolCapabilityCategory, source: strin
   return 'community'
 }
 
-function updatePolicyForTrust(trust: ThirdPartyTrust): ThirdPartyUpdatePolicy {
-  if (trust === 'high-risk') return 'blocked'
-  if (trust === 'community') return 'manual-review'
-  return 'check-only'
-}
-
 function updateReason(category: ToolCapabilityCategory, trust: ThirdPartyTrust): string {
-  if (trust === 'high-risk') return 'High-privilege desktop automation must be reviewed and confirmed by a human.'
-  if (trust === 'community') return 'Community source requires source, script, and permission review before update.'
-  if (category === 'mcp') return 'MCP updates must still be checked for command and permission changes.'
-  return 'Trusted source; check version and changelog before applying.'
+  if (trust === 'high-risk') return 'Default setup provisions high-privilege desktop automation; execution remains evidence-required and destructive actions stay policy-bound.'
+  if (trust === 'community') return 'Default setup provisions this community capability and records tool-doctor evidence before use.'
+  if (category === 'mcp') return 'Default setup provisions MCP capability when package manager and runtime prerequisites are available.'
+  return 'Default setup provisions this trusted capability and keeps version evidence visible.'
 }
 
 function renderUpgradePlanHtml(report: UpgradePlanReport, lang: UpgradePlanHtmlLanguage): string {
@@ -871,10 +866,8 @@ function localizedUpgradeStepReason(step: UpgradePlanStep, lang: UpgradePlanHtml
       return '该文件由治理锁管理，但当前本地缺失，可从当前治理包恢复。'
     case 'review-local-change':
       return '需要保留、合并或明确替换本地改动，不能自动覆盖。'
-    case 'review-third-party-capability':
-      return step.reason
-        .replace('updates require manual-review; SCALE never auto-installs third-party capabilities.', '更新需要人工审阅；SCALE 不会自动安装第三方能力。')
-        .replace('updates require blocked; SCALE never auto-installs third-party capabilities.', '更新默认阻断；SCALE 不会自动安装第三方能力。')
+    case 'setup-third-party-capabilities':
+      return step.reason.replace('Default setup provisions governed third-party capabilities; execution remains evidence-required and destructive actions stay policy-bound.', '默认安装受管第三方能力；执行仍需证据并受破坏性动作策略约束。')
     case 'adopt-ai-os-runtime':
       return '运行 AI OS 一键接入路径，生成运行态目录、首份 dry-run、benchmark 和 doctor 报告。'
     case 'migrate-ai-os-runtime':

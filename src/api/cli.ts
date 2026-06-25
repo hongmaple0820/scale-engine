@@ -30,7 +30,7 @@ import { createSkillPlan, evaluateSkillGate, loadSkillRoutingPolicy, skillPlanMa
 import { createAdapter, SUPPORTED_AGENTS } from '../adapters/index.js'
 import { LessonExtractor, RuleProposer, HookGenerator, EvolutionEngine } from '../evolution/EvolutionEngine.js'
 import { Doctor } from './doctor.js'
-import { inspectEnvironment, renderEnvironmentDoctor } from '../env/EnvironmentDoctor.js'
+import { inspectBetterSqlite3Runtime, inspectEnvironment, renderEnvironmentDoctor } from '../env/EnvironmentDoctor.js'
 import { quickStart, detectPlatform, governanceNextSteps } from './quickstart.js'
 import { bootstrapDependencies } from '../bootstrap/DependencyBootstrap.js'
 import { renderDependencyBootstrapReport } from '../bootstrap/DependencyBootstrapRenderer.js'
@@ -983,7 +983,47 @@ const status = defineCommand({
     json: { type: 'boolean', default: false },
   },
   async run({ args }) {
-    const { store } = getEngine()
+    let store: ReturnType<typeof getEngine>['store']
+    try {
+      store = getEngine().store
+    } catch (error) {
+      const runtime = inspectBetterSqlite3Runtime({
+        nativeModuleProbe: () => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      })
+      const result = {
+        artifacts: {
+          latestSpec: null,
+          latestPlan: null,
+          latestTask: null,
+        },
+        recentEvidence: [],
+        recentReviews: [],
+        workflowState: null,
+        blockers: [`Artifact store unavailable: ${runtime.reason}`],
+        nextCommand: runtime.installHint ?? 'scale doctor',
+        runtime: {
+          artifactStore: {
+            status: runtime.status,
+            reason: runtime.reason,
+            fix: runtime.installHint,
+          },
+        },
+      }
+      if (args.json) {
+        console.log(JSON.stringify(result, null, 2))
+      } else {
+        console.log('\nSCALE Status')
+        console.log('  Status: DEGRADED')
+        console.log(`  Artifact store: ${runtime.reason}`)
+        if (runtime.installHint) console.log(`  Fix: ${runtime.installHint}`)
+        console.log(`\nNext: ${result.nextCommand}`)
+      }
+      process.exitCode = 1
+      return
+    }
     const evidenceStore = new EvidenceStore(SCALE_DIR)
     const reviewStore = new ReviewStore(SCALE_DIR)
     const [specs, plans, tasks] = await Promise.all([

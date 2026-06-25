@@ -74,7 +74,11 @@ node scripts/workflow/docs-health.mjs --json
 
 `learning-health` is the companion gate for self-learning governance. It checks that repo-local reusable skills live under `.scale/skills/`, release packages include those skills and the learning gate script, memory provider routing still requires evidence, and default/CI verification profiles run the learning gate.
 
-`G8` runs the full docs-health gate and writes `.agent/logs/docs-health/g8-docs-health-report.json`. `G17` runs the link-health subset and writes `.agent/logs/docs-health/g17-link-health-report.json`. `npm run release:check` runs `npm run learning:health` and `npm run docs:health` before typecheck, lint, tests, smoke checks, build, audit, diff hygiene, and package dry-run.
+Hook-sensitive CLI commands must stay safe in agent hook contexts. `scale gate before-stop` defaults to a hook-safe fast path that does not initialize the artifact engine; use `scale gate before-stop --enforce` only in explicit verification flows such as preflight or manual release checks.
+
+`G8` runs the full docs-health gate and writes `.agent/logs/docs-health/g8-docs-health-report.json`. `G17` runs the link-health subset and writes `.agent/logs/docs-health/g17-link-health-report.json`. `npm run release:check` runs `npm run learning:health` and `npm run docs:health` before typecheck, lint, tests, smoke checks, build, package smoke, audit, diff hygiene, and package dry-run.
+
+`npm run smoke:package` verifies that npm pack includes critical `dist/cli/*` command modules and that hook-sensitive commands such as `scale gate before-stop` and `scale meta-governance` start from the built package without creating `scale.db`.
 
 GitHub source CI, published-package gate checks, and tag-based publish workflows also run `npm run learning:health` and `npm run docs:health` so Linux/macOS CI and release automation enforce the same documentation, artifact, skill-source, and memory-evidence policy as local verification.
 

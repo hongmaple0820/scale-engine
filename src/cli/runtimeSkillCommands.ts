@@ -5,6 +5,7 @@ import { defineCommand } from 'citty'
 import { dirname, join, resolve } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { getEngine, SCALE_DIR, PROJECT_DIR, isTruthyFlag, resolveScaleDirForProject, ensureDir } from './engineBootstrap.js'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 import {
   ModelUsageLedger,
   RuntimeEvidenceLedger,
@@ -919,7 +920,11 @@ const memoryImport = defineCommand({
     json: { type: 'boolean', default: false },
   },
   run({ args }) {
-    const filePath = resolve(PROJECT_DIR, String(args.file))
+    const filePath = resolvePathWithinRoots(String(args.file), {
+      baseDir: PROJECT_DIR,
+      allowedRoots: [PROJECT_DIR],
+      label: 'Memory import',
+    })
     const report = memoryBrain().importJsonl(filePath)
     if (args.json) {
       console.log(JSON.stringify(report, null, 2))

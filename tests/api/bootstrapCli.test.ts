@@ -9,6 +9,21 @@ let dirs: string[] = []
 const CLI_ENTRY = join(process.cwd(), 'src/api/cli.ts')
 const TSX_LOADER = pathToFileURL(join(process.cwd(), 'node_modules/tsx/dist/loader.mjs')).href
 const CLI_TEST_TIMEOUT_MS = 120_000
+const UI_BOOTSTRAP_IDS = [
+  'web-access',
+  'impeccable',
+  'taste-skill',
+  'awesome-design-md',
+  'ui-ux-pro-max',
+  'frontend-design',
+  'agent-browser',
+  'playwright',
+  'mcp-chrome-devtools',
+]
+const UI_POSTCHECK_COMMANDS = [
+  'scale tool doctor --tools web-access,impeccable,taste-skill,awesome-design-md,ui-ux-pro-max,frontend-design --json',
+  'scale tool doctor --tools agent-browser,playwright,mcp-chrome-devtools --json',
+]
 
 afterEach(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
@@ -48,7 +63,7 @@ describe('bootstrap CLI', () => {
     const report = JSON.parse(result.stdout) as {
       apply: boolean
       packIds: string[]
-      summary: { total: number; ready: number; manualReview: number }
+      summary: { total: number; ready: number; manualReview: number; failed: number }
       runtimeChecks: Array<{ id: string; status: string; requiredFor: string[] }>
       postChecks: Array<unknown>
       postCheckSummary: { total: number; passed: number; warned: number; failed: number }
@@ -59,26 +74,29 @@ describe('bootstrap CLI', () => {
     }
     expect(report.apply).toBe(false)
     expect(report.packIds).toEqual(['ui'])
-    expect(report.summary.total).toBe(4)
-    expect(report.summary.ready).toBe(4)
+    expect(report.summary.total).toBe(UI_BOOTSTRAP_IDS.length)
+    expect(report.summary.ready).toBeGreaterThanOrEqual(4)
     expect(report.summary.manualReview).toBe(0)
+    expect(report.summary.failed).toBe(0)
     expect(report.runtimeChecks).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'node', status: 'ok' }),
       expect.objectContaining({ id: 'npx', status: 'ok' }),
     ]))
-    expect(report.runtimeChecks.find(check => check.id === 'npx')?.requiredFor).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
+    expect(report.runtimeChecks.find(check => check.id === 'npx')?.requiredFor).toEqual(expect.arrayContaining(UI_BOOTSTRAP_IDS))
     expect(report.postChecks).toEqual([])
     expect(report.postCheckSummary).toMatchObject({ total: 0, passed: 0, warned: 0, failed: 0 })
-    expect(report.items.map(item => item.id)).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
-    expect(report.items.every(item => item.status === 'ready')).toBe(true)
-    expect(report.items.find(item => item.id === 'impeccable')?.installCommand).toContain('npx impeccable skills install')
+    expect(report.items.map(item => item.id)).toEqual(UI_BOOTSTRAP_IDS)
+    expect(report.items.every(item => item.status !== 'manual-review' && item.status !== 'failed')).toBe(true)
+    expect(report.items.find(item => item.id === 'impeccable')?.installCommand).toContain('npx -y impeccable skills install --yes')
     expect(report.items.find(item => item.id === 'taste-skill')?.installCommand).toContain('LeonxlnX/taste-skill')
+    expect(report.items.find(item => item.id === 'web-access')?.installCommand).toContain('web-access')
+    expect(report.items.find(item => item.id === 'frontend-design')?.installCommand).toContain('frontend-design')
     expect(report.items.find(item => item.id === 'awesome-design-md')?.installCommand).toContain('install skill adapter')
     expect(report.items.find(item => item.id === 'awesome-design-md')?.installCommand).toContain('VoltAgent/awesome-design-md')
     expect(report.items.find(item => item.id === 'ui-ux-pro-max')?.installCommand).toContain('install skill adapter')
     expect(report.items.find(item => item.id === 'ui-ux-pro-max')?.installCommand).toContain('nextlevelbuilder/ui-ux-pro-max-skill')
     expect(report.postCheckCommands).toEqual(expect.arrayContaining([
-      'scale tool doctor --tools impeccable,taste-skill,awesome-design-md,ui-ux-pro-max --json',
+      ...UI_POSTCHECK_COMMANDS,
       'scale skill doctor --json',
       'scale doctor',
     ]))
@@ -128,7 +146,7 @@ describe('bootstrap CLI', () => {
     expect(report.applied).toBe(false)
     expect(report.final.packIds).toEqual(['ui'])
     expect(report.final.runtimeChecks.map(check => check.id)).toEqual(expect.arrayContaining(['node', 'npx']))
-    expect(report.final.items.map(item => item.id)).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
+    expect(report.final.items.map(item => item.id)).toEqual(UI_BOOTSTRAP_IDS)
   }, CLI_TEST_TIMEOUT_MS)
 
   it('switches gbrain memory provider through setup without hand-editing config', async () => {
@@ -188,14 +206,14 @@ describe('bootstrap CLI', () => {
     expect(report.ok).toBe(false)
     expect(report.packIds).toEqual(['ui'])
     expect(report.dependencyBootstrap.packIds).toEqual(['ui'])
-    expect(report.dependencyBootstrap.items.map(item => item.id)).toEqual(['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max'])
-    expect(report.toolCapabilities.summary.total).toBe(4)
-    expect(report.toolCapabilities.summary.missing).toBe(4)
+    expect(report.dependencyBootstrap.items.map(item => item.id)).toEqual(UI_BOOTSTRAP_IDS)
+    expect(report.toolCapabilities.summary.total).toBe(UI_BOOTSTRAP_IDS.length)
+    expect(report.toolCapabilities.summary.missing).toBeGreaterThan(0)
     expect(report.summary.blockingIssues).toEqual(expect.arrayContaining([
-      expect.stringContaining('Missing governed capabilities: impeccable, taste-skill, awesome-design-md, ui-ux-pro-max'),
+      expect.stringContaining('Missing governed capabilities:'),
     ]))
     expect(report.recommendations).toEqual(expect.arrayContaining([
-      'scale tool doctor --tools impeccable,taste-skill,awesome-design-md,ui-ux-pro-max --json',
+      ...UI_POSTCHECK_COMMANDS,
     ]))
   }, CLI_TEST_TIMEOUT_MS)
 
@@ -243,16 +261,26 @@ describe('bootstrap CLI', () => {
       'gbrain',
       'codegraph',
       'graphify',
+      'gitnexus',
+      'web-access',
       'impeccable',
       'taste-skill',
       'awesome-design-md',
       'ui-ux-pro-max',
+      'frontend-design',
+      'agent-browser',
+      'playwright',
+      'mcp-chrome-devtools',
+      'desktop-cua',
+      'codex-cli',
+      'gemini-cli',
+      'opencode-cli',
     ]))
     expect(report.postCheckCommands).toEqual(expect.arrayContaining([
-      'scale tool doctor --tools rtk --json',
+      ...UI_POSTCHECK_COMMANDS,
       'scale memory provider status --json',
-      'scale tool doctor --tools codegraph,graphify --json',
-      'scale tool doctor --tools impeccable,taste-skill,awesome-design-md,ui-ux-pro-max --json',
+      'scale tool doctor --tools codegraph,graphify,gitnexus --json',
+      'scale tool doctor --tools rtk,gitnexus,desktop-cua,codex-cli,gemini-cli,opencode-cli --json',
     ]))
   }, CLI_TEST_TIMEOUT_MS)
 

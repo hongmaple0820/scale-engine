@@ -26,7 +26,7 @@ function installedItem(id: string): DependencyBootstrapItemReport {
 }
 
 describe('dependency bootstrap post-checks', () => {
-  it('exposes GitNexus as include-only manual-review capability', async () => {
+  it('includes GitNexus in default knowledge bootstrap with automatic install support', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-gitnexus-bootstrap-project-'))
     const scaleDir = join(projectDir, '.scale')
 
@@ -34,8 +34,7 @@ describe('dependency bootstrap post-checks', () => {
       const report = await bootstrapDependencies({
         projectDir,
         scaleDir,
-        packIds: ['external-cli'],
-        includeIds: ['gitnexus'],
+        packIds: ['knowledge'],
         onlyIds: ['gitnexus'],
         apply: false,
       })
@@ -43,15 +42,71 @@ describe('dependency bootstrap post-checks', () => {
       expect(report.items).toHaveLength(1)
       expect(report.items[0]).toMatchObject({
         id: 'gitnexus',
-        installSupported: false,
       })
-      expect(['manual-review', 'needs-init', 'installed']).toContain(report.items[0].status)
-      expect(report.items[0].packs).toEqual([])
+      expect(report.items[0].installSupported || report.items[0].installed).toBe(true)
+      expect(['ready', 'needs-init', 'installed']).toContain(report.items[0].status)
+      expect(report.items[0].packs).toEqual(['knowledge', 'external-cli'])
       expect(report.postCheckCommands).toEqual(expect.arrayContaining([
-        'scale tool doctor --tools gitnexus --json',
+        'scale tool doctor --tools codegraph,graphify,gitnexus --json',
         'scale codegraph status --json',
       ]))
-      expect(report.recommendations.join('\n')).toContain('GitNexus is optional and non-default')
+      expect(report.recommendations.join('\n')).toContain('GitNexus is included in the default capability bootstrap')
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not treat Python itself as an installed CUA package', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-cua-bootstrap-project-'))
+    const scaleDir = join(projectDir, '.scale')
+
+    try {
+      const report = await bootstrapDependencies({
+        projectDir,
+        scaleDir,
+        packIds: ['external-cli'],
+        onlyIds: ['desktop-cua'],
+        apply: false,
+      })
+
+      expect(report.items).toHaveLength(1)
+      const cua = report.items[0]
+      expect(cua.id).toBe('desktop-cua')
+      expect(cua.detectedBy).not.toBe('PATH:python')
+      if (cua.detectedBy === 'missing' && cua.installSupported) {
+        expect(cua.status).toBe('ready')
+        expect(cua.installCommand).toContain('cua')
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('recognizes taste-skill aliases installed by the upstream skill package', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-taste-bootstrap-project-'))
+    const scaleDir = join(projectDir, '.scale')
+    const aliasDir = join(projectDir, '.agents', 'skills', 'design-taste-frontend')
+    const aliasPath = join(aliasDir, 'SKILL.md')
+
+    try {
+      mkdirSync(aliasDir, { recursive: true })
+      writeFileSync(aliasPath, '---\nname: design-taste-frontend\n---\n', 'utf-8')
+
+      const report = await bootstrapDependencies({
+        projectDir,
+        scaleDir,
+        packIds: ['ui'],
+        onlyIds: ['taste-skill'],
+        apply: false,
+      })
+
+      expect(report.items).toHaveLength(1)
+      expect(report.items[0]).toMatchObject({
+        id: 'taste-skill',
+        installed: true,
+        status: 'installed',
+        detectedBy: aliasPath,
+      })
     } finally {
       rmSync(projectDir, { recursive: true, force: true })
     }
@@ -207,6 +262,63 @@ describe('dependency bootstrap post-checks', () => {
     })
     expect(results.find(result => result.id === 'memory-provider')).toMatchObject({
       status: 'failed',
+      details: {
+        gbrainReason: 'gbrain doctor failed in this runtime',
+      },
+    })
+  })
+
+  it('warns instead of failing the full-pack post-check when gbrain initialization is pending', () => {
+    const results = runDependencyBootstrapPostChecks({
+      projectDir: 'E:/project/demo',
+      scaleDir: 'E:/project/demo/.scale',
+      packIds: ['full'],
+      items: [installedItem('gbrain')],
+      homeDir: 'C:/Users/tester',
+    }, {
+      inspectTools: () => ({
+        ok: true,
+        summary: { total: 1, installed: 1, missing: 0 },
+        tools: [
+          { id: 'gbrain', name: 'GBrain', category: 'cli', requiredFor: [], checkedPaths: ['PATH:gbrain'], installed: true, status: 'installed' },
+        ],
+      }),
+      inspectMemory: () => ({
+        projectDir: 'E:/project/demo',
+        scaleDir: 'E:/project/demo/.scale',
+        configPath: 'E:/project/demo/.scale/memory-providers.json',
+        configExists: true,
+        routing: {
+          mode: 'external-first',
+          defaultOrder: ['gbrain'],
+          allowExternalWrite: false,
+          requireEvidence: true,
+          maxResultsPerProvider: 5,
+        },
+        providers: [
+          {
+            id: 'gbrain',
+            kind: 'gbrain',
+            enabled: true,
+            available: false,
+            selectedByDefault: true,
+            priority: 95,
+            capabilities: ['graph-recall'],
+            safetyLevel: 'review-required',
+            writeMode: 'disabled',
+            reason: 'gbrain doctor failed in this runtime',
+          },
+        ],
+        availableProviderCount: 0,
+        warnings: [],
+      }),
+    })
+
+    expect(results.find(result => result.id === 'tool-capabilities')).toMatchObject({
+      status: 'passed',
+    })
+    expect(results.find(result => result.id === 'memory-provider')).toMatchObject({
+      status: 'warn',
       details: {
         gbrainReason: 'gbrain doctor failed in this runtime',
       },

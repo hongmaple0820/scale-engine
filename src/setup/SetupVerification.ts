@@ -134,7 +134,12 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
   }
 
   if (includesMemory && memoryProviders.availableProviderCount === 0) {
-    blockingIssues.push('No memory provider is currently available')
+    const message = 'No memory provider is currently available'
+    if (shouldBlockMemoryProviderUnavailability(dependencyBootstrap)) {
+      blockingIssues.push(message)
+    } else {
+      warnings.push('Memory provider is not initialized; full setup remains usable for installed non-memory capabilities.')
+    }
   }
 
   if (includesKnowledge && codeIntelligence.availableProviderCount === 0 && !codeIntelligence.fallback.available) {
@@ -226,10 +231,31 @@ const ENVIRONMENT_WARNING_TOOL_MAP: Record<string, string[]> = {
 }
 
 function resolveNonBlockingDependencyIds(
-  _dependencyBootstrap: DependencyBootstrapReport,
+  dependencyBootstrap: DependencyBootstrapReport,
   _memoryProviders: MemoryProviderStatusReport,
 ): Set<string> {
-  return new Set<string>()
+  const nonBlocking = new Set<string>()
+  if (!dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')) {
+    return nonBlocking
+  }
+  for (const item of dependencyBootstrap.items) {
+    if (!item.packs.includes('memory')) continue
+    if (!item.installed || item.status !== 'needs-init') continue
+    nonBlocking.add(item.id)
+  }
+  return nonBlocking
+}
+
+function shouldBlockMemoryProviderUnavailability(dependencyBootstrap: DependencyBootstrapReport): boolean {
+  if (!dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')) return true
+  const memoryItems = dependencyBootstrap.items.filter(item => item.packs.includes('memory'))
+  if (memoryItems.length === 0) return false
+  return memoryItems.some(item =>
+    item.status === 'failed'
+    || item.status === 'manual-review'
+    || item.status === 'ready'
+    || item.status === 'version-drift',
+  )
 }
 
 function skippedMemoryProvidersReport(projectDir: string, scaleDir: string): MemoryProviderStatusReport {

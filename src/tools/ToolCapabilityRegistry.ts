@@ -16,6 +16,7 @@ export interface ToolCatalogEntry {
   requiredFor: string[]
   recommendedFor?: string[]
   skillId?: string
+  skillAliases?: string[]
   command?: string
   versionArgs?: string[]
   envFlag?: string
@@ -63,7 +64,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: ['webResearch'],
     recommendedFor: ['browserAutomation'],
     source: 'https://github.com/eze-is/web-access',
-    installHint: 'npx skills add https://github.com/eze-is/web-access --skill web-access',
+    installHint: 'npx -y skills add https://github.com/eze-is/web-access --skill web-access --yes',
   },
   {
     id: 'impeccable',
@@ -72,17 +73,18 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     skillId: 'impeccable',
     requiredFor: ['ui'],
     source: 'https://github.com/pbakaus/impeccable',
-    installHint: 'npx impeccable skills install',
+    installHint: 'npx -y impeccable skills install --yes',
   },
   {
     id: 'taste-skill',
     name: 'Taste Skill',
     category: 'skill',
     skillId: 'taste-skill',
+    skillAliases: ['design-taste-frontend', 'design-taste-frontend-v1'],
     requiredFor: [],
     recommendedFor: ['ui'],
     source: 'https://github.com/LeonxlnX/taste-skill',
-    installHint: 'npx skills add LeonxlnX/taste-skill',
+    installHint: 'npx -y skills add LeonxlnX/taste-skill --yes',
   },
   {
     id: 'awesome-design-md',
@@ -113,7 +115,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['ui'],
     source: 'https://github.com/anthropics/skills/tree/main/skills/frontend-design',
-    installHint: 'npx skills add anthropics/skills --skill frontend-design',
+    installHint: 'npx -y skills add anthropics/skills --skill frontend-design --yes',
   },
   {
     id: 'rtk',
@@ -168,7 +170,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['review'],
     source: 'https://github.com/abhigyanpatwari/GitNexus',
-    installHint: 'Install explicitly with: npm install -g gitnexus; initialize per project with: gitnexus analyze --index-only',
+    installHint: 'scale setup --pack knowledge --apply --yes',
   },
   {
     id: 'agent-browser',
@@ -179,7 +181,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: ['browserAutomation'],
     recommendedFor: ['ui', 'e2e'],
     source: 'https://github.com/vercel-labs/agent-browser',
-    installHint: 'Install or configure Agent Browser from https://github.com/vercel-labs/agent-browser',
+    installHint: 'npm install -g agent-browser',
   },
   {
     id: 'playwright',
@@ -190,27 +192,29 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: ['e2e'],
     recommendedFor: ['browserAutomation', 'ui'],
     source: 'https://playwright.dev',
-    installHint: 'npx playwright install',
+    installHint: 'npx -y playwright install',
   },
   {
     id: 'mcp-chrome-devtools',
     name: 'Chrome DevTools MCP',
     category: 'mcp',
+    command: 'chrome-devtools-mcp',
+    versionArgs: ['--version'],
     envFlag: 'SCALE_MCP_CHROME_DEVTOOLS',
     requiredFor: ['browserAutomation'],
     recommendedFor: ['ui', 'e2e'],
     source: 'https://github.com/ChromeDevTools/chrome-devtools-mcp',
-    installHint: 'Configure Chrome DevTools MCP for the active agent platform',
+    installHint: 'npm install -g chrome-devtools-mcp',
   },
   {
     id: 'desktop-cua',
     name: 'CUA',
     category: 'desktop',
-    command: 'cua',
-    versionArgs: ['--version'],
+    command: 'python',
+    versionArgs: ['-c', 'import cua; print("cua python package available")'],
     requiredFor: ['desktopAutomation'],
     source: 'https://github.com/trycua/cua',
-    installHint: 'Install or configure CUA from https://github.com/trycua/cua',
+    installHint: 'scale setup --pack external-cli --apply --yes',
   },
   {
     id: 'codex-cli',
@@ -221,7 +225,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['externalCli', 'review'],
     source: 'https://github.com/openai/codex',
-    installHint: 'Install Codex CLI and verify with: codex --version',
+    installHint: 'npm install -g @openai/codex',
   },
   {
     id: 'gemini-cli',
@@ -232,7 +236,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['externalCli', 'review'],
     source: 'https://github.com/google-gemini/gemini-cli',
-    installHint: 'Install Gemini CLI and verify with: gemini --version',
+    installHint: 'npm install -g @google/gemini-cli',
   },
   {
     id: 'opencode-cli',
@@ -243,7 +247,7 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     requiredFor: [],
     recommendedFor: ['externalCli', 'review'],
     source: 'https://github.com/sst/opencode',
-    installHint: 'Install OpenCode CLI and verify with: opencode --version',
+    installHint: 'npm install -g opencode-ai',
   },
 ]
 
@@ -313,8 +317,9 @@ function inspectToolCapability(tool: ToolCatalogEntry, deps: InspectToolCapabili
 }
 
 function inspectSkillTool(tool: ToolCatalogEntry, deps: InspectToolCapabilityDeps): ToolCapabilityEntry {
+  const skillIds = [tool.skillId ?? tool.id, ...(tool.skillAliases ?? [])]
   const checkedPaths = [
-    ...skillCandidatePaths(tool.skillId ?? tool.id, deps.projectDir, deps.homeDir),
+    ...skillIds.flatMap(skillId => skillCandidatePaths(skillId, deps.projectDir, deps.homeDir)),
     ...(tool.extraPaths?.({ projectDir: deps.projectDir, homeDir: deps.homeDir }) ?? []),
   ]
   const detectedPath = checkedPaths.find(path => existsSync(path))
@@ -353,13 +358,20 @@ function inspectCliTool(tool: ToolCatalogEntry, deps: InspectToolCapabilityDeps)
 
 function inspectMcpTool(tool: ToolCatalogEntry, deps: InspectToolCapabilityDeps): ToolCapabilityEntry {
   const envFlag = tool.envFlag ?? `SCALE_MCP_${tool.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`
-  const installed = truthy(deps.env[envFlag])
+  const command = tool.command
+  const envInstalled = truthy(deps.env[envFlag])
+  const commandInstalled = command ? deps.commandExists(command) : false
+  const version = command && commandInstalled ? deps.runVersion(command, tool.versionArgs ?? ['--version']) : undefined
+  const installed = envInstalled || Boolean(version?.ok)
   return {
     ...tool,
-    checkedPaths: [`env:${envFlag}`],
+    checkedPaths: [`env:${envFlag}`, ...(command ? [`PATH:${command}`] : [])],
     installed,
     status: installed ? 'installed' : 'missing',
-    missingReason: installed ? undefined : `MCP availability flag is not set: ${envFlag}`,
+    version: version?.ok ? (version.stdout ?? '').trim() : undefined,
+    missingReason: installed ? undefined : command
+      ? `MCP availability flag is not set: ${envFlag}; command not found or version probe failed: ${command}`
+      : `MCP availability flag is not set: ${envFlag}`,
   }
 }
 

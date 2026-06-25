@@ -13,7 +13,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Web Access',
     description: 'CDP browser automation for web research, logged-in pages, and dynamic browser tasks',
     source: 'https://github.com/eze-is/web-access',
-    installCommand: 'npx skills add https://github.com/eze-is/web-access --skill web-access',
+    installCommand: 'npx -y skills add https://github.com/eze-is/web-access --skill web-access --yes',
     trust: 'ecosystem',
     readiness: 'required',
     definition: {
@@ -93,7 +93,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Chrome DevTools MCP',
     description: 'Chrome DevTools MCP for browser inspection, console, and network evidence',
     source: 'https://github.com/ChromeDevTools/chrome-devtools-mcp',
-    installCommand: 'Configure Chrome DevTools MCP for the active agent platform',
+    installCommand: 'npm install -g chrome-devtools-mcp',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {
@@ -113,7 +113,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'CUA',
     description: 'Computer use agent for desktop automation and GUI testing',
     source: 'https://github.com/trycua/cua',
-    installCommand: 'Install or configure CUA from https://github.com/trycua/cua',
+    installCommand: 'scale setup --pack external-cli --apply --yes',
     trust: 'ecosystem',
     readiness: 'optional',
     definition: {
@@ -122,7 +122,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
       description: 'Computer use agent for desktop automation and GUI testing',
       domain: 'execution',
       triggers: [],
-      execution: { type: 'cli-command', config: { command: 'cua --version' } },
+      execution: { type: 'cli-command', config: { command: 'python -c "import cua; print(\'cua python package available\')"' } },
       priority: 90,
       installed: false,
       source: 'https://github.com/trycua/cua',
@@ -133,7 +133,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Codex CLI',
     description: 'External Codex CLI reviewer or worker',
     source: 'https://github.com/openai/codex',
-    installCommand: 'Install Codex CLI and verify with: codex --version',
+    installCommand: 'npm install -g @openai/codex',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {
@@ -152,7 +152,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Gemini CLI',
     description: 'External Gemini CLI reviewer or worker',
     source: 'https://github.com/google-gemini/gemini-cli',
-    installCommand: 'Install Gemini CLI and verify with: gemini --version',
+    installCommand: 'npm install -g @google/gemini-cli',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {
@@ -171,7 +171,7 @@ const TOOL_ORCHESTRATION_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'OpenCode CLI',
     description: 'External OpenCode CLI reviewer or worker',
     source: 'https://github.com/sst/opencode',
-    installCommand: 'Install OpenCode CLI and verify with: opencode --version',
+    installCommand: 'npm install -g opencode-ai',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {

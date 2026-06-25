@@ -9,7 +9,7 @@ import { wrapShellCommandWithRtk } from '../tools/RtkRuntime.js'
 import { inspectToolCapabilities } from '../tools/ToolCapabilityRegistry.js'
 
 export type DependencyBootstrapPackId = 'ui' | 'memory' | 'knowledge' | 'external-cli' | 'full'
-export type DependencyBootstrapItemKind = 'skill' | 'cli'
+export type DependencyBootstrapItemKind = 'skill' | 'cli' | 'browser' | 'mcp' | 'desktop'
 export type DependencyBootstrapStatus = 'installed' | 'ready' | 'manual-review' | 'installed-now' | 'failed' | 'needs-init' | 'version-drift'
 
 export interface DependencyBootstrapHealth {
@@ -125,8 +125,10 @@ type DependencyBootstrapDefinition = {
   kind: DependencyBootstrapItemKind
   packs: Array<Exclude<DependencyBootstrapPackId, 'full'>>
   source: string
+  detect?: (ctx: BootstrapInstallContext) => string | null
   detectCommand?: string
   detectSkillId?: string
+  detectSkillAliases?: string[]
   detectPaths?: (ctx: BootstrapInstallContext) => string[]
   prerequisites: string[]
   manualReason: string
@@ -137,8 +139,8 @@ type DependencyBootstrapDefinition = {
 }
 
 const UI_SKILL_INSTALLS = {
-  impeccable: 'npx impeccable skills install',
-  'taste-skill': 'npx skills add LeonxlnX/taste-skill',
+  impeccable: 'npx -y impeccable skills install --yes',
+  'taste-skill': 'npx -y skills add LeonxlnX/taste-skill --yes',
   'awesome-design-md': (ctx: BootstrapInstallContext) => {
     const skillDir = quotePath(join(ctx.homeDir, '.agents', 'skills', 'awesome-design-md'))
     const vendorDir = quotePath(join(ctx.homeDir, '.scale', 'vendor', 'awesome-design-md'))
@@ -149,7 +151,7 @@ const UI_SKILL_INSTALLS = {
     const vendorDir = quotePath(join(ctx.homeDir, '.scale', 'vendor', 'ui-ux-pro-max'))
     return `install skill adapter ${skillDir} from nextlevelbuilder/ui-ux-pro-max-skill into ${vendorDir}`
   },
-  'frontend-design': 'npx skills add anthropics/skills --skill frontend-design',
+  'frontend-design': 'npx -y skills add anthropics/skills --skill frontend-design --yes',
 } as const
 
 const RTK_INSTALL = 'cargo install --git https://github.com/rtk-ai/rtk'
@@ -166,8 +168,32 @@ const GRAPHIFY_PYTHON3_INSTALL = 'python3 -m pip install graphify && graphify in
 const GBRAIN_INSTALL = 'bun install -g github:garrytan/gbrain && gbrain init --pglite'
 const GBRAIN_SOURCE = 'https://github.com/garrytan/gbrain'
 const GITNEXUS_SOURCE = 'https://github.com/abhigyanpatwari/GitNexus'
+const WEB_ACCESS_INSTALL = 'npx -y skills add https://github.com/eze-is/web-access --skill web-access --yes'
+const AGENT_BROWSER_INSTALL = 'npm install -g agent-browser'
+const PLAYWRIGHT_INSTALL = 'npx -y playwright install'
+const CHROME_DEVTOOLS_MCP_INSTALL = 'npm install -g chrome-devtools-mcp'
+const CUA_UV_INSTALL = 'uv pip install --system cua cua-agent'
+const CUA_PIP_INSTALL = 'pip install --user --prefer-binary --no-input --progress-bar off cua cua-agent'
+const CUA_PIP3_INSTALL = 'pip3 install --user --prefer-binary --no-input --progress-bar off cua cua-agent'
+const CUA_PYTHON_INSTALL = 'python -m pip install --user --prefer-binary --no-input --progress-bar off cua cua-agent'
+const CUA_PYTHON3_INSTALL = 'python3 -m pip install --user --prefer-binary --no-input --progress-bar off cua cua-agent'
+const CODEX_CLI_INSTALL = 'npm install -g @openai/codex'
+const GEMINI_CLI_INSTALL = 'npm install -g @google/gemini-cli'
+const OPENCODE_CLI_INSTALL = 'npm install -g opencode-ai'
+const GITNEXUS_INSTALL = 'npm install -g gitnexus'
 
 const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
+  {
+    id: 'web-access',
+    name: 'Web Access',
+    kind: 'skill',
+    packs: ['ui', 'knowledge'],
+    source: 'https://github.com/eze-is/web-access',
+    detectSkillId: 'web-access',
+    prerequisites: ['npx'],
+    manualReason: 'Requires npm/npx to install the web research skill used by governed browser and research workflows.',
+    installCommand: ctx => ctx.commandExists('npx') ? WEB_ACCESS_INSTALL : null,
+  },
   {
     id: 'impeccable',
     name: 'Impeccable',
@@ -178,6 +204,7 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     prerequisites: ['npx'],
     manualReason: 'Requires npm/npx to install the deterministic UI anti-pattern gate skill.',
     installCommand: ctx => ctx.commandExists('npx') ? UI_SKILL_INSTALLS.impeccable : null,
+    install: installImpeccableSkill,
   },
   {
     id: 'taste-skill',
@@ -186,6 +213,7 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     packs: ['ui'],
     source: 'https://github.com/LeonxlnX/taste-skill',
     detectSkillId: 'taste-skill',
+    detectSkillAliases: ['design-taste-frontend', 'design-taste-frontend-v1'],
     prerequisites: ['npx'],
     manualReason: 'Requires npm/npx to install the UI design-language direction skill.',
     installCommand: ctx => ctx.commandExists('npx') ? UI_SKILL_INSTALLS['taste-skill'] : null,
@@ -238,7 +266,7 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     id: 'frontend-design',
     name: 'Frontend Design',
     kind: 'skill',
-    packs: [],
+    packs: ['ui'],
     source: 'https://github.com/anthropics/skills/tree/main/skills/frontend-design',
     detectSkillId: 'frontend-design',
     prerequisites: ['npx'],
@@ -305,14 +333,95 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     id: 'gitnexus',
     name: 'GitNexus',
     kind: 'cli',
-    packs: [],
+    packs: ['knowledge', 'external-cli'],
     source: GITNEXUS_SOURCE,
     detectCommand: 'gitnexus',
     prerequisites: ['npm'],
-    manualReason: 'GitNexus is licensed under PolyForm-Noncommercial-1.0.0 and its npm package may run native grammar build scripts; install only after license and script review.',
-    installCommand: () => null,
+    manualReason: 'Requires npm to install the GitNexus code intelligence CLI.',
+    installCommand: ctx => ctx.commandExists('npm') ? GITNEXUS_INSTALL : null,
     initializeCommands: () => ['gitnexus analyze --index-only', 'gitnexus status'],
     healthCheck: checkGitNexusHealth,
+  },
+  {
+    id: 'agent-browser',
+    name: 'Agent Browser',
+    kind: 'browser',
+    packs: ['ui'],
+    source: 'https://github.com/vercel-labs/agent-browser',
+    detectCommand: 'agent-browser',
+    prerequisites: ['npm'],
+    manualReason: 'Requires npm to install the governed browser automation CLI.',
+    installCommand: ctx => ctx.commandExists('npm') ? AGENT_BROWSER_INSTALL : null,
+  },
+  {
+    id: 'playwright',
+    name: 'Playwright',
+    kind: 'browser',
+    packs: ['ui'],
+    source: 'https://playwright.dev',
+    detectCommand: 'npx',
+    prerequisites: ['npx'],
+    manualReason: 'Requires npm/npx to install browser binaries used by Playwright checks.',
+    installCommand: ctx => ctx.commandExists('npx') ? PLAYWRIGHT_INSTALL : null,
+    initializeCommands: () => [PLAYWRIGHT_INSTALL],
+    healthCheck: checkPlaywrightHealth,
+  },
+  {
+    id: 'mcp-chrome-devtools',
+    name: 'Chrome DevTools MCP',
+    kind: 'mcp',
+    packs: ['ui'],
+    source: 'https://github.com/ChromeDevTools/chrome-devtools-mcp',
+    detectCommand: 'chrome-devtools-mcp',
+    prerequisites: ['npm'],
+    manualReason: 'Requires npm to install the Chrome DevTools MCP command.',
+    installCommand: ctx => ctx.commandExists('npm') ? CHROME_DEVTOOLS_MCP_INSTALL : null,
+  },
+  {
+    id: 'desktop-cua',
+    name: 'CUA',
+    kind: 'desktop',
+    packs: ['external-cli'],
+    source: 'https://github.com/trycua/cua',
+    detect: detectCuaPackage,
+    prerequisites: ['uv|pipx|pip|pip3|python|python3'],
+    manualReason: 'Requires Python/pip to install the CUA desktop automation package.',
+    installCommand: ctx => buildCuaInstallCommand(ctx),
+    install: installCuaPackage,
+    healthCheck: checkCuaHealth,
+  },
+  {
+    id: 'codex-cli',
+    name: 'Codex CLI',
+    kind: 'cli',
+    packs: ['external-cli'],
+    source: 'https://github.com/openai/codex',
+    detectCommand: 'codex',
+    prerequisites: ['npm'],
+    manualReason: 'Requires npm to install the Codex CLI.',
+    installCommand: ctx => ctx.commandExists('npm') ? CODEX_CLI_INSTALL : null,
+  },
+  {
+    id: 'gemini-cli',
+    name: 'Gemini CLI',
+    kind: 'cli',
+    packs: ['external-cli'],
+    source: 'https://github.com/google-gemini/gemini-cli',
+    detectCommand: 'gemini',
+    prerequisites: ['npm'],
+    manualReason: 'Requires npm to install the Gemini CLI.',
+    installCommand: ctx => ctx.commandExists('npm') ? GEMINI_CLI_INSTALL : null,
+  },
+  {
+    id: 'opencode-cli',
+    name: 'OpenCode CLI',
+    kind: 'cli',
+    packs: ['external-cli'],
+    source: 'https://github.com/sst/opencode',
+    detectCommand: 'opencode',
+    prerequisites: ['npm'],
+    manualReason: 'Requires npm to install the OpenCode CLI.',
+    installCommand: ctx => ctx.commandExists('npm') ? OPENCODE_CLI_INSTALL : null,
   },
 ]
 
@@ -400,8 +509,8 @@ function buildReport(
   if (!apply && summary.ready > 0) recommendations.push('Re-run with --apply to install all ready dependencies in one pass.')
   if (runtimeChecks.some(check => check.status === 'missing')) recommendations.push('Install missing runtime dependencies before running --apply.')
   if (runtimeChecks.some(check => check.status === 'warn')) recommendations.push('Review runtime warnings; some tools may install but fail initialization or post-checks.')
-  if (summary.manualReview > 0) recommendations.push('Review manual-review items for missing package managers, PATH setup, or platform-specific configuration.')
-  if (summary.needsInit > 0) recommendations.push('Run the listed initialization commands before treating installed CLIs as ready for autonomous use.')
+  if (summary.manualReview > 0) recommendations.push('Resolve manual-review items by installing missing package managers, fixing PATH setup, or completing platform-specific configuration.')
+  if (summary.needsInit > 0) recommendations.push('Run the listed initialization commands before treating provider-specific features as ready; installed non-provider capabilities may already be usable.')
   if (summary.versionDrift > 0) recommendations.push('Resolve version-drift items before relying on their generated skills, hooks, or artifacts.')
   if (items.some(item => item.id === 'frontend-design')) recommendations.push('frontend-design is optional; keep it as an explicit companion only when implementation ideation is needed.')
   if (items.some(item => item.id === 'impeccable')) recommendations.push('Use impeccable as the required deterministic UI anti-pattern gate before visual acceptance.')
@@ -410,7 +519,8 @@ function buildReport(
   if (items.some(item => item.id === 'ui-ux-pro-max')) recommendations.push('Use ui-ux-pro-max for UX flow, UI state, accessibility, and responsive acceptance checks.')
   if (items.some(item => item.id === 'gbrain')) recommendations.push('After GBrain is installed, validate remote or thin-client health with `scale memory provider status --json`.')
   if (items.some(item => item.id === 'graphify' || item.id === 'codegraph')) recommendations.push('After knowledge tools are installed, run `scale codegraph status --json` and initialize the project index or graph artifacts as needed.')
-  if (items.some(item => item.id === 'gitnexus')) recommendations.push('GitNexus is optional and non-default; review its PolyForm-Noncommercial license and npm install scripts before relying on it.')
+  if (items.some(item => item.id === 'gitnexus')) recommendations.push('GitNexus is included in the default capability bootstrap; keep license and generated index evidence visible in tool doctor output.')
+  if (items.some(item => item.id === 'desktop-cua')) recommendations.push('CUA is installed by default for desktop automation readiness; execution remains evidence-required and destructive actions are still policy-bound.')
   if (postCheckSummary.failed > 0) recommendations.push('Resolve failed post-checks before treating the dependency bootstrap as production-ready.')
   if (postCheckSummary.warned > 0) recommendations.push('Review warned post-checks; they usually indicate provider initialization or project index/artifact setup is still pending.')
 
@@ -443,10 +553,14 @@ function buildRuntimeChecks(items: DependencyBootstrapItemReport[]): DependencyB
     requirements.set(runtimeId, existing)
   }
 
-  const uiIds = ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design'].filter(id => ids.has(id))
+  const uiIds = ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'agent-browser', 'playwright', 'mcp-chrome-devtools'].filter(id => ids.has(id))
   if (uiIds.length > 0) {
     requireRuntime('node', uiIds)
     requireRuntime('npx', uiIds)
+  }
+  if (ids.has('web-access')) {
+    requireRuntime('node', ['web-access'])
+    requireRuntime('npx', ['web-access'])
   }
   if (ids.has('rtk')) requireRuntime('cargo', ['rtk'])
   if (ids.has('gbrain')) requireRuntime('bun', ['gbrain'])
@@ -458,9 +572,14 @@ function buildRuntimeChecks(items: DependencyBootstrapItemReport[]): DependencyB
     requireRuntime('node', ['codegraph'])
     requireRuntime('npm', ['codegraph'])
   }
-  if (ids.has('gitnexus')) {
-    requireRuntime('node', ['gitnexus'])
-    requireRuntime('npm', ['gitnexus'])
+  const npmIds = ['agent-browser', 'mcp-chrome-devtools', 'gitnexus', 'codex-cli', 'gemini-cli', 'opencode-cli'].filter(id => ids.has(id))
+  if (npmIds.length > 0) {
+    requireRuntime('node', npmIds)
+    requireRuntime('npm', npmIds)
+  }
+  if (ids.has('desktop-cua')) {
+    requireRuntime('python', ['desktop-cua'])
+    requireRuntime('python-installer', ['desktop-cua'])
   }
 
   const checks: DependencyBootstrapRuntimeCheck[] = []
@@ -704,7 +823,26 @@ export function runDependencyBootstrapPostChecks(input: {
   const inspectMemory = deps.inspectMemory ?? inspectMemoryProviders
   const inspectCode = deps.inspectCode ?? inspectCodeIntelligence
   const toolIds = unique(input.items.map(item => item.id).filter(id =>
-    ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design', 'rtk', 'gbrain', 'codegraph', 'graphify', 'gitnexus'].includes(id)))
+    [
+      'web-access',
+      'impeccable',
+      'taste-skill',
+      'awesome-design-md',
+      'ui-ux-pro-max',
+      'frontend-design',
+      'agent-browser',
+      'playwright',
+      'mcp-chrome-devtools',
+      'rtk',
+      'gbrain',
+      'codegraph',
+      'graphify',
+      'gitnexus',
+      'desktop-cua',
+      'codex-cli',
+      'gemini-cli',
+      'opencode-cli',
+    ].includes(id)))
   const results: DependencyBootstrapPostCheckResult[] = []
   const memoryReport = input.items.some(item => item.id === 'gbrain')
     ? inspectMemory({ projectDir: input.projectDir, scaleDir: input.scaleDir })
@@ -736,7 +874,9 @@ export function runDependencyBootstrapPostChecks(input: {
 
   if (memoryReport) {
     const warnings = [...memoryReport.warnings]
-    const status = !gbrain?.available ? 'failed' : warnings.length > 0 ? 'warn' : 'passed'
+    const status = !gbrain?.available
+      ? shouldBlockMemoryProviderPostCheck(input.packIds, input.items) ? 'failed' : 'warn'
+      : warnings.length > 0 ? 'warn' : 'passed'
     results.push({
       id: 'memory-provider',
       label: 'Memory Provider',
@@ -798,6 +938,21 @@ export function runDependencyBootstrapPostChecks(input: {
   return results
 }
 
+function shouldBlockMemoryProviderPostCheck(
+  packIds: DependencyBootstrapPackId[],
+  items: DependencyBootstrapItemReport[],
+): boolean {
+  if (!packIds.includes('full') || packIds.includes('memory')) return true
+  const memoryItems = items.filter(item => item.packs.includes('memory'))
+  if (memoryItems.length === 0) return false
+  return memoryItems.some(item =>
+    item.status === 'failed'
+    || item.status === 'manual-review'
+    || item.status === 'ready'
+    || item.status === 'version-drift',
+  )
+}
+
 function inspectDefinition(definition: DependencyBootstrapDefinition, context: BootstrapInstallContext): DependencyBootstrapItemReport {
   const detectedBy = detectDefinition(definition, context.projectDir, context.homeDir)
   const installed = detectedBy !== 'missing'
@@ -829,10 +984,13 @@ function inspectDefinition(definition: DependencyBootstrapDefinition, context: B
 
 function detectDefinition(definition: DependencyBootstrapDefinition, projectDir: string, homeDir: string): string {
   const context: BootstrapInstallContext = { projectDir, homeDir, commandExists: externalCommandExists }
+  const customDetected = definition.detect?.(context)
+  if (customDetected) return customDetected
   const detectedPath = definition.detectPaths?.(context).find(candidate => existsSync(candidate))
   if (detectedPath) return detectedPath
   if (definition.detectSkillId) {
-    const path = skillCandidatePaths(projectDir, homeDir, definition.detectSkillId).find(candidate => existsSync(candidate))
+    const skillIds = [definition.detectSkillId, ...(definition.detectSkillAliases ?? [])]
+    const path = skillIds.flatMap(skillId => skillCandidatePaths(projectDir, homeDir, skillId)).find(candidate => existsSync(candidate))
     return path ?? 'missing'
   }
   if (definition.detectCommand && externalCommandExists(definition.detectCommand)) return `PATH:${definition.detectCommand}`
@@ -867,6 +1025,42 @@ function buildGraphifyInstallCommand(context: BootstrapInstallContext): string |
 function buildGbrainInstallCommand(context: BootstrapInstallContext): string | null {
   if (!context.commandExists('bun')) return null
   return GBRAIN_INSTALL
+}
+
+function buildCuaInstallCommand(context: BootstrapInstallContext): string | null {
+  const python = preferredPythonCommand(context)
+  if (process.platform === 'win32' && python) return windowsCuaInstallCommand(context, python)
+  if (context.commandExists('python')) return CUA_PYTHON_INSTALL
+  if (context.commandExists('python3')) return CUA_PYTHON3_INSTALL
+  if (context.commandExists('pip')) return CUA_PIP_INSTALL
+  if (context.commandExists('pip3')) return CUA_PIP3_INSTALL
+  if (context.commandExists('uv')) return CUA_UV_INSTALL
+  return null
+}
+
+function preferredPythonCommand(context: BootstrapInstallContext): string | null {
+  return context.commandExists('python') ? 'python' : context.commandExists('python3') ? 'python3' : null
+}
+
+function windowsCuaTargetDir(context: BootstrapInstallContext): string {
+  return join(context.homeDir, '.scale', 'python-packages')
+}
+
+function windowsCuaPthScript(context: BootstrapInstallContext): string {
+  const target = windowsCuaTargetDir(context).replace(/\\/g, '\\\\')
+  return `import pathlib, site; p=pathlib.Path(site.getusersitepackages()); p.mkdir(parents=True, exist_ok=True); (p / "scale-cua.pth").write_text(r"${target}" + "\\n", encoding="utf-8")`
+}
+
+function windowsCuaInstallCommand(context: BootstrapInstallContext, python: string): string {
+  const target = quotePath(windowsCuaTargetDir(context))
+  return `${python} -m pip install --target ${target} --upgrade --ignore-installed --prefer-binary --no-input --progress-bar off cua cua-agent && ${python} -c ${quotePath(windowsCuaPthScript(context))}`
+}
+
+function detectCuaPackage(context: BootstrapInstallContext): string {
+  const python = preferredPythonCommand(context)
+  if (!python) return 'missing'
+  const imported = runHealthCommand(python, ['-c', 'import cua; print("cua python package available")'], 30_000, context.projectDir)
+  return imported.ok ? `PYTHON:${python}:cua` : 'missing'
 }
 
 function codegraphInitCommand(projectDir: string): string {
@@ -911,6 +1105,42 @@ function checkRtkHealth(context: BootstrapInstallContext): DependencyBootstrapHe
     }
   }
   return { status: 'ok', reason: 'rtk CLI and gain evidence are available.' }
+}
+
+function checkPlaywrightHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
+  const version = runHealthCommand('npx', ['playwright', '--version'], 30_000, context.projectDir)
+  if (!version.ok) {
+    return {
+      status: 'warn',
+      bootstrapStatus: 'needs-init',
+      reason: `Playwright is not ready through npx: ${firstLine(`${version.stdout}\n${version.stderr}`)}`,
+      nextCommands: [PLAYWRIGHT_INSTALL],
+    }
+  }
+  return { status: 'ok', reason: `Playwright is available: ${firstLine(`${version.stdout}\n${version.stderr}`)}` }
+}
+
+function checkCuaHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
+  const python = context.commandExists('python') ? 'python' : context.commandExists('python3') ? 'python3' : null
+  if (!python) {
+    return {
+      status: 'warn',
+      bootstrapStatus: 'manual-review',
+      reason: 'Python is required to verify the CUA package but was not found on PATH.',
+      nextCommands: ['Install Python 3.11+ and rerun scale setup --pack full --apply --yes'],
+    }
+  }
+  const imported = runHealthCommand(python, ['-c', 'import cua; print("cua python package available")'], 30_000, context.projectDir)
+  if (!imported.ok) {
+    const install = buildCuaInstallCommand(context)
+    return {
+      status: 'warn',
+      bootstrapStatus: install ? 'needs-init' : 'manual-review',
+      reason: `CUA Python package is not importable: ${firstLine(`${imported.stdout}\n${imported.stderr}`)}`,
+      nextCommands: install ? [install] : ['scale setup --pack external-cli --apply --yes'],
+    }
+  }
+  return { status: 'ok', reason: firstLine(`${imported.stdout}\n${imported.stderr}`) }
 }
 
 function checkGbrainHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
@@ -1098,14 +1328,156 @@ function quotePath(path: string): string {
 }
 
 async function runInstallCommand(shellCommand: string, cwd?: string): Promise<{ ok: boolean; output?: string; error?: string }> {
-  const wrapped = wrapShellCommandWithRtk(shellCommand)
-  const result = wrapped
-    ? await execa(wrapped.command, wrapped.args, { reject: false, timeout: 300_000, all: false, cwd })
-    : await execa(shellCommand, { shell: true, reject: false, timeout: 300_000, all: false, cwd })
+  const timeout = 300_000
+  try {
+    const wrapped = wrapShellCommandWithRtk(shellCommand)
+    const result = wrapped
+      ? await execa(wrapped.command, wrapped.args, { reject: false, timeout, all: false, cwd })
+      : await execa(shellCommand, { shell: true, reject: false, timeout, all: false, cwd })
+    return {
+      ok: (result.exitCode ?? 1) === 0,
+      output: result.stdout ?? '',
+      error: result.stderr ?? '',
+    }
+  } catch (error) {
+    const err = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer; shortMessage?: string; timedOut?: boolean }
+    return {
+      ok: false,
+      output: String(err.stdout ?? ''),
+      error: [
+        String(err.stderr ?? ''),
+        err.shortMessage ?? err.message,
+        err.timedOut ? `Timed out after ${timeout}ms` : undefined,
+      ].filter(Boolean).join('\n'),
+    }
+  }
+}
+
+async function installCuaPackage(context: BootstrapInstallContext): Promise<{ ok: boolean; output?: string; error?: string }> {
+  const python = preferredPythonCommand(context)
+  if (!python) return { ok: false, error: 'Python is required to install CUA but was not found on PATH.' }
+  if (process.platform !== 'win32') {
+    const command = buildCuaInstallCommand(context)
+    return command ? runInstallCommand(command, context.projectDir) : { ok: false, error: 'No supported Python installer found for CUA.' }
+  }
+
+  const targetDir = windowsCuaTargetDir(context)
+  mkdirSync(targetDir, { recursive: true })
+  const args = [
+    '-m',
+    'pip',
+    'install',
+    '--target',
+    targetDir,
+    '--upgrade',
+    '--ignore-installed',
+    '--prefer-binary',
+    '--no-input',
+    '--progress-bar',
+    'off',
+    'cua',
+    'cua-agent',
+  ]
+  try {
+    const install = await execa(python, args, { reject: false, timeout: 600_000, cwd: context.projectDir })
+    if ((install.exitCode ?? 1) !== 0) {
+      return {
+        ok: false,
+        output: install.stdout ?? '',
+        error: install.stderr ?? `CUA install failed with exit code ${install.exitCode ?? 1}`,
+      }
+    }
+
+    const userSite = execaSync(python, ['-c', 'import site; print(site.getusersitepackages())'], { reject: false, cwd: context.projectDir })
+    const userSiteDir = firstLine(`${userSite.stdout}\n${userSite.stderr}`)
+    if (!userSiteDir) {
+      return { ok: false, output: install.stdout ?? '', error: 'Could not resolve Python user site-packages path for CUA .pth registration.' }
+    }
+    mkdirSync(userSiteDir, { recursive: true })
+    writeFileSync(join(userSiteDir, 'scale-cua.pth'), `${targetDir}\n`, 'utf-8')
+
+    const imported = runHealthCommand(python, ['-c', 'import cua; print("cua python package available")'], 30_000, context.projectDir)
+    if (!imported.ok) {
+      return {
+        ok: false,
+        output: [install.stdout, `Wrote ${join(userSiteDir, 'scale-cua.pth')}`].filter(Boolean).join('\n'),
+        error: `CUA installed into ${targetDir}, but import verification failed: ${firstLine(`${imported.stdout}\n${imported.stderr}`)}`,
+      }
+    }
+    return {
+      ok: true,
+      output: [
+        install.stdout,
+        `Installed CUA into ${targetDir}`,
+        `Wrote ${join(userSiteDir, 'scale-cua.pth')}`,
+        firstLine(`${imported.stdout}\n${imported.stderr}`),
+      ].filter(Boolean).join('\n'),
+      error: install.stderr ?? '',
+    }
+  } catch (error) {
+    const err = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer; shortMessage?: string; timedOut?: boolean }
+    return {
+      ok: false,
+      output: String(err.stdout ?? ''),
+      error: [
+        String(err.stderr ?? ''),
+        err.shortMessage ?? err.message,
+        err.timedOut ? 'Timed out after 600000ms' : undefined,
+      ].filter(Boolean).join('\n'),
+    }
+  }
+}
+
+async function installImpeccableSkill(context: BootstrapInstallContext): Promise<{ ok: boolean; output?: string; error?: string }> {
+  const official = await runInstallCommand(UI_SKILL_INSTALLS.impeccable, context.projectDir)
+  if (official.ok) return official
+
+  const fallback = await installCommandBackedSkillAdapter(context, {
+    id: 'impeccable',
+    sourceUrl: 'https://github.com/pbakaus/impeccable',
+    description: 'Deterministic UI anti-pattern detection and design refinement workflow for AI-generated interfaces.',
+    command: 'npx -y impeccable detect <file-or-dir-or-url>',
+    instructions: [
+      'Use this skill as the required UI quality gate before visual acceptance.',
+      'Run `npx -y impeccable detect <file-or-dir-or-url>` to scan UI files, directories, or URLs for design anti-patterns.',
+      'Run `npx -y impeccable skills help` to inspect the upstream command set when native harness skills are unavailable.',
+      'This adapter is written by SCALE when the upstream installer cannot extract its skill bundle on the current platform.',
+    ],
+  })
+  if (!fallback.ok) {
+    return {
+      ok: false,
+      output: [official.output, fallback.output].filter(Boolean).join('\n'),
+      error: [official.error, fallback.error].filter(Boolean).join('\n'),
+    }
+  }
   return {
-    ok: (result.exitCode ?? 1) === 0,
-    output: result.stdout ?? '',
-    error: result.stderr ?? '',
+    ok: true,
+    output: [
+      official.output,
+      official.error ? `Upstream impeccable installer failed; wrote SCALE command-backed adapter instead:\n${official.error}` : undefined,
+      fallback.output,
+    ].filter(Boolean).join('\n'),
+  }
+}
+
+async function installCommandBackedSkillAdapter(
+  context: BootstrapInstallContext,
+  input: {
+    id: string
+    sourceUrl: string
+    description: string
+    command: string
+    instructions: string[]
+  },
+): Promise<{ ok: boolean; output?: string; error?: string }> {
+  const skillDir = join(context.homeDir, '.agents', 'skills', input.id)
+  try {
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, 'SKILL.md'), renderCommandBackedSkillAdapter(input), 'utf-8')
+    return { ok: true, output: `Wrote command-backed skill adapter: ${join(skillDir, 'SKILL.md')}` }
+  } catch (error) {
+    return { ok: false, error: String(error) }
   }
 }
 
@@ -1190,6 +1562,38 @@ function renderSkillAdapter(input: {
   return `${lines.join('\n')}\n`
 }
 
+function renderCommandBackedSkillAdapter(input: {
+  id: string
+  sourceUrl: string
+  description: string
+  command: string
+  instructions: string[]
+}): string {
+  const lines = [
+    '---',
+    `name: ${input.id}`,
+    `description: ${input.description}`,
+    '---',
+    '',
+    `# ${input.id}`,
+    '',
+    `Source: ${input.sourceUrl}`,
+    `Primary command: ${input.command}`,
+    '',
+    '## When To Use',
+    '',
+    ...input.instructions.map(item => `- ${item}`),
+    '',
+    '## Operating Rules',
+    '',
+    '- Prefer concrete project artifacts over generic advice.',
+    '- Keep screenshots, reports, and design evidence inside the target project.',
+    '- Re-run `scale setup --pack ui --apply` if the upstream installer becomes available and should replace this adapter.',
+    '',
+  ]
+  return `${lines.join('\n')}\n`
+}
+
 export function applyDependencyBootstrapPostActions(
   projectDir: string,
   scaleDir: string,
@@ -1243,6 +1647,10 @@ function buildPostCheckCommands(packIds: DependencyBootstrapPackId[], items: Dep
       .filter(item => item.kind === 'skill' && item.packs.includes('ui'))
       .map(item => item.id)
     if (uiToolIds.length > 0) commands.add(`scale tool doctor --tools ${uiToolIds.join(',')} --json`)
+    const browserToolIds = items
+      .filter(item => (item.kind === 'browser' || item.kind === 'mcp') && item.packs.includes('ui'))
+      .map(item => item.id)
+    if (browserToolIds.length > 0) commands.add(`scale tool doctor --tools ${browserToolIds.join(',')} --json`)
     commands.add('scale skill doctor --json')
   }
   if (selectedPacks.has('memory') || ids.has('gbrain')) {
@@ -1261,7 +1669,9 @@ function buildPostCheckCommands(packIds: DependencyBootstrapPackId[], items: Dep
     commands.add('scale codegraph status --json')
   }
   if (selectedPacks.has('external-cli') || ids.has('rtk')) {
-    commands.add('scale tool doctor --tools rtk --json')
+    const externalToolIds = ['rtk', 'gitnexus', 'desktop-cua', 'codex-cli', 'gemini-cli', 'opencode-cli']
+      .filter(id => ids.has(id) || (id === 'rtk' && selectedPacks.has('external-cli')))
+    if (externalToolIds.length > 0) commands.add(`scale tool doctor --tools ${externalToolIds.join(',')} --json`)
   }
   commands.add('scale doctor')
   return [...commands]
@@ -1283,9 +1693,28 @@ function buildRollbackHints(items: DependencyBootstrapItemReport[]): string[] {
       case 'gitnexus':
         hints.add('GitNexus rollback: npm uninstall -g gitnexus, then remove .gitnexus/ after confirming no shared index data is needed')
         break
+      case 'agent-browser':
+        hints.add('Agent Browser rollback: npm uninstall -g agent-browser')
+        break
+      case 'mcp-chrome-devtools':
+        hints.add('Chrome DevTools MCP rollback: npm uninstall -g chrome-devtools-mcp')
+        break
+      case 'desktop-cua':
+        hints.add('CUA rollback: remove ~/.scale/python-packages and the Python user-site scale-cua.pth after confirming no other SCALE Python package uses it')
+        break
+      case 'codex-cli':
+        hints.add('Codex CLI rollback: npm uninstall -g @openai/codex')
+        break
+      case 'gemini-cli':
+        hints.add('Gemini CLI rollback: npm uninstall -g @google/gemini-cli')
+        break
+      case 'opencode-cli':
+        hints.add('OpenCode CLI rollback: npm uninstall -g opencode-ai')
+        break
       case 'gbrain':
         hints.add('GBrain rollback: bun unlink gbrain, then remove ~/.scale/vendor/gbrain if you want a full local cleanup')
         break
+      case 'web-access':
       case 'impeccable':
       case 'taste-skill':
       case 'awesome-design-md':

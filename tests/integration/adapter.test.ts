@@ -1,7 +1,7 @@
 // W8 Tests: Adapter + Init + Integration
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ClaudeCodeAdapter } from '../../src/adapters/ClaudeCodeAdapter.js'
-import { createAdapter } from '../../src/adapters/index.js'
+import { createAdapter, SUPPORTED_AGENTS } from '../../src/adapters/index.js'
 import { EventBus } from '../../src/core/eventBus.js'
 import { InMemoryArtifactStore } from '../../src/artifact/store.js'
 import { FSM } from '../../src/artifact/fsm.js'
@@ -119,6 +119,34 @@ describe('ClaudeCodeAdapter', () => {
     expect(settings.hooks.SessionStart).toBeDefined()
   })
 })
+
+describe('agent hook safety', () => {
+  it('generates hook-safe before-stop commands for all supported adapters', () => {
+    for (const agent of SUPPORTED_AGENTS) {
+      const adapter = createAdapter(agent)
+      const commands = collectHookCommands(adapter.generateSettings().hooks)
+      for (const command of commands.filter(command => /\bscale\s+gate\s+before-stop\b/.test(command))) {
+        expect(command, agent).toContain('--hook-safe')
+      }
+    }
+  })
+})
+
+function collectHookCommands(hooks: unknown): string[] {
+  if (!hooks || typeof hooks !== 'object') return []
+  const commands: string[] = []
+  const visit = (entry: unknown) => {
+    if (!entry || typeof entry !== 'object') return
+    const command = (entry as { command?: unknown }).command
+    if (typeof command === 'string' && command) commands.push(command)
+    const nested = (entry as { hooks?: unknown }).hooks
+    if (Array.isArray(nested)) nested.forEach(visit)
+  }
+  for (const entries of Object.values(hooks as Record<string, unknown>)) {
+    if (Array.isArray(entries)) entries.forEach(visit)
+  }
+  return commands
+}
 
 describe('createAdapter', () => {
   it('returns ClaudeCodeAdapter for claude-code', () => {

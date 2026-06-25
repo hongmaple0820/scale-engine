@@ -290,10 +290,10 @@ HookGenerator      (从 Rule 自动生成 Hook 脚本)
     -> 失败 -> 错误 inject 回 Claude 上下文
 [10] Claude 修复后再 Edit -> lint 通过
 [11] Claude 想结束 (claim done)
-     -> Stop hook -> scale gate before-stop
-     -> 检查："session 内未跑过 test" -> 阻断
-     -> "请先跑 pnpm test"
-[12] Claude 被迫跑测试 -> 通过 -> 才允许 stop
+     -> Stop hook -> scale gate before-stop --hook-safe
+     -> 不初始化完整引擎，避免 agent hook 上下文卡住
+     -> 完整 premature-done 阻断通过 scale gate before-stop --enforce / preflight 执行
+[12] Claude 跑测试并记录证据 -> preflight / enforce gate 才允许发布
 [13] Session end -> scale session end
      -> 触发 BehaviorTracker 的批量分析
      -> 触发 LessonExtractor (如有 Defect 关闭)
@@ -347,4 +347,3 @@ core/        -> (没有依赖)
 | 文件存储 Artifact 内容 vs DB | 取 git 友好 | 舍查询能力 |
 
 每一项的详细决策见 `06-DECISIONS.md`。
-

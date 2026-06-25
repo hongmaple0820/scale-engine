@@ -1,3 +1,13 @@
+## Unreleased
+
+### Reliability
+- Make `scale gate before-stop` hook-safe by default and require `--enforce` for the full gateway path, preventing Claude Code Stop hooks from initializing the artifact engine.
+- Run `scale meta-governance` without bootstrapping the full SQLite-backed engine and add doctor warnings for legacy before-stop hook commands.
+- Add package smoke coverage for required `dist/cli/*` command modules, npm pack contents, and hook-sensitive CLI commands.
+- Degrade `scale status` and environment doctor output gracefully when native `better-sqlite3` bindings are unavailable on unsupported Node/toolchain combinations.
+
+---
+
 ## 0.51.0 - 2026-06-24
 
 ### Skill Ecosystem

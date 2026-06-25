@@ -7,7 +7,7 @@
 - SessionStart → scale session start
 - PreToolUse → scale gate pre-tool (拦截 Bash/Edit/Write)
 - PostToolUse → scale gate post-tool (记录输出)
-- Stop → scale gate before-stop (防止 premature done)
+- Stop → scale gate before-stop --hook-safe (Stop hook 快路径；完整 premature done 阻断使用 --enforce/preflight)
 
 **问题：**
 - Demo 中没有运行 `scale init` → hooks 未配置

@@ -24,6 +24,13 @@ describe('ToolPolicy', () => {
     expect(policy.tools['taste-skill'].recommendedFor).toContain('ui')
     expect(policy.tools['awesome-design-md'].recommendedFor).toContain('ui')
     expect(policy.tools['ui-ux-pro-max'].recommendedFor).toContain('ui')
+    expect(policy.tools['desktop-cua']).toMatchObject({
+      enabled: true,
+      destructiveActions: 'confirm',
+    })
+    expect(policy.tools['codex-cli'].enabled).toBe(true)
+    expect(policy.tools['gemini-cli'].enabled).toBe(true)
+    expect(policy.tools['opencode-cli'].enabled).toBe(true)
   })
 
   it('merges project policy overrides without losing default tool contracts', () => {

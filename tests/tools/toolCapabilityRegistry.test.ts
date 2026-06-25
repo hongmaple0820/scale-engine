@@ -84,6 +84,25 @@ describe('ToolCapabilityRegistry', () => {
     })
   })
 
+  it('detects taste-skill through upstream alias skill directories', () => {
+    const projectDir = makeDir('scale-tools-project-')
+    const aliasPath = writeSkill(projectDir, 'design-taste-frontend')
+
+    const report = inspectToolCapabilities({
+      projectDir,
+      homeDir: makeDir('scale-tools-home-'),
+      toolIds: ['taste-skill'],
+    })
+
+    expect(report.ok).toBe(true)
+    expect(report.tools[0]).toMatchObject({
+      id: 'taste-skill',
+      installed: true,
+      status: 'installed',
+      detectedPath: aliasPath,
+    })
+  })
+
   it('treats a CLI as missing when the version probe fails even if the command exists', () => {
     const report = inspectToolCapabilities({
       projectDir: makeDir('scale-tools-project-'),
@@ -117,7 +136,7 @@ describe('ToolCapabilityRegistry', () => {
     expect(report.tools.find(tool => tool.id === 'gbrain')?.installHint).toBe('scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes')
     expect(report.tools.find(tool => tool.id === 'codegraph')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
     expect(report.tools.find(tool => tool.id === 'graphify')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
-    expect(report.tools.find(tool => tool.id === 'gitnexus')?.installHint).toContain('gitnexus analyze --index-only')
+    expect(report.tools.find(tool => tool.id === 'gitnexus')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
   })
 
   it('detects policy-selected skills that are not in the static tool catalog', () => {

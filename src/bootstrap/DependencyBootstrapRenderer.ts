@@ -104,7 +104,7 @@ function formatStatus(status: string, lang: ScaleLanguage): string {
   const labels: Record<string, string> = {
     installed: '已安装',
     ready: '可安装',
-    'manual-review': '需人工处理',
+    'manual-review': '需补齐环境',
     'installed-now': '刚安装',
     failed: '失败',
     'needs-init': '需初始化',

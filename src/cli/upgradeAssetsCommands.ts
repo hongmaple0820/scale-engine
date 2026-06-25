@@ -137,10 +137,8 @@ function formatUpgradeStepReason(action: string, fallback: string, lang: 'zh' | 
       return '该文件由治理锁管理，但当前本地缺失，可从当前治理包恢复。'
     case 'review-local-change':
       return '需要保留、合并或明确替换本地改动，不能自动覆盖。'
-    case 'review-third-party-capability':
-      return fallback
-        .replace('updates require manual-review; SCALE never auto-installs third-party capabilities.', '更新需要人工审阅；SCALE 不会自动安装第三方能力。')
-        .replace('updates require blocked; SCALE never auto-installs third-party capabilities.', '更新默认阻断；SCALE 不会自动安装第三方能力。')
+    case 'setup-third-party-capabilities':
+      return fallback.replace('Default setup provisions governed third-party capabilities; execution remains evidence-required and destructive actions stay policy-bound.', '默认安装受管第三方能力；执行仍需证据并受破坏性动作策略约束。')
     case 'adopt-ai-os-runtime':
       return '运行 AI OS 一键接入路径，生成运行态目录、首份 dry-run、benchmark 和 doctor 报告。'
     case 'migrate-ai-os-runtime':
@@ -162,6 +160,11 @@ function formatUpgradeCommand(command: string, lang: 'zh' | 'en'): string {
   }
   if (command === 'scale ai-os doctor --dir . --json') {
     return lang === 'zh' ? 'scale ai-os doctor --dir . --lang zh' : 'scale ai-os doctor --dir . --lang en'
+  }
+  if (command === 'scale setup --dir . --pack full --apply --yes --json') {
+    return lang === 'zh'
+      ? 'scale setup --dir . --pack full --apply --yes --lang zh'
+      : 'scale setup --dir . --pack full --apply --yes --lang en'
   }
   if (command === 'scale ai-os migrate --dir . --json') {
     return 'scale ai-os migrate --dir .'

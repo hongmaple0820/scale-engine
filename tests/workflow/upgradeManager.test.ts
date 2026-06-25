@@ -31,7 +31,7 @@ function setLockedPackVersion(projectDir: string, packVersion: number): void {
 }
 
 describe('UpgradeManager', () => {
-  it('reports a clean project as safe and check-only for third-party capabilities', () => {
+  it('reports a clean project as safe with default-installed third-party capabilities', () => {
     const projectDir = makeDir()
     writeGovernanceTemplates(projectDir, { mode: 'standard', pack: 'project-scaffold' })
 
@@ -47,8 +47,9 @@ describe('UpgradeManager', () => {
     })
     expect(report.generatedFiles.changed).toBe(0)
     expect(report.generatedFiles.missing).toBe(0)
-    expect(report.thirdParty.policy).toBe('check-only')
-    expect(report.thirdParty.reviewRequired).toBeGreaterThan(0)
+    expect(report.thirdParty.policy).toBe('default-install')
+    expect(report.thirdParty.reviewRequired).toBe(0)
+    expect(report.thirdParty.summary.blocked).toBe(0)
     expect(report.recommendedCommands).toContain('scale upgrade plan --dir .')
   })
 

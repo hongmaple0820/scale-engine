@@ -52,7 +52,7 @@ export class AiderAdapter implements IAgentAdapter {
           { matcher: 'Create', command: 'scale gate post-tool Write --args-json "$ARGS" --exit-code "$EXIT_CODE" --session-id "$SESSION_ID"' },
         ],
         'exit': [
-          { matcher: '', command: 'scale gate before-stop --session-id "$SESSION_ID"' },
+          { matcher: '', command: 'scale gate before-stop --session-id "$SESSION_ID" --hook-safe' },
         ],
       },
       permissions: {

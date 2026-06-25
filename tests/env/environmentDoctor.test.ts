@@ -203,4 +203,54 @@ describe('inspectEnvironment', () => {
     expect(report.warnings.some(warning => warning.includes('bash'))).toBe(false)
     expect(report.status).toBe('healthy')
   })
+
+  it('explains Node 24 better-sqlite3 native binding failures with actionable Windows fixes', () => {
+    const report = inspectEnvironment({
+      env: {
+        PATH: 'C:\\tools',
+        'ProgramFiles(x86)': 'C:\\missing-visual-studio-root',
+      },
+      nodeVersion: 'v24.14.0',
+      execPath: 'C:\\node\\node.exe',
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      commandResolver(command) {
+        const known = new Set(['git', 'npm', 'npx'])
+        return known.has(command) ? `C:\\tools\\${command}.cmd` : null
+      },
+      commandRunner(command) {
+        return {
+          exitCode: 0,
+          stdout: `${command} 1.0.0`,
+          stderr: '',
+        }
+      },
+      nativeModuleProbe(moduleName) {
+        expect(moduleName).toBe('better-sqlite3')
+        return {
+          ok: false,
+          error: 'No prebuilt binaries found and no Visual Studio C++ build tools are installed.',
+        }
+      },
+    })
+
+    const sqlite = report.checks.find(check => check.id === 'better-sqlite3-native')
+    const buildTools = report.checks.find(check => check.id === 'windows-cpp-build-tools')
+    expect(sqlite).toMatchObject({
+      status: 'fail',
+      required: true,
+    })
+    expect(sqlite?.reason).toContain('Node.js v24.14.0')
+    expect(sqlite?.reason).toContain('prebuilt binary or local C++ rebuild')
+    expect(sqlite?.installHint).toContain('Node 22 LTS')
+    expect(buildTools).toMatchObject({
+      status: 'missing',
+      required: false,
+    })
+    expect(report.status).toBe('broken')
+    expect(report.recommendations).toEqual(expect.arrayContaining([
+      expect.stringContaining('npm rebuild better-sqlite3'),
+    ]))
+  })
 })

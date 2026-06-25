@@ -85,6 +85,29 @@ describe('Doctor', () => {
     })
   })
 
+  it('warns when settings still use legacy before-stop hook commands', async () => {
+    mkdirSync(join(TMP, '.scale', 'events'), { recursive: true })
+    mkdirSync(join(TMP, '.scale', 'artifacts'), { recursive: true })
+    mkdirSync(join(TMP, '.claude'), { recursive: true })
+    writeFileSync(join(TMP, '.claude', 'settings.json'), JSON.stringify({
+      hooks: {
+        Stop: [
+          { matcher: '', command: 'scale gate before-stop --session-id $CLAUDE_SESSION_ID' },
+        ],
+      },
+    }, null, 2), 'utf-8')
+    writeFileSync(join(TMP, 'CLAUDE.md'), '# Test', 'utf-8')
+
+    const doc = new Doctor(TMP)
+    const report = await doc.diagnose()
+    const settingsCheck = report.checks.find((c) => c.name === 'Agent settings')
+    expect(settingsCheck).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('legacy command form'),
+      fix: expect.stringContaining('--hook-safe'),
+    })
+  })
+
   it('treats nested qoder-style hook commands as SCALE hooks', async () => {
     mkdirSync(join(TMP, '.scale', 'events'), { recursive: true })
     mkdirSync(join(TMP, '.scale', 'artifacts'), { recursive: true })

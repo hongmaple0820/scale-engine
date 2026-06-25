@@ -178,7 +178,7 @@ $ scale gate pre-tool Bash --args-json '{"command":"ls"}' --session-id S1
 > 重复 3 次：
 {"decision":"deny","reason":"Brute retry detected: ls 在 3 分钟内运行 3 次"}
 
-$ scale gate before-stop --session-id S2
+$ scale gate before-stop --session-id S2 --enforce
 {"decision":"block","reason":"已修改代码但未运行测试..."}
 ```
 

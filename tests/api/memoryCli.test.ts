@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 
 let dirs: string[] = []
@@ -205,6 +205,34 @@ describe('memory CLI', () => {
     const providerMemory = pack.sections.find(section => section.id === 'provider-memory')
     expect(providerMemory).toMatchObject({ included: false })
     expect(providerMemory?.items).toEqual([])
+  }, 120_000)
+
+  it('rejects memory import paths that escape the project directory', async () => {
+    const scaleDir = makeDir('scale-memory-cli-scale-')
+    const projectDir = makeDir('scale-memory-cli-project-')
+    const outsideDir = makeDir('scale-memory-cli-outside-')
+    const memoryFile = join(outsideDir, 'outside.jsonl')
+    writeFileSync(memoryFile, JSON.stringify({
+      id: 'MEM-outside',
+      type: 'fact',
+      title: 'Outside memory file',
+      summary: 'This file should not be importable outside the project directory.',
+      entities: ['outside'],
+      source: 'manual',
+      evidencePaths: ['docs/outside.md'],
+      confidence: 0.8,
+      scope: 'project',
+      status: 'active',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      updatedAt: '2026-05-20T00:00:00.000Z',
+      lastVerifiedAt: '2026-05-20T00:00:00.000Z',
+      metadata: {},
+    }) + '\n', 'utf-8')
+
+    const escapedPath = relative(projectDir, memoryFile)
+    const imported = await runScale(['memory', 'import', escapedPath, '--json'], scaleDir, projectDir)
+    expect(imported.exitCode).toBe(1)
+    expect(`${imported.stdout}\n${imported.stderr}`).toContain('Memory import path escapes allowed directories')
   }, 120_000)
 
   it('fails memory doctor when a context pack would exceed its budget', async () => {

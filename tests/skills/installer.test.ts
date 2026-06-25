@@ -46,7 +46,7 @@ describe('SkillInstaller', () => {
     const cuaConfig = pending.find(c => c.skillId === 'cua')
     expect(cuaConfig).toBeDefined()
     expect(cuaConfig?.method).toBe('pip-install')
-    expect(cuaConfig?.command).toBe('pip install cua')
+    expect(cuaConfig?.command).toBe('scale setup --pack external-cli --apply --yes')
   })
 
   it('should have git-clone for fireworks-tech-graph', async () => {
@@ -72,7 +72,7 @@ describe('SkillInstaller', () => {
     expect(pending.find(c => c.skillId === 'impeccable')).toMatchObject({
       method: 'npm-install',
       sourceUrl: 'https://github.com/pbakaus/impeccable',
-      command: 'npx impeccable skills install',
+      command: 'npx -y impeccable skills install --yes',
     })
     expect(pending.find(c => c.skillId === 'taste-skill')).toMatchObject({
       method: 'npm-install',

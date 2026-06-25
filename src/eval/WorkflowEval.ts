@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { estimateTokens } from '../context/ContextBudget.js'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 import { redactEvidenceText, redactEvidenceValue } from '../tools/ToolEvidenceStore.js'
 import { runSafeCommand } from '../tools/SafeCommandRunner.js'
 
@@ -609,12 +610,24 @@ export class WorkflowEvalStore {
   }
 
   private resolveSuitePath(suiteIdOrPath: string): string {
-    if (suiteIdOrPath.endsWith('.json')) return isAbsolute(suiteIdOrPath) ? suiteIdOrPath : resolve(this.projectDir, suiteIdOrPath)
+    if (suiteIdOrPath.endsWith('.json')) {
+      return resolvePathWithinRoots(suiteIdOrPath, {
+        baseDir: this.projectDir,
+        allowedRoots: [this.projectDir, this.suitesDir],
+        label: 'Eval suite',
+      })
+    }
     return this.suitePath(suiteIdOrPath)
   }
 
   private resolveRunPath(idOrPath: string): string {
-    if (idOrPath.endsWith('.json')) return isAbsolute(idOrPath) ? idOrPath : resolve(this.projectDir, idOrPath)
+    if (idOrPath.endsWith('.json')) {
+      return resolvePathWithinRoots(idOrPath, {
+        baseDir: this.projectDir,
+        allowedRoots: [this.projectDir, this.runsDir],
+        label: 'Eval run',
+      })
+    }
     return join(this.runsDir, `${safeSegment(idOrPath)}.json`)
   }
 }

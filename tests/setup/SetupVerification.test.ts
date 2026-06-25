@@ -335,6 +335,151 @@ describe('verifySetup', () => {
     expect(report.summary.dependencyStatus.needsInit).toEqual(['gbrain'])
   })
 
+  it('keeps full-pack setup usable when only gbrain provider initialization is pending', async () => {
+    bootstrap.bootstrapDependencies.mockResolvedValue({
+      ok: true,
+      complete: false,
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      packIds: ['full'],
+      includeIds: [],
+      apply: false,
+      runtimeChecks: [],
+      items: [
+        {
+          id: 'gbrain',
+          name: 'GBrain',
+          kind: 'cli',
+          packs: ['memory'],
+          source: 'https://github.com/garrytan/gbrain',
+          installed: true,
+          status: 'needs-init',
+          installSupported: false,
+          detectedBy: 'PATH:gbrain',
+          prerequisites: [],
+        },
+      ],
+      summary: {
+        total: 1,
+        installed: 0,
+        ready: 0,
+        manualReview: 0,
+        needsInit: 1,
+        versionDrift: 0,
+        installedNow: 0,
+        failed: 0,
+      },
+      postActions: [],
+      postChecks: [],
+      postCheckSummary: { total: 0, passed: 0, warned: 0, failed: 0 },
+      postCheckCommands: ['scale memory provider status --json'],
+      rollbackHints: [],
+      recommendations: ['Validate memory provider status after setup.'],
+    })
+
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: true,
+      status: 'healthy',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.13.1',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: {
+        defaultShell: 'powershell',
+        comspec: 'cmd.exe',
+        detected: [],
+      },
+      path: {
+        delimiter: ';',
+        entryCount: 1,
+        entriesPreview: ['C:\\tools'],
+      },
+      checks: [],
+      warnings: [],
+      recommendations: [],
+    })
+
+    memoryProviders.inspectMemoryProviders.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/memory-providers.json',
+      configExists: true,
+      routing: {
+        mode: 'external-first',
+        defaultOrder: ['gbrain'],
+        allowExternalWrite: false,
+        requireEvidence: true,
+        maxResultsPerProvider: 5,
+      },
+      providers: [
+        {
+          id: 'gbrain',
+          kind: 'gbrain',
+          enabled: true,
+          available: false,
+          selectedByDefault: true,
+          priority: 95,
+          capabilities: ['semantic-recall'],
+          safetyLevel: 'review-required',
+          writeMode: 'disabled',
+          reason: 'gbrain doctor failed in this runtime',
+        },
+      ],
+      availableProviderCount: 0,
+      warnings: [],
+    })
+
+    codeIntelligence.inspectCodeIntelligence.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/code-intelligence.json',
+      configExists: true,
+      projectIndexPath: '.codegraph',
+      projectIndexExists: true,
+      providers: [],
+      fallback: {
+        enabled: true,
+        tools: ['rg'],
+        available: true,
+        reason: 'fallback available',
+      },
+      availableProviderCount: 1,
+      recommendations: [],
+    })
+
+    toolCapabilities.inspectToolCapabilities.mockReturnValue({
+      ok: true,
+      summary: {
+        total: 1,
+        installed: 1,
+        missing: 0,
+      },
+      tools: [
+        {
+          id: 'gbrain',
+          name: 'GBrain',
+          category: 'cli',
+          checkedPaths: ['PATH:gbrain'],
+          installed: true,
+          status: 'installed',
+        },
+      ],
+    })
+
+    const report = await verifySetup({ packIds: ['full'] })
+
+    expect(report.ok).toBe(true)
+    expect(report.summary.blockingIssues).toEqual([])
+    expect(report.summary.dependencyStatus.needsInit).toEqual([])
+    expect(report.warnings).toContain('Memory provider is not initialized; full setup remains usable for installed non-memory capabilities.')
+  })
+
   it('skips memory and code provider probes when their packs are not selected', async () => {
     bootstrap.bootstrapDependencies.mockResolvedValue({
       ok: true,

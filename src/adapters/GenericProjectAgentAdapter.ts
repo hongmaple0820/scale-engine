@@ -86,7 +86,7 @@ export class GenericProjectAgentAdapter implements IAgentAdapter {
             {
               matcher: '',
               command: '',
-              hooks: [{ matcher: '', type: 'command', command: 'scale gate before-stop --session-id "$SESSION_ID"' }],
+              hooks: [{ matcher: '', type: 'command', command: 'scale gate before-stop --session-id "$SESSION_ID" --hook-safe' }],
             },
           ],
         },
@@ -105,7 +105,7 @@ export class GenericProjectAgentAdapter implements IAgentAdapter {
           { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json "$ARGS" --exit-code "$EXIT_CODE" --session-id "$SESSION_ID"' },
         ],
         'before-stop': [
-          { matcher: '', command: 'scale gate before-stop --session-id "$SESSION_ID"' },
+          { matcher: '', command: 'scale gate before-stop --session-id "$SESSION_ID" --hook-safe' },
         ],
       },
       permissions: { allow: ['scale:*'] },

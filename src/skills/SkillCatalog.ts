@@ -20,7 +20,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Impeccable',
     description: 'Deterministic UI anti-pattern detection and design refinement workflow for AI-generated interfaces.',
     source: 'https://github.com/pbakaus/impeccable',
-    installCommand: 'npx impeccable skills install',
+    installCommand: 'npx -y impeccable skills install --yes',
     trust: 'ecosystem',
     readiness: 'required',
     definition: {
@@ -44,7 +44,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Taste Skill',
     description: 'Design-language generation workflow for selecting aesthetic direction before UI implementation.',
     source: 'https://github.com/LeonxlnX/taste-skill',
-    installCommand: 'npx skills add LeonxlnX/taste-skill',
+    installCommand: 'npx -y skills add LeonxlnX/taste-skill --yes',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {
@@ -56,7 +56,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
         { type: 'taskType', value: ['ui-design', 'landing-page', 'brand-site'], weight: 1.0 },
         { type: 'keyword', value: ['aesthetic', 'style', 'brand', 'landing', 'minimalist', 'brutalist', 'taste', 'redesign'], weight: 0.92 },
       ],
-      execution: { type: 'skill-file', config: { skillPath: '~/.agents/skills/taste-skill/SKILL.md' } },
+      execution: { type: 'skill-file', config: { skillPath: '~/.agents/skills/design-taste-frontend/SKILL.md' } },
       priority: 93,
       installed: false,
       source: 'https://github.com/LeonxlnX/taste-skill',
@@ -67,7 +67,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Frontend Design',
     description: 'Distinctive production-grade frontend UI design',
     source: 'https://github.com/anthropics/skills/tree/main/skills/frontend-design',
-    installCommand: 'npx skills add anthropics/skills --skill frontend-design',
+    installCommand: 'npx -y skills add anthropics/skills --skill frontend-design --yes',
     trust: 'official',
     readiness: 'recommended',
     definition: {
@@ -90,7 +90,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Webapp Testing',
     description: 'Playwright-based local web application testing',
     source: 'https://github.com/anthropics/skills/tree/main/skills/webapp-testing',
-    installCommand: 'npx skills add anthropics/skills --skill webapp-testing',
+    installCommand: 'npx -y skills add anthropics/skills --skill webapp-testing --yes',
     trust: 'official',
     readiness: 'required',
     definition: {
@@ -114,7 +114,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'LiteParse',
     description: 'Agent-first document parsing workflow for PDF, Office, image, OCR, screenshots, and batch ingestion.',
     source: 'https://github.com/run-llama/llamaparse-agent-skills',
-    installCommand: 'npx skills add run-llama/llamaparse-agent-skills --skill liteparse',
+    installCommand: 'npx -y skills add run-llama/llamaparse-agent-skills --skill liteparse --yes',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {
@@ -161,7 +161,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'OpenSquilla Harness',
     description: 'Optional agent harness reference for model routing, context loading, MetaSkill orchestration, and feedback loops.',
     source: 'https://github.com/opensquilla/opensquilla',
-    installCommand: 'npx skills add opensquilla/opensquilla',
+    installCommand: 'npx -y skills add opensquilla/opensquilla --yes',
     trust: 'ecosystem',
     readiness: 'optional',
     definition: {
@@ -184,7 +184,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Code Reviewer',
     description: 'Critical, improvement, and nitpick review workflow',
     source: 'https://github.com/google-gemini/gemini-cli/tree/main/.gemini/skills/code-reviewer',
-    installCommand: 'npx skills add https://github.com/google-gemini/gemini-cli --skill code-reviewer',
+    installCommand: 'npx -y skills add https://github.com/google-gemini/gemini-cli --skill code-reviewer --yes',
     trust: 'official',
     readiness: 'required',
     definition: {
@@ -208,7 +208,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Fix',
     description: 'Format and lint repair before committing',
     source: 'https://github.com/facebook/react/tree/main/.claude/skills/fix',
-    installCommand: 'npx skills add https://github.com/facebook/react --skill fix',
+    installCommand: 'npx -y skills add https://github.com/facebook/react --skill fix --yes',
     trust: 'official',
     readiness: 'recommended',
     definition: {
@@ -231,7 +231,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'PR Creator',
     description: 'Template-aware pull request creation workflow',
     source: 'https://github.com/google-gemini/gemini-cli/tree/main/.gemini/skills/pr-creator',
-    installCommand: 'npx skills add https://github.com/google-gemini/gemini-cli --skill pr-creator',
+    installCommand: 'npx -y skills add https://github.com/google-gemini/gemini-cli --skill pr-creator --yes',
     trust: 'official',
     readiness: 'recommended',
     definition: {
@@ -254,7 +254,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Update Docs',
     description: 'Documentation impact analysis and update workflow',
     source: 'https://github.com/vercel/next.js/tree/canary/.claude/skills/update-docs',
-    installCommand: 'npx skills add https://github.com/vercel/next.js --skill update-docs',
+    installCommand: 'npx -y skills add https://github.com/vercel/next.js --skill update-docs --yes',
     trust: 'official',
     readiness: 'recommended',
     definition: {
@@ -277,7 +277,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Find Skills',
     description: 'Discover installable skills for uncovered task capabilities',
     source: 'https://github.com/vercel-labs/skills/tree/main/skills/find-skills',
-    installCommand: 'npx skills add https://github.com/vercel-labs/skills --skill find-skills',
+    installCommand: 'npx -y skills add https://github.com/vercel-labs/skills --skill find-skills --yes',
     trust: 'ecosystem',
     readiness: 'recommended',
     definition: {
@@ -300,7 +300,7 @@ export const WORKFLOW_AGENT_SKILL_CATALOG: WorkflowSkillCatalogEntry[] = [
     name: 'Fullstack Developer',
     description: 'React, Node.js, database, and API prototyping workflow',
     source: 'https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/awesome_agent_skills/fullstack-developer',
-    installCommand: 'npx skills add https://github.com/Shubhamsaboo/awesome-llm-apps --skill fullstack-developer',
+    installCommand: 'npx -y skills add https://github.com/Shubhamsaboo/awesome-llm-apps --skill fullstack-developer --yes',
     trust: 'ecosystem',
     readiness: 'optional',
     definition: {

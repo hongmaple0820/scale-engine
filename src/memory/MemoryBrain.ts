@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 import { WorkflowEvalStore, type FailureReplayRecord } from '../eval/WorkflowEval.js'
 import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
 import { redactEvidenceText, redactEvidenceValue } from '../tools/ToolEvidenceStore.js'
@@ -377,7 +378,12 @@ export class MemoryBrain {
     const warnings: string[] = []
     let imported = 0
     let skipped = 0
-    const text = readFileSync(filePath, 'utf-8')
+    const resolvedPath = resolvePathWithinRoots(filePath, {
+      baseDir: this.projectDir,
+      allowedRoots: [this.projectDir],
+      label: 'Memory import',
+    })
+    const text = readFileSync(resolvedPath, 'utf-8')
     for (const line of text.split(/\r?\n/).filter(Boolean)) {
       try {
         const node = sanitizeNode(JSON.parse(line) as MemoryNode)

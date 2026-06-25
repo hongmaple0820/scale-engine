@@ -1,5 +1,6 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { arch, platform, release } from 'node:os'
 import { delimiter, extname } from 'node:path'
 import { runGbrainCommandSync } from '../core/GbrainRuntime.js'
@@ -61,6 +62,7 @@ export interface InspectEnvironmentOptions {
   nodeVersion?: string
   commandResolver?: (command: string) => string | null
   commandRunner?: (command: string, args: string[], resolvedPath?: string) => CommandRunResult
+  nativeModuleProbe?: (moduleName: string) => NativeModuleProbeResult
 }
 
 interface CommandRunResult {
@@ -68,6 +70,15 @@ interface CommandRunResult {
   stdout: string
   stderr: string
 }
+
+export interface NativeModuleProbeResult {
+  ok: boolean
+  version?: string
+  error?: string
+}
+
+const require = createRequire(import.meta.url)
+const ARTIFACT_STORE_RUNTIME_FIX = 'Use a SCALE-verified Node runtime for this release (Node 22 LTS, or the project-supported Node 20 line for legacy installs), or install Windows C++ Build Tools and run `npm rebuild better-sqlite3`.'
 
 interface CommandCandidate {
   command: string
@@ -241,6 +252,14 @@ export function inspectEnvironment(options: InspectEnvironmentOptions = {}): Env
     .filter(Boolean)
 
   const checks = CHECK_DEFINITIONS.map(definition => inspectCommand(definition, resolver, runner, currentPlatform))
+  checks.push(inspectBetterSqlite3Runtime({
+    nodeVersion: currentNodeVersion,
+    currentPlatform,
+    currentArch,
+    nativeModuleProbe: options.nativeModuleProbe,
+  }))
+  const buildTools = inspectWindowsCppBuildTools(currentPlatform, env, resolver)
+  if (buildTools) checks.push(buildTools)
   const nodeStatus = nodeVersionStatus(currentNodeVersion)
   const warnings = buildWarnings(checks, nodeStatus)
   const recommendations = buildRecommendations(checks, nodeStatus)
@@ -379,6 +398,93 @@ function inspectCommand(
   }
 }
 
+export function inspectBetterSqlite3Runtime(input: {
+  nodeVersion?: string
+  currentPlatform?: NodeJS.Platform
+  currentArch?: string
+  nativeModuleProbe?: (moduleName: string) => NativeModuleProbeResult
+} = {}): EnvironmentCommandCheck {
+  const currentNodeVersion = input.nodeVersion ?? process.version
+  const currentPlatform = input.currentPlatform ?? platform()
+  const currentArch = input.currentArch ?? arch()
+  const probe = (input.nativeModuleProbe ?? defaultNativeModuleProbe)('better-sqlite3')
+  const parsed = parseSemver(currentNodeVersion)
+  const nodeDescription = `Node.js ${currentNodeVersion} on ${currentPlatform}/${currentArch}`
+
+  if (probe.ok) {
+    return {
+      id: 'better-sqlite3-native',
+      label: 'better-sqlite3 native binding',
+      category: 'runtime',
+      status: 'ok',
+      required: true,
+      candidates: ['better-sqlite3'],
+      version: probe.version,
+      reason: `better-sqlite3 native binding loads under ${nodeDescription}.`,
+      installHint: ARTIFACT_STORE_RUNTIME_FIX,
+      requiredFor: ['scale status', 'scale doctor', 'scale preflight', 'artifact store'],
+    }
+  }
+
+  const likelyPrebuildGap = currentPlatform === 'win32' && parsed && parsed.major >= 24
+  const reason = likelyPrebuildGap
+    ? `better-sqlite3 native binding cannot load under ${nodeDescription}; current SCALE packages may need a prebuilt binary or local C++ rebuild for this Node ABI. ${summarizeNativeError(probe.error)}`
+    : `better-sqlite3 native binding cannot load under ${nodeDescription}. ${summarizeNativeError(probe.error)}`
+
+  return {
+    id: 'better-sqlite3-native',
+    label: 'better-sqlite3 native binding',
+    category: 'runtime',
+    status: 'fail',
+    required: true,
+    candidates: ['better-sqlite3'],
+    version: probe.version,
+    reason,
+    installHint: ARTIFACT_STORE_RUNTIME_FIX,
+    requiredFor: ['scale status', 'scale doctor', 'scale preflight', 'artifact store'],
+  }
+}
+
+function inspectWindowsCppBuildTools(
+  currentPlatform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  resolver: NonNullable<InspectEnvironmentOptions['commandResolver']>,
+): EnvironmentCommandCheck | undefined {
+  if (currentPlatform !== 'win32') return undefined
+  const candidates = [
+    { id: 'cl', path: resolver('cl') },
+    { id: 'msbuild', path: resolver('msbuild') },
+    { id: 'vswhere', path: resolver('vswhere') ?? knownVswherePath(env) },
+  ]
+  const detected = candidates.find(candidate => candidate.path)
+  if (detected) {
+    return {
+      id: 'windows-cpp-build-tools',
+      label: 'Windows C++ Build Tools',
+      category: 'runtime',
+      status: 'ok',
+      required: false,
+      candidates: candidates.map(candidate => candidate.id),
+      detectedCommand: detected.id,
+      resolvedPath: detected.path ?? undefined,
+      reason: `Windows C++ build tooling was detected via ${detected.id}.`,
+      installHint: 'Install Visual Studio Build Tools with the Desktop development with C++ workload when native Node modules need local rebuilds.',
+      requiredFor: ['native Node module rebuilds', 'better-sqlite3 source builds'],
+    }
+  }
+  return {
+    id: 'windows-cpp-build-tools',
+    label: 'Windows C++ Build Tools',
+    category: 'runtime',
+    status: 'missing',
+    required: false,
+    candidates: candidates.map(candidate => candidate.id),
+    reason: 'Windows C++ build tooling was not detected; native Node modules cannot be rebuilt locally if no prebuilt binary exists.',
+    installHint: 'Install Visual Studio Build Tools with the Desktop development with C++ workload, then rerun `npm rebuild better-sqlite3`.',
+    requiredFor: ['native Node module rebuilds', 'better-sqlite3 source builds'],
+  }
+}
+
 function runCommand(command: string, args: string[], resolvedPath?: string): CommandRunResult {
   if (command === 'gbrain') {
     const result = runGbrainCommandSync(args, {
@@ -425,6 +531,42 @@ function resolveWindowsCommandShim(executable: string): string {
 
 function isWindowsCommandWrapper(executable: string): boolean {
   return process.platform === 'win32' && /\.(cmd|bat)$/i.test(executable)
+}
+
+function defaultNativeModuleProbe(moduleName: string): NativeModuleProbeResult {
+  try {
+    require(moduleName)
+    let version: string | undefined
+    try {
+      const packageJson = require(`${moduleName}/package.json`) as { version?: unknown }
+      if (typeof packageJson.version === 'string') version = packageJson.version
+    } catch {
+      version = undefined
+    }
+    return { ok: true, version }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+function summarizeNativeError(error: string | undefined): string {
+  if (!error) return 'No native module error output was captured.'
+  return compactText(error, 260)
+}
+
+function knownVswherePath(env: NodeJS.ProcessEnv): string | null {
+  const roots = [
+    env['ProgramFiles(x86)'],
+    env.ProgramFiles,
+  ].filter((value): value is string => Boolean(value))
+  for (const root of roots) {
+    const candidate = `${root}\\Microsoft Visual Studio\\Installer\\vswhere.exe`
+    if (existsSync(candidate)) return candidate
+  }
+  return null
 }
 
 function nodeVersionStatus(value: string): { status: EnvironmentCheckStatus; reason: string } {

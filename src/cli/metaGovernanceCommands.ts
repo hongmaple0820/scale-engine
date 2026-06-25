@@ -1,6 +1,7 @@
 // SCALE Engine — Meta-Governance Commands (G9-G15)
 import { defineCommand } from 'citty'
-import { getEngine } from './engineBootstrap.js'
+import { join } from 'node:path'
+import { EventBus } from '../core/eventBus.js'
 
 export const metaGovernanceCommand = defineCommand({
   meta: { name: 'meta-governance', description: 'Run meta-governance gates (G9-G15) — check if governance capabilities are actually used' },
@@ -9,10 +10,11 @@ export const metaGovernanceCommand = defineCommand({
     json: { type: 'boolean', default: false, description: 'Output as JSON' },
   },
   async run({ args }) {
-    const { eventBus } = getEngine()
+    const scaleDir = String(args['scale-dir'] ?? '.scale')
+    const eventBus = new EventBus({ eventsDir: join(scaleDir, 'events') })
     const { GateSystem } = await import('../workflow/gates/GateSystem.js')
-    const gateSystem = new GateSystem(eventBus)
-    const results = await gateSystem.executeMetaGovernance(args['scale-dir'])
+    const gateSystem = new GateSystem(eventBus, { scaleDir, cwd: process.cwd() })
+    const results = await gateSystem.executeMetaGovernance(scaleDir)
 
     if (args.json) {
       console.log(JSON.stringify(results, null, 2))
