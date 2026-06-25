@@ -63,6 +63,8 @@ describe('writeGovernanceTemplates', () => {
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'skill-plan.md'), 'utf-8')).toContain('## Tool Orchestration')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'skill-evidence.md'), 'utf-8')).toContain('## Browser Or Web Evidence')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Credential-Gated')
+    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Unsupported Claims')
+    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'architecture-review.md'), 'utf-8')).toContain('## Hallucination Guards')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'verification.md'), 'utf-8')).toContain('## Learning Evidence')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'summary.md'), 'utf-8')).toContain('## Learning And Prevention')
     expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Real Product Path')
@@ -126,6 +128,7 @@ describe('writeGovernanceTemplates', () => {
     const outputPolicy = JSON.parse(readFileSync(join(dir, '.scale', 'output-policy.json'), 'utf-8'))
     expect(outputPolicy.templates).toHaveProperty('release-report')
     expect(outputPolicy.templates['release-report'].sources).toEqual(expect.arrayContaining([
+      'architecture-review.md',
       'db-change-plan.md',
       'docs-impact.md',
       'resource-impact.md',

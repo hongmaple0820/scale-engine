@@ -2,6 +2,14 @@
 
 ## Standards Checked
 
+- Source files / docs:
+  - `.scale/engineering-standards.json`:
+  - `.scale/frameworks.json`:
+  - `docs/standards/`:
+- Commands:
+  - `scale standards doctor --changed --json`:
+  - `scale standards scan --json`:
+
 - [ ] Logging and redaction
 - [ ] Architecture boundaries
 - [ ] ORM/database access
@@ -15,6 +23,13 @@
 | Severity | Rule | Path | Decision |
 | --- | --- | --- | --- |
 | TBD | TBD | TBD | fix/accept/escalate |
+
+## Norm Compliance Verdict
+
+- Project conventions followed: yes / no / not applicable
+- Architecture conventions followed: yes / no / not applicable
+- Framework/component conventions followed: yes / no / not applicable
+- Any accepted deviation and owner: TBD
 
 ## Policy Updates
 

@@ -80,6 +80,8 @@ const TASK_ARTIFACTS: GovernanceArtifactTemplateName[] = [
   'mini-prd.md',
   'skill-plan.md',
   'plan.md',
+  'standards-impact.md',
+  'architecture-review.md',
   'runtime.md',
   'reality-check.md',
   'resource-cleanup.md',
@@ -286,6 +288,8 @@ function requiredArtifactsForLevel(level: TaskArtifactLevel, skillRequiredArtifa
     'explore.md',
     'skill-plan.md',
     'plan.md',
+    'standards-impact.md',
+    'architecture-review.md',
     'runtime.md',
     'reality-check.md',
     'resource-cleanup.md',
@@ -304,7 +308,9 @@ function incompleteReason(file: string, content: string, level: TaskArtifactLeve
   if (file === 'reality-check.md') {
     const requiredHeadings = [
       '## Confirmed',
+      '## Fact Sources',
       '## Not Verified',
+      '## Unsupported Claims',
       '## Stub / Fake / Partial',
       '## Credential-Gated',
       '## Environment-Gated',
@@ -315,6 +321,22 @@ function incompleteReason(file: string, content: string, level: TaskArtifactLeve
   }
   if (file === 'plan.md' && (level === 'L' || level === 'CRITICAL') && !/human confirmation|review before execution|operator confirmation|执行前确认|人工确认/i.test(content)) {
     return 'L/CRITICAL plan must record human confirmation or review-before-execution requirement'
+  }
+  if (file === 'standards-impact.md') {
+    if (!/scale standards (scan|doctor)|engineering-standards\.json|frameworks\.json|docs\/standards/i.test(content)) {
+      return 'standards-impact must cite standards source or standards command evidence'
+    }
+    if (/## Findings[\s\S]*\|\s*TBD\s*\|/i.test(content)) {
+      return 'standards-impact findings table still contains template placeholders'
+    }
+  }
+  if (file === 'architecture-review.md') {
+    if (!/codegraph|architecture|frameworks\.json|docs\/architecture|docs\/standards|boundary/i.test(content)) {
+      return 'architecture-review must cite architecture source, boundary rule, or codegraph evidence'
+    }
+    if (/## Decision[\s\S]*Approved\/changes required:/i.test(content)) {
+      return 'architecture-review decision still contains template placeholder'
+    }
   }
 
   const substantive = substantiveLines(content)

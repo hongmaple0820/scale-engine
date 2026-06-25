@@ -32,16 +32,18 @@
       "label": "Code Review",
       "sources": [
         "review.md",
+        "architecture-review.md",
         "security-review.md",
         "standards-impact.md"
       ],
-      "description": "Summarize review findings, severity, evidence, and residual risks."
+      "description": "Summarize review findings, architecture boundary checks, severity, evidence, and residual risks."
     },
     "status-report": {
       "label": "Status Report",
       "sources": [
         "summary.md",
         "verification.md",
+        "architecture-review.md",
         "resource-impact.md",
         "standards-impact.md"
       ],
@@ -63,12 +65,13 @@
         "summary.md",
         "verification.md",
         "review.md",
+        "architecture-review.md",
         "db-change-plan.md",
         "docs-impact.md",
         "resource-impact.md",
         "standards-impact.md"
       ],
-      "description": "Package release evidence, SQL/data/config/docs/resource impact, risk state, unverified items, and sign-off readiness."
+      "description": "Package release evidence, architecture compliance, SQL/data/config/docs/resource impact, risk state, unverified items, and sign-off readiness."
     }
   }
 }

@@ -629,9 +629,21 @@ function realityCheckTemplate(): string {
 
 - TBD
 
+## Fact Sources
+
+| Claim | Source | Evidence Type |
+| --- | --- | --- |
+| TBD | file / command / runtime / dashboard / external source | direct / inferred / unverified |
+
 ## Not Verified
 
 - TBD
+
+## Unsupported Claims
+
+| Claim | Why Unsupported | Required Proof |
+| --- | --- | --- |
+| TBD | TBD | TBD |
 
 ## Stub / Fake / Partial
 
@@ -834,6 +846,14 @@ function standardsImpactTemplate(): string {
 
 ## Standards Checked
 
+- Source files / docs:
+  - \`.scale/engineering-standards.json\`:
+  - \`.scale/frameworks.json\`:
+  - \`docs/standards/\`:
+- Commands:
+  - \`scale standards doctor --changed --json\`:
+  - \`scale standards scan --json\`:
+
 - [ ] Logging and redaction
 - [ ] Architecture boundaries
 - [ ] ORM/database access
@@ -847,6 +867,13 @@ function standardsImpactTemplate(): string {
 | Severity | Rule | Path | Decision |
 | --- | --- | --- | --- |
 | TBD | TBD | TBD | fix/accept/escalate |
+
+## Norm Compliance Verdict
+
+- Project conventions followed: yes / no / not applicable
+- Architecture conventions followed: yes / no / not applicable
+- Framework/component conventions followed: yes / no / not applicable
+- Any accepted deviation and owner: TBD
 
 ## Policy Updates
 
@@ -870,6 +897,14 @@ function architectureReviewTemplate(): string {
 - Public contracts touched:
 - Data flow touched:
 
+## Architecture Sources
+
+| Source | What It Proves |
+| --- | --- |
+| CodeGraph context / trace | TBD |
+| \`docs/architecture/\` or module docs | TBD |
+| \`.scale/frameworks.json\` or standards docs | TBD |
+
 ## Boundary Checks
 
 - [ ] API/controller layer does not bypass service/usecase layer
@@ -877,6 +912,12 @@ function architectureReviewTemplate(): string {
 - [ ] Repository/ORM usage follows project conventions
 - [ ] Shared framework components are reused instead of duplicated
 - [ ] New abstractions remove real complexity
+
+## Hallucination Guards
+
+- Claims based on direct source evidence:
+- Claims inferred from patterns:
+- Claims not verified and therefore excluded from final answer:
 
 ## Risks
 

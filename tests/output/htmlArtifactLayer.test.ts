@@ -58,6 +58,7 @@ describe('HTMLArtifactLayer', () => {
       sourcePaths: ['summary.md', 'verification.md', 'review.md'],
     })
     expect(manifest.artifacts[0].missingSources).toEqual([
+      'architecture-review.md',
       'db-change-plan.md',
       'docs-impact.md',
       'resource-impact.md',

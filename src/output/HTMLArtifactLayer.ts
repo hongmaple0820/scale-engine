@@ -120,12 +120,12 @@ const DEFAULT_TEMPLATE_SOURCES: Record<HtmlArtifactType, HtmlArtifactPolicyTempl
   },
   'code-review': {
     label: 'Code Review',
-    sources: ['review.md', 'security-review.md', 'standards-impact.md'],
-    description: 'Summarize review findings, severity, evidence, and residual risks.',
+    sources: ['review.md', 'architecture-review.md', 'security-review.md', 'standards-impact.md'],
+    description: 'Summarize review findings, architecture boundary checks, severity, evidence, and residual risks.',
   },
   'status-report': {
     label: 'Status Report',
-    sources: ['summary.md', 'verification.md', 'resource-impact.md', 'standards-impact.md'],
+    sources: ['summary.md', 'verification.md', 'architecture-review.md', 'resource-impact.md', 'standards-impact.md'],
     description: 'Show current task status, proof, blockers, resource state, and follow-ups.',
   },
   'incident-report': {
@@ -135,8 +135,8 @@ const DEFAULT_TEMPLATE_SOURCES: Record<HtmlArtifactType, HtmlArtifactPolicyTempl
   },
   'release-report': {
     label: 'Release Report',
-    sources: ['summary.md', 'verification.md', 'review.md', 'db-change-plan.md', 'docs-impact.md', 'resource-impact.md', 'standards-impact.md'],
-    description: 'Package release evidence, SQL/data/config/docs/resource impact, risk state, unverified items, and sign-off readiness.',
+    sources: ['summary.md', 'verification.md', 'review.md', 'architecture-review.md', 'db-change-plan.md', 'docs-impact.md', 'resource-impact.md', 'standards-impact.md'],
+    description: 'Package release evidence, architecture compliance, SQL/data/config/docs/resource impact, risk state, unverified items, and sign-off readiness.',
   },
 }
 

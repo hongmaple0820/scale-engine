@@ -290,7 +290,7 @@ PY_STATE="$PROJECT_ROOT/scripts/lib/workflow_state.py"
 
 mkdir -p "$TASK_DIR" "$STATE_DIR"
 
-for file in explore.md mini-prd.md spec.md plan.md tasks.md runtime.md reality-check.md resource-cleanup.md verification.md review.md summary.md; do
+for file in explore.md mini-prd.md spec.md plan.md tasks.md standards-impact.md architecture-review.md runtime.md reality-check.md resource-cleanup.md verification.md review.md summary.md; do
   target="$TASK_DIR/$file"
   if [ -f "$TEMPLATES/$file" ]; then
     sed "s/{{TASK_ID}}/$TASK_ID/g; s/{{NAME}}/$NAME/g; s/{{DATE}}/$DATE/g; s/{{LEVEL}}/$LEVEL/g" "$TEMPLATES/$file" > "$target"
@@ -611,6 +611,8 @@ def cmd_init(args: list[str]) -> int:
     data["artifacts_dir"] = artifacts_dir
     data["runtime_contract"] = str(Path(artifacts_dir) / "runtime.md")
     data["reality_check"] = str(Path(artifacts_dir) / "reality-check.md")
+    data["standards_impact"] = str(Path(artifacts_dir) / "standards-impact.md")
+    data["architecture_review"] = str(Path(artifacts_dir) / "architecture-review.md")
     data["resource_cleanup"] = str(Path(artifacts_dir) / "resource-cleanup.md")
     save(state_path, data)
     return 0
@@ -660,6 +662,8 @@ def cmd_plan(args: list[str]) -> int:
             "artifacts_dir": artifacts_dir,
             "runtime_contract": str(Path(artifacts_dir) / "runtime.md"),
             "reality_check": str(Path(artifacts_dir) / "reality-check.md"),
+            "standards_impact": str(Path(artifacts_dir) / "standards-impact.md"),
+            "architecture_review": str(Path(artifacts_dir) / "architecture-review.md"),
             "resource_cleanup": str(Path(artifacts_dir) / "resource-cleanup.md"),
             "updated_at": now(),
         }
