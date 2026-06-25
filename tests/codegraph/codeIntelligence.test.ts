@@ -71,6 +71,55 @@ function mockCodegraphCli() {
   }) as typeof import('node:child_process').execFileSync)
 }
 
+function mockCodegraphCliWithEscapedContextPaths() {
+  setCodeIntelligenceExecFileSyncForTesting(((command, args, options) => {
+    if ((command === 'where' || command === 'where.exe' || command === 'which') && Array.isArray(args) && args[0] === 'codegraph') {
+      return options && typeof options === 'object' && 'encoding' in options
+        ? 'C:\\tools\\codegraph.exe'
+        : Buffer.from('C:\\tools\\codegraph.exe')
+    }
+
+    if (String(command).replace(/\\/g, '/').endsWith('/codegraph.exe') && Array.isArray(args) && args[0] === 'query') {
+      return JSON.stringify([
+        {
+          node: {
+            kind: 'function',
+            name: 'createUser',
+            qualifiedName: 'createUser',
+            filePath: 'src/user.ts',
+            startLine: 1,
+          },
+        },
+      ])
+    }
+
+    if (String(command).replace(/\\/g, '/').endsWith('/codegraph.exe') && Array.isArray(args) && args[0] === 'context') {
+      return JSON.stringify({
+        summary: 'Found mixed safe and escaped files.',
+        entryPoints: [
+          {
+            kind: 'function',
+            name: 'createUser',
+            qualifiedName: 'createUser',
+            filePath: 'src/user.ts',
+            startLine: 1,
+          },
+          {
+            kind: 'function',
+            name: 'escaped',
+            qualifiedName: 'escaped',
+            filePath: '../../outside.ts',
+            startLine: 1,
+          },
+        ],
+        relatedFiles: ['src/user.ts', '../../outside.ts'],
+      })
+    }
+
+    throw new Error(`Unexpected command: ${String(command)} ${(args ?? []).join(' ')}`)
+  }) as typeof import('node:child_process').execFileSync)
+}
+
 describe('CodeIntelligence external CodeGraph integration', () => {
   it('includes GitNexus as an optional default code intelligence provider', () => {
     const config = defaultCodeIntelligenceConfig()
@@ -133,6 +182,30 @@ describe('CodeIntelligence external CodeGraph integration', () => {
     expect(report.contextFiles.map(file => file.path)).toEqual(expect.arrayContaining(['src/user.ts', 'src/api.ts']))
     expect(report.warnings.join('\n')).toContain('CodeGraph context summary:')
     expect(report.totalEstimatedTokens).toBeLessThanOrEqual(50)
+  })
+
+  it('drops escaped external context files before reading them', () => {
+    const projectDir = makeProject(true)
+    mockCodegraphCliWithEscapedContextPaths()
+
+    const report = buildCodeGraphContext({ projectDir, symbol: 'createUser', budget: 50 })
+
+    expect(report.provider).toBe('codegraph')
+    expect(report.fallbackUsed).toBe(false)
+    expect(report.files).toEqual(['src/user.ts'])
+    expect(report.contextFiles.map(file => file.path)).toEqual(['src/user.ts'])
+    expect(report.hits.every(hit => !hit.file.includes('..'))).toBe(true)
+  })
+
+  it('keeps fallback context reads inside the project directory when external context mode is unavailable', () => {
+    const projectDir = makeProject(false)
+
+    const report = buildCodeGraphContext({ projectDir, symbol: 'createUser', budget: 50 })
+
+    expect(report.fallbackUsed).toBe(true)
+    expect(report.files).toContain('src/user.ts')
+    expect(report.contextFiles.every(file => !file.path.includes('..'))).toBe(true)
+    expect(report.hits.every(hit => !hit.file.includes('..'))).toBe(true)
   })
 })
 

@@ -782,6 +782,7 @@ async function runAttempt(attempt: WorkflowEvalAttempt, cwd: string): Promise<Wo
     const result = await runSafeCommand(attempt.command, {
       cwd,
       timeout: attempt.timeoutMs ?? 30_000,
+      allowShellFromEnv: false,
     })
     const output = [result.stdout ?? '', result.stderr ?? ''].filter(Boolean).join('\n')
     const outputRedaction = redactEvidenceText(output.slice(-2000))

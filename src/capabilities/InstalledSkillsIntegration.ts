@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { execa } from 'execa'
 import { parseCommandLine } from '../tools/SafeCommandRunner.js'
-import { wrapShellCommandWithRtk } from '../tools/RtkRuntime.js'
 
 export const SKILLS_DIR = join(homedir(), '.claude', 'skills')
 export const AGENTS_SKILLS_DIR = join(homedir(), '.agents', 'skills')
@@ -18,38 +17,52 @@ export interface SkillInvocationResult {
   skillId: string
 }
 
+interface InstalledSkillRunOptions {
+  cwd?: string
+}
+
 export function resolveInstalledSkillPath(skillId: string, segments: string[] = [], roots: string[] = DEFAULT_SKILL_ROOTS): string {
   const candidates = roots.map(root => join(root, skillId, ...segments))
   return candidates.find(candidate => existsSync(candidate)) ?? candidates[0]
 }
 
-export async function runInstalledSkillCommand(cmd: string, timeout: number, skillId: string): Promise<SkillInvocationResult> {
+export async function runInstalledSkillCommand(
+  cmd: string,
+  timeout: number,
+  skillId: string,
+  options: InstalledSkillRunOptions = {},
+): Promise<SkillInvocationResult> {
   const start = Date.now()
   try {
-    const parsed = tryParseSkillCommand(cmd)
-    const wrapped = parsed ? null : wrapShellCommandWithRtk(cmd)
-    const result = parsed
-      ? await execa(parsed.file, parsed.args, {
-          timeout,
-          reject: false,
-          all: false,
-          shell: false,
-          windowsHide: true,
-        })
-      : wrapped
-        ? await execa(wrapped.command, wrapped.args, {
-            timeout,
-            reject: false,
-            all: false,
-            windowsHide: true,
-          })
-        : await execa(cmd, {
-            shell: true,
-            timeout,
-            reject: false,
-            all: false,
-            windowsHide: true,
-          })
+    const parsed = parseCommandLine(cmd)
+    return await runInstalledSkillCommandArgs(parsed.file, parsed.args, timeout, skillId, { ...options, start })
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - start,
+      skillId,
+    }
+  }
+}
+
+export async function runInstalledSkillCommandArgs(
+  command: string,
+  args: string[],
+  timeout: number,
+  skillId: string,
+  options: InstalledSkillRunOptions & { start?: number } = {},
+): Promise<SkillInvocationResult> {
+  const start = options.start ?? Date.now()
+  try {
+    const result = await execa(command, args, {
+      timeout,
+      reject: false,
+      all: false,
+      shell: false,
+      windowsHide: true,
+      cwd: options.cwd,
+    })
     return {
       success: (result.exitCode ?? 1) === 0,
       output: result.stdout ?? '',
@@ -67,41 +80,33 @@ export async function runInstalledSkillCommand(cmd: string, timeout: number, ski
   }
 }
 
-function tryParseSkillCommand(cmd: string): { file: string; args: string[] } | null {
-  try {
-    return parseCommandLine(cmd)
-  } catch {
-    return null
-  }
-}
-
 export class InstalledSkillsInvoker {
   async webAccessTargets(): Promise<SkillInvocationResult> {
-    return this.runCommand('curl -s http://localhost:3456/targets', 5000, 'web-access')
+    return this.runCommandArgs('curl', ['-s', this.webAccessUrl('/targets')], 5000, 'web-access')
   }
   async webAccessNewTab(url: string): Promise<SkillInvocationResult> {
-    return this.runCommand('curl -s "http://localhost:3456/new?url=' + encodeURIComponent(url) + '"', 30000, 'web-access')
+    return this.runCommandArgs('curl', ['-s', this.webAccessUrl('/new', { url })], 30000, 'web-access')
   }
   async webAccessEval(targetId: string, js: string): Promise<SkillInvocationResult> {
-    return this.runCommand('curl -s -X POST "http://localhost:3456/eval?target=' + targetId + '" -d "' + js + '"', 10000, 'web-access')
+    return this.runCommandArgs('curl', ['-s', '-X', 'POST', this.webAccessUrl('/eval', { target: targetId }), '-d', js], 10000, 'web-access')
   }
   async webAccessClick(targetId: string, sel: string): Promise<SkillInvocationResult> {
-    return this.runCommand('curl -s -X POST "http://localhost:3456/click?target=' + targetId + '" -d "' + sel + '"', 10000, 'web-access')
+    return this.runCommandArgs('curl', ['-s', '-X', 'POST', this.webAccessUrl('/click', { target: targetId }), '-d', sel], 10000, 'web-access')
   }
   async webAccessClose(targetId: string): Promise<SkillInvocationResult> {
-    return this.runCommand('curl -s "http://localhost:3456/close?target=' + targetId + '"', 5000, 'web-access')
+    return this.runCommandArgs('curl', ['-s', this.webAccessUrl('/close', { target: targetId })], 5000, 'web-access')
   }
   async playwrightOpen(url: string): Promise<SkillInvocationResult> {
     const pw = resolveInstalledSkillPath('playwright', ['scripts', 'playwright_cli.sh'])
-    return this.runCommand('"'+pw+'" open "'+url+'"', 30000, 'playwright')
+    return this.runCommandArgs(pw, ['open', url], 30000, 'playwright')
   }
   async playwrightSnapshot(): Promise<SkillInvocationResult> {
     const pw = resolveInstalledSkillPath('playwright', ['scripts', 'playwright_cli.sh'])
-    return this.runCommand('"'+pw+'" snapshot', 10000, 'playwright')
+    return this.runCommandArgs(pw, ['snapshot'], 10000, 'playwright')
   }
   async playwrightClick(ref: string): Promise<SkillInvocationResult> {
     const pw = resolveInstalledSkillPath('playwright', ['scripts', 'playwright_cli.sh'])
-    return this.runCommand('"'+pw+'" click '+ref, 10000, 'playwright')
+    return this.runCommandArgs(pw, ['click', ref], 10000, 'playwright')
   }
   async cuaMouseMove(x: number, y: number): Promise<SkillInvocationResult> {
     return this.runCommand('npx @anthropic/mcp-cua mouseMove '+x+' '+y, 10000, 'cua')
@@ -233,7 +238,7 @@ export class InstalledSkillsInvoker {
   }
   // ========== Video/Media Skills ==========
   async remotionRender(projectDir: string, composition: string): Promise<SkillInvocationResult> {
-    return this.runCommand(`cd "${projectDir}" && npx remotion render ${composition} out/video.mp4`, 300000, 'remotion-video')
+    return this.runCommandArgs('npx', ['remotion', 'render', composition, 'out/video.mp4'], 300000, 'remotion-video', { cwd: projectDir })
   }
   async manimRender(sceneClass: string, quality?: 'low' | 'medium' | 'high'): Promise<SkillInvocationResult> {
     const q = quality === 'low' ? '-ql' : quality === 'medium' ? '-qm' : '-qh'
@@ -243,8 +248,22 @@ export class InstalledSkillsInvoker {
   async deeplTranslate(text: string, targetLang: string): Promise<SkillInvocationResult> {
     return this.runCommand(`deepl translate --target-lang ${targetLang} "${text}"`, 30000, 'deepl')
   }
+  private webAccessUrl(pathname: string, query: Record<string, string> = {}): string {
+    const url = new URL(pathname, process.env.SCALE_WEB_ACCESS_BASE_URL ?? 'http://localhost:3456')
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
+    return url.toString()
+  }
   private runCommand(cmd: string, timeout: number, skillId: string): Promise<SkillInvocationResult> {
     return runInstalledSkillCommand(cmd, timeout, skillId)
+  }
+  private runCommandArgs(
+    command: string,
+    args: string[],
+    timeout: number,
+    skillId: string,
+    options: InstalledSkillRunOptions = {},
+  ): Promise<SkillInvocationResult> {
+    return runInstalledSkillCommandArgs(command, args, timeout, skillId, options)
   }
 }
 export const skillsInvoker = new InstalledSkillsInvoker()

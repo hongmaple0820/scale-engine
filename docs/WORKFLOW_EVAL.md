@@ -152,4 +152,5 @@ Failure category 当前包括：
 - 不允许用 eval 通过率替代真实项目验证。
 - 失败记录中的命令输出会做基础脱敏，但仍应避免把敏感原始日志写入 suite。
 - 低成本 smoke suite 可以频繁运行；重型项目 suite 应按需运行。
+- workflow eval attempts always run with shell expansion disabled. If a case needs a multi-step flow, put it in a checked-in script and call that script instead of relying on `SCALE_ALLOW_SHELL_COMMANDS`.
 - 没有 eval 证据时，不应宣称工作流能力已经提升。

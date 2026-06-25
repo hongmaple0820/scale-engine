@@ -21,6 +21,10 @@ function makeDir(prefix: string): string {
 }
 
 async function runScale(args: string[], scaleDir: string, projectDir: string) {
+  return runScaleWithEnv(args, scaleDir, projectDir)
+}
+
+async function runScaleWithEnv(args: string[], scaleDir: string, projectDir: string, extraEnv: NodeJS.ProcessEnv = {}) {
   let lastResult: Awaited<ReturnType<typeof execa>>
   for (let attempt = 0; attempt < 2; attempt += 1) {
     lastResult = await execa('node', ['--import', TSX_LOADER, CLI_ENTRY, ...args], {
@@ -30,6 +34,7 @@ async function runScale(args: string[], scaleDir: string, projectDir: string) {
         SCALE_DIR: scaleDir,
         SCALE_PROJECT_DIR: projectDir,
         SCALE_LOG_LEVEL: undefined,
+        ...extraEnv,
       },
       reject: false,
       windowsHide: true,
@@ -124,6 +129,33 @@ function writeSuite(path: string, id = 'project-suite') {
             command: 'node -e "console.log(\'project-local-suite-ok\')"',
             expectedExitCode: 0,
             outputEquals: 'project-local-suite-ok',
+          },
+        ],
+      },
+    ],
+  }, null, 2), 'utf-8')
+}
+
+function writeShellOverrideSuite(scaleDir: string) {
+  const suitesDir = join(scaleDir, 'evals', 'suites')
+  mkdirSync(suitesDir, { recursive: true })
+  writeFileSync(join(suitesDir, 'shell-override.json'), JSON.stringify({
+    version: '1.0',
+    id: 'shell-override',
+    name: 'Shell override must stay disabled in workflow eval',
+    cases: [
+      {
+        id: 'disallow-shell-env-override',
+        type: 'security',
+        title: 'Workflow eval ignores env-based shell override',
+        task: 'Ensure SCALE_ALLOW_SHELL_COMMANDS does not re-enable shell execution for eval attempts.',
+        phase: 'verify',
+        successCriteria: ['metacharacters stay blocked even when the env override is set'],
+        attempts: [
+          {
+            id: 'attempt-1',
+            command: 'node -e "process.stdout.write(\'shell-safe\')" && node -e "process.stdout.write(\'shell-unsafe\')"',
+            expectedExitCode: 0,
           },
         ],
       },
@@ -335,6 +367,32 @@ describe('workflow eval CLI', () => {
     const report = await runScale(['eval', 'report', '--run', outsidePath, '--json'], scaleDir, projectDir)
     expect(report.exitCode).toBe(1)
     expect(`${report.stdout}\n${report.stderr}`).toContain('Eval run path escapes allowed directories')
+  }, 120_000)
+
+  it('ignores SCALE_ALLOW_SHELL_COMMANDS for workflow eval attempts', async () => {
+    const scaleDir = makeDir('scale-eval-cli-scale-')
+    const projectDir = makeDir('scale-eval-cli-project-')
+    writeShellOverrideSuite(scaleDir)
+
+    const run = await runScaleWithEnv(
+      ['eval', 'run', '--suite', 'shell-override', '--json'],
+      scaleDir,
+      projectDir,
+      { SCALE_ALLOW_SHELL_COMMANDS: '1' },
+    )
+
+    expect(run.exitCode).toBe(1)
+    const report = parseJson<{
+      run: {
+        ok: boolean
+        cases: Array<{
+          attempts: Array<{ passed: boolean; outputSummary: string }>
+        }>
+      }
+    }>(run.stdout, run.stderr)
+    expect(report.run.ok).toBe(false)
+    expect(report.run.cases[0].attempts[0].passed).toBe(false)
+    expect(report.run.cases[0].attempts[0].outputSummary).toContain('Shell metacharacter "&" is not allowed')
   }, 120_000)
 
   it('compares runs and renders a Markdown eval report', async () => {

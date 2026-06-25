@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { MemoryFabric } from '../../src/memory/MemoryFabric.js'
@@ -238,5 +238,42 @@ describe('MemoryFabric', () => {
     ]))
     expect(JSON.stringify(knowledgeItems)).not.toContain('raw-secret-value')
     expect(JSON.stringify(knowledgeItems)).not.toContain('outside secret')
+  })
+
+  it('does not preview knowledge content through a project-local symlink or junction', async () => {
+    const projectDir = makeProject()
+    const outsideDir = makeProject()
+    const insideKnowledgeDir = join(projectDir, 'docs', 'knowledge')
+    mkdirSync(insideKnowledgeDir, { recursive: true })
+    writeFileSync(join(outsideDir, 'outside.md'), 'outside via link should never be read', 'utf-8')
+    symlinkSync(
+      outsideDir,
+      join(insideKnowledgeDir, 'outside-link'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+
+    const fabric = new MemoryFabric({
+      projectDir,
+      knowledgeBase: {
+        recallByVector: vi.fn().mockResolvedValue([
+          knowledgeEntry({
+            id: 'KB-LINK',
+            title: 'Linked outside knowledge',
+            contentRef: 'docs/knowledge/outside-link/outside.md',
+          }),
+        ]),
+      },
+    })
+
+    const pack = await fabric.createContextPack({
+      task: 'Use memory safely',
+      budgetTokens: 4_000,
+    })
+    const knowledgeItems = pack.sections.find(section => section.id === 'knowledge')?.items ?? []
+
+    expect(knowledgeItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'KB-LINK', preview: undefined }),
+    ]))
+    expect(JSON.stringify(knowledgeItems)).not.toContain('outside via link')
   })
 })

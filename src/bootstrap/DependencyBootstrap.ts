@@ -5,7 +5,7 @@ import { execa, execaSync } from 'execa'
 import { inspectCodeIntelligence, writeCodeIntelligenceConfig } from '../codegraph/CodeIntelligence.js'
 import { externalCommandExists } from '../core/ExternalCommand.js'
 import { inspectGbrainCliHealth, inspectMemoryProviders, useMemoryProvider, writeMemoryProvidersConfig } from '../memory/MemoryProviders.js'
-import { wrapShellCommandWithRtk } from '../tools/RtkRuntime.js'
+import { wrapCliCommandWithRtk, wrapShellCommandWithRtk } from '../tools/RtkRuntime.js'
 import { inspectToolCapabilities } from '../tools/ToolCapabilityRegistry.js'
 
 export type DependencyBootstrapPackId = 'ui' | 'memory' | 'knowledge' | 'external-cli' | 'full'
@@ -134,9 +134,17 @@ type DependencyBootstrapDefinition = {
   manualReason: string
   installCommand: (ctx: BootstrapInstallContext) => string | null
   install?: (ctx: BootstrapInstallContext) => Promise<{ ok: boolean; output?: string; error?: string }>
-  initializeCommands?: (ctx: BootstrapInstallContext) => string[]
+  initializeCommands?: (ctx: BootstrapInstallContext) => BootstrapExecutionCommand[]
   healthCheck?: (ctx: BootstrapInstallContext) => DependencyBootstrapHealth
 }
+
+type BootstrapCliCommand = {
+  command: string
+  args: string[]
+  display: string
+}
+
+type BootstrapExecutionCommand = string | BootstrapCliCommand
 
 const UI_SKILL_INSTALLS = {
   impeccable: 'npx -y impeccable skills install --yes',
@@ -312,7 +320,7 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     initializeCommands: ctx => [
       GRAPHIFY_CODEX_INSTALL,
       GRAPHIFY_HOOK_INSTALL,
-      `graphify update ${quotePath(ctx.projectDir)} --no-cluster`,
+      graphifyUpdateCommand(ctx.projectDir),
     ],
     healthCheck: checkGraphifyHealth,
   },
@@ -1063,9 +1071,20 @@ function detectCuaPackage(context: BootstrapInstallContext): string {
   return imported.ok ? `PYTHON:${python}:cua` : 'missing'
 }
 
-function codegraphInitCommand(projectDir: string): string {
-  const command = `codegraph init -i ${quotePath(projectDir)}`
-  return process.platform === 'win32' ? `cmd /d /c ${command}` : command
+function graphifyUpdateCommand(projectDir: string): BootstrapCliCommand {
+  return {
+    command: 'graphify',
+    args: ['update', projectDir, '--no-cluster'],
+    display: `graphify update ${quotePath(projectDir)} --no-cluster`,
+  }
+}
+
+function codegraphInitCommand(projectDir: string): BootstrapCliCommand {
+  return {
+    command: 'codegraph',
+    args: ['init', '-i', projectDir],
+    display: `codegraph init -i ${quotePath(projectDir)}`,
+  }
 }
 
 export function hasCodexRtkInstructions(homeDir: string): boolean {
@@ -1196,7 +1215,7 @@ async function reconcileDependencyBootstrapItems(
       if (result.error) errors.push(result.error)
       if (!result.ok) {
         ok = false
-        if (!result.error) errors.push(`Initialization command failed: ${command}`)
+        if (!result.error) errors.push(`Initialization command failed: ${renderBootstrapCommand(command)}`)
         break
       }
     }
@@ -1327,9 +1346,18 @@ function quotePath(path: string): string {
   return `"${path.replace(/"/g, '\\"')}"`
 }
 
-async function runInstallCommand(shellCommand: string, cwd?: string): Promise<{ ok: boolean; output?: string; error?: string }> {
+async function runInstallCommand(shellCommand: BootstrapExecutionCommand, cwd?: string): Promise<{ ok: boolean; output?: string; error?: string }> {
   const timeout = 300_000
   try {
+    if (typeof shellCommand !== 'string') {
+      const wrapped = wrapCliCommandWithRtk(shellCommand.command, shellCommand.args)
+      const result = await execa(wrapped.command, wrapped.args, { reject: false, timeout, all: false, cwd })
+      return {
+        ok: (result.exitCode ?? 1) === 0,
+        output: result.stdout ?? '',
+        error: result.stderr ?? '',
+      }
+    }
     const wrapped = wrapShellCommandWithRtk(shellCommand)
     const result = wrapped
       ? await execa(wrapped.command, wrapped.args, { reject: false, timeout, all: false, cwd })
@@ -1351,6 +1379,10 @@ async function runInstallCommand(shellCommand: string, cwd?: string): Promise<{ 
       ].filter(Boolean).join('\n'),
     }
   }
+}
+
+function renderBootstrapCommand(command: BootstrapExecutionCommand): string {
+  return typeof command === 'string' ? command : command.display
 }
 
 async function installCuaPackage(context: BootstrapInstallContext): Promise<{ ok: boolean; output?: string; error?: string }> {

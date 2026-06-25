@@ -12,6 +12,7 @@ import { redactEvidenceText } from '../tools/ToolEvidenceStore.js'
 import { InstinctStore } from '../cortex/InstinctStore.js'
 import type { Instinct } from '../cortex/InstinctExtractor.js'
 import { recallMemoryProviders, type MemoryProviderRecallItem } from './MemoryProviders.js'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 
 export interface MemoryFabricOptions {
   projectDir?: string
@@ -547,12 +548,18 @@ function previewFile(path: string, maxChars: number): string {
 }
 
 function safePreviewProjectFile(projectDir: string, filePath: string, maxChars: number): string | undefined {
-  const resolvedProject = resolve(projectDir)
   const resolvedFile = resolve(filePath)
-  const rel = relative(resolvedProject, resolvedFile)
-  if (rel.startsWith('..') || isAbsolute(rel)) return undefined
   if (!existsSync(resolvedFile)) return undefined
-  return previewFile(resolvedFile, maxChars)
+  try {
+    const safePath = resolvePathWithinRoots(resolvedFile, {
+      baseDir: projectDir,
+      allowedRoots: [projectDir],
+      label: 'Knowledge preview',
+    })
+    return previewFile(safePath, maxChars)
+  } catch {
+    return undefined
+  }
 }
 
 function truncate(value: string, maxChars: number): string {

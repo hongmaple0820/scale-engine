@@ -3,6 +3,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path
 import * as childProcess from 'node:child_process'
 import { estimateTokens } from '../context/ContextBudget.js'
 import { externalCommandExists, runExternalCommandSync } from '../core/ExternalCommand.js'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 
 export type CodeIntelligenceProviderType = 'external-cli' | 'artifact'
 export type CodeIntelligenceCapability = 'symbols' | 'callers' | 'callees' | 'impact' | 'context' | 'summary' | 'module-map'
@@ -387,10 +388,7 @@ export function buildCodeGraphContext(options: {
     let total = 0
     const contextFiles: CodeGraphContextFile[] = []
     for (const file of externalContext.files) {
-      const absolute = resolve(projectDir, file)
-      const tokens = existsSync(absolute) && statSync(absolute).isFile()
-        ? estimateTokens(readFileSync(absolute, 'utf-8'))
-        : 0
+      const tokens = estimateProjectFileTokens(projectDir, file)
       const included = total + tokens <= budget
       if (included) total += tokens
       contextFiles.push({
@@ -419,14 +417,11 @@ export function buildCodeGraphContext(options: {
       omitted: contextFiles.filter(file => !file.included),
     }
   }
-  const base = impactCodeGraph(options)
+  const base = impactCodeGraph({ ...options, projectDir })
   let total = 0
   const contextFiles: CodeGraphContextFile[] = []
   for (const file of base.files) {
-    const absolute = resolve(options.projectDir ?? process.cwd(), file)
-    const tokens = existsSync(absolute) && statSync(absolute).isFile()
-      ? estimateTokens(readFileSync(absolute, 'utf-8'))
-      : 0
+    const tokens = estimateProjectFileTokens(projectDir, file)
     const included = total + tokens <= budget
     if (included) total += tokens
     contextFiles.push({
@@ -1096,7 +1091,8 @@ function normalizeManifestPath(value: unknown): string {
 }
 
 function existsOrLooksLikePath(projectDir: string, file: string): boolean {
-  return hasFileExtension(file) || existsSync(resolve(projectDir, file))
+  const resolved = tryResolveProjectFile(projectDir, file)
+  return Boolean(resolved && (hasFileExtension(file) || existsSync(resolved)))
 }
 
 function hasFileExtension(path: string): boolean {
@@ -1166,6 +1162,24 @@ function resolveScaleRoot(projectDir: string, scaleDir = '.scale'): string {
 
 function resolveProjectPath(projectDir: string, path: string): string {
   return isAbsolute(path) ? path : resolve(projectDir, path)
+}
+
+function tryResolveProjectFile(projectDir: string, file: string): string | null {
+  try {
+    return resolvePathWithinRoots(file, {
+      baseDir: projectDir,
+      allowedRoots: [projectDir],
+      label: 'Code intelligence file',
+    })
+  } catch {
+    return null
+  }
+}
+
+function estimateProjectFileTokens(projectDir: string, file: string): number {
+  const absolute = tryResolveProjectFile(projectDir, file)
+  if (!absolute || !existsSync(absolute) || !statSync(absolute).isFile()) return 0
+  return estimateTokens(readFileSync(absolute, 'utf-8'))
 }
 
 function safeRead(path: string): string {
@@ -1304,7 +1318,9 @@ function queryExternalCodeGraphContext(options: {
           }]
         })
       : []
-    const files = unique((parsed.relatedFiles ?? []).map(file => normalizeManifestPath(file)).filter(Boolean))
+    const files = unique((parsed.relatedFiles ?? [])
+      .map(file => normalizeManifestPath(file))
+      .filter(file => existsOrLooksLikePath(options.projectDir, file)))
     if (hits.length === 0 && files.length === 0) return null
     return {
       summary: parsed.summary ?? 'CodeGraph returned related files and entry points.',
