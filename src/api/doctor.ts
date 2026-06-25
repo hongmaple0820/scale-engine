@@ -335,8 +335,8 @@ export class Doctor {
   private checkNodeVersion(): DiagnosticResult {
     const version = process.version
     const major = parseInt(version.slice(1).split('.')[0])
-    if (major < 20) {
-      return { name: 'Node.js version', status: 'fail', message: `${version} — requires >=20`, fix: 'Upgrade Node.js to v20+' }
+    if (major < 22) {
+      return { name: 'Node.js version', status: 'fail', message: `${version} — requires >=22`, fix: 'Upgrade Node.js to v22+' }
     }
     return { name: 'Node.js version', status: 'ok', message: version }
   }

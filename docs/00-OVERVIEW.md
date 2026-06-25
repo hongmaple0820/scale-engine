@@ -50,7 +50,7 @@ Hook:    跑测试前必须先 lint，否则拒绝   ← 系统不允许跳过
 | 关注点 | 选型 | 理由 |
 |--------|------|------|
 | 语言 | TypeScript | 复用 cc-code 70% |
-| 运行时 | Bun (开发) / Node 20+ (生产) | 启动快、原生 TS |
+| 运行时 | Bun (开发) / Node 22+ (生产) | 启动快、原生 TS |
 | 持久化 | SQLite + better-sqlite3 | 单文件零运维 |
 | 事件流 | JSONL append-only | git 友好 |
 | ORM | Drizzle | 类型安全 |

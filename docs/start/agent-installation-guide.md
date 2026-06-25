@@ -23,7 +23,7 @@ npx -y @hongmaple0820/scale-engine@latest --version
 npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
 ```
 
-要求 Node.js 20+。Agent 本体仍按各自官方方式安装，SCALE 负责把项目接入该 Agent 的治理入口。长期高频使用时再执行 `npm install -g @hongmaple0820/scale-engine`。
+要求 Node.js 22+。Agent 本体仍按各自官方方式安装，SCALE 负责把项目接入该 Agent 的治理入口。长期高频使用时再执行 `npm install -g @hongmaple0820/scale-engine`。
 
 ## 1. 新项目 3 分钟接入
 

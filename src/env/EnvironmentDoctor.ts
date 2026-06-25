@@ -78,7 +78,7 @@ export interface NativeModuleProbeResult {
 }
 
 const require = createRequire(import.meta.url)
-const ARTIFACT_STORE_RUNTIME_FIX = 'Use a SCALE-verified Node runtime for this release (Node 22 LTS, or the project-supported Node 20 line for legacy installs), or install Windows C++ Build Tools and run `npm rebuild better-sqlite3`.'
+const ARTIFACT_STORE_RUNTIME_FIX = 'Use a SCALE-verified Node runtime for this release (Node 22 LTS or newer), or install Windows C++ Build Tools and run `npm rebuild better-sqlite3`.'
 
 interface CommandCandidate {
   command: string
@@ -111,7 +111,7 @@ const CHECK_DEFINITIONS: Array<{
     required: true,
     candidates: [{ command: 'npm', args: ['--version'], display: 'npm' }],
     requiredFor: ['scale install', 'codegraph install', 'node-library workflow'],
-    installHint: 'Install Node.js 20+; npm is bundled with Node.js.',
+    installHint: 'Install Node.js 22+; npm is bundled with Node.js.',
   },
   {
     id: 'npx',
@@ -120,7 +120,7 @@ const CHECK_DEFINITIONS: Array<{
     required: true,
     candidates: [{ command: 'npx', args: ['--version'], display: 'npx' }],
     requiredFor: ['impeccable', 'taste-skill', 'awesome-design-md', 'ui-ux-pro-max', 'frontend-design'],
-    installHint: 'Install Node.js 20+; npx is bundled with npm.',
+    installHint: 'Install Node.js 22+; npx is bundled with npm.',
   },
   {
     id: 'powershell',
@@ -572,8 +572,8 @@ function knownVswherePath(env: NodeJS.ProcessEnv): string | null {
 function nodeVersionStatus(value: string): { status: EnvironmentCheckStatus; reason: string } {
   const version = parseSemver(value)
   if (!version) return { status: 'warn', reason: `Could not parse Node.js version: ${value}` }
-  if (version.major < 20) return { status: 'fail', reason: `Node.js ${value} is below the required 20.x baseline.` }
-  return { status: 'ok', reason: `Node.js ${value} satisfies the 20+ baseline.` }
+  if (version.major < 22) return { status: 'fail', reason: `Node.js ${value} is below the required 22.x baseline.` }
+  return { status: 'ok', reason: `Node.js ${value} satisfies the 22+ baseline.` }
 }
 
 function commandVersionStatus(id: string, version: string): { status: EnvironmentCheckStatus; reason?: string } {
@@ -601,7 +601,7 @@ function buildWarnings(checks: EnvironmentCommandCheck[], nodeStatus: { status: 
 
 function buildRecommendations(checks: EnvironmentCommandCheck[], nodeStatus: { status: EnvironmentCheckStatus; reason: string }): string[] {
   const recommendations = new Set<string>()
-  if (nodeStatus.status !== 'ok') recommendations.add('Install Node.js 20+ before running SCALE workflow commands.')
+  if (nodeStatus.status !== 'ok') recommendations.add('Install Node.js 22+ before running SCALE workflow commands.')
   for (const check of checks) {
     if ((check.status === 'missing' || check.status === 'fail' || check.status === 'warn') && check.installHint) {
       recommendations.add(check.installHint)

@@ -598,14 +598,14 @@ function buildRuntimeChecks(items: DependencyBootstrapItemReport[]): DependencyB
     label: 'npx',
     candidates: [{ command: 'npx', args: ['--version'], display: 'npx' }],
     requiredFor: requiredFor('npx'),
-    installHint: 'Install Node.js 20+; npm/npx are bundled with the official Node.js installer.',
+    installHint: 'Install Node.js 22+; npm/npx are bundled with the official Node.js installer.',
   }))
   if (requirements.has('npm')) checks.push(commandRuntimeCheck({
     id: 'npm',
     label: 'npm',
     candidates: [{ command: 'npm', args: ['--version'], display: 'npm' }],
     requiredFor: requiredFor('npm'),
-    installHint: 'Install Node.js 20+; npm is bundled with the official Node.js installer.',
+    installHint: 'Install Node.js 22+; npm is bundled with the official Node.js installer.',
   }))
   if (requirements.has('cargo')) checks.push(commandRuntimeCheck({
     id: 'cargo',
@@ -672,7 +672,7 @@ function commandRuntimeCheck(input: {
 function nodeRuntimeCheck(requiredFor: string[]): DependencyBootstrapRuntimeCheck {
   const detected = firstAvailableRuntimeTool([{ command: 'node', args: ['--version'], display: 'node' }])
   const commands = ['node']
-  const installHint = 'Install Node.js 20+ from https://nodejs.org.'
+  const installHint = 'Install Node.js 22+ from https://nodejs.org.'
   if (!detected) {
     return {
       id: 'node',
@@ -686,7 +686,7 @@ function nodeRuntimeCheck(requiredFor: string[]): DependencyBootstrapRuntimeChec
   }
   const version = firstLine(detected.output)
   const parsed = parseSemver(version)
-  if (parsed && parsed.major < 20) {
+  if (parsed && parsed.major < 22) {
     return {
       id: 'node',
       label: 'Node.js',
@@ -695,7 +695,7 @@ function nodeRuntimeCheck(requiredFor: string[]): DependencyBootstrapRuntimeChec
       requiredFor,
       detectedCommand: detected.display,
       version,
-      reason: `Node.js ${version} is installed, but SCALE setup expects Node.js 20+ for current third-party installers.`,
+      reason: `Node.js ${version} is installed, but SCALE setup expects Node.js 22+ for current third-party installers.`,
       installHint,
     }
   }

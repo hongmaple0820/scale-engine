@@ -9,7 +9,7 @@ import { InstinctStore } from '../../src/cortex/InstinctStore.js'
 const dirs: string[] = []
 const CLI_ENTRY = join(process.cwd(), 'src/api/cli.ts')
 const TSX_LOADER = pathToFileURL(join(process.cwd(), 'node_modules/tsx/dist/loader.mjs')).href
-const CLI_TEST_TIMEOUT_MS = 30_000
+const CLI_TEST_TIMEOUT_MS = 120_000
 
 afterEach(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true })

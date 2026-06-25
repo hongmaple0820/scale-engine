@@ -11,7 +11,7 @@ This tutorial walks through a **complete Artifact lifecycle**: Need → Spec →
 ## Prerequisites
 
 - SCALE Engine installed (`npm install -g @hongmaple0820/scale-engine`)
-- Node.js 20+
+- Node.js 22+
 - A project directory initialized with `scale init`
 
 ## The Scenario

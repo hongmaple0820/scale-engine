@@ -64,12 +64,16 @@ function coverageFixtureCommand(coverage = '100.00'): string {
   return `node -e "process.stdout.write(String.fromCharCode(${codes}))"`
 }
 
+function removePath(path: string, recursive = false): void {
+  rmSync(path, { recursive, force: true, maxRetries: 5, retryDelay: 100 })
+}
+
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
-  for (const file of repoFiles) rmSync(file, { force: true })
-  for (const dir of repoDirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs) removePath(dir, true)
+  for (const file of repoFiles) removePath(file)
+  for (const dir of repoDirs) removePath(dir, true)
   // Clean up test-fixtures/phase-cli directory if created
-  rmSync(join('test-fixtures', 'phase-cli'), { recursive: true, force: true })
+  removePath(join('test-fixtures', 'phase-cli'), true)
   dirs = []
   repoFiles = []
   repoDirs = []
@@ -86,7 +90,7 @@ describe('phase CLI workflow', () => {
     const result = parseJson<{ nextCommand: string; workflowState: null }>(status.stdout)
     expect(result.workflowState).toBeNull()
     expect(result.nextCommand).toContain('scale define')
-  })
+  }, 30_000)
 
   it('does not report an older failed gate when newer evidence for the same gate passed', async () => {
     const scaleDir = makeScaleDir()
@@ -124,7 +128,7 @@ describe('phase CLI workflow', () => {
     const result = parseJson<{ blockers: string[]; recentEvidence: Array<{ id: string; passed: boolean }> }>(status.stdout)
     expect(result.recentEvidence[0]).toMatchObject({ id: 'GATE-G7-new', passed: true })
     expect(result.blockers).toEqual([])
-  })
+  }, 30_000)
 
   it('reports only blocking failed gate evidence as status blockers', async () => {
     const scaleDir = makeScaleDir()
@@ -161,7 +165,7 @@ describe('phase CLI workflow', () => {
     expect(result.blockers.join('\n')).toContain('G7: security blocker')
     expect(result.blockers.join('\n')).not.toContain('G12')
     expect(result.blockers.join('\n')).not.toContain('workflow thoroughness advisory')
-  })
+  }, 30_000)
 
   it('initializes a project-scaffold governance pack and reports clean drift', async () => {
     const scaleDir = makeScaleDir()

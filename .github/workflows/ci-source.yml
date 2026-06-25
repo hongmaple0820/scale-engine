@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -67,7 +67,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -83,15 +83,17 @@ jobs:
           retention-days: 1       # ephemeral; only needed within this workflow run
 
   # Job 3: run tests on the matrix using the built artifact.
+  # Node 22 is the minimum supported runtime; Node 24 is the current LTS.
   # Runs on both ubuntu + macos for cross-platform coverage (Zampetti 2019:
   # matrix testing is a top CI quality signal).
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (node${{ matrix.node }}, ${{ matrix.os }})
     needs: build
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        node: ['22', '24']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
 
@@ -100,7 +102,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - run: npm ci
@@ -118,9 +120,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-results-${{ matrix.os }}-${{ github.sha }}
-          path: |
-            coverage/
+          name: test-results-node${{ matrix.node }}-${{ matrix.os }}-${{ github.sha }}
+          path: coverage/
           retention-days: 14
 
   # Job 4: supply-chain audit, parallel with build.
@@ -137,7 +138,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -163,7 +164,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci

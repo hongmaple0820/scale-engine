@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -44,7 +44,7 @@ jobs:
         run: |
           # Parse json-summary reporter output and append it to the step summary.
           if [ -f coverage/coverage-summary.json ]; then
-            node - <<'EOF'
+            node --input-type=commonjs - <<'EOF'
           const s = require('./coverage/coverage-summary.json').total
           const fmt = (m) => `${m.pct.toFixed(1)}% (${m.covered}/${m.total})`
           const rows = [

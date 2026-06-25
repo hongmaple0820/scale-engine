@@ -53,13 +53,13 @@ describe('tool CLI', () => {
     mkdirSync(skillDir, { recursive: true })
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: web-access\n---\n', 'utf-8')
 
-    const result = await runScale(['tool', 'doctor', '--dir', projectDir, '--tools', 'web-access,mcp-chrome-devtools', '--json'], scaleDir, projectDir)
+    const result = await runScale(['tool', 'doctor', '--dir', projectDir, '--tools', 'web-access,missing-tool-cli-test', '--json'], scaleDir, projectDir)
 
     expect(result.exitCode).toBe(1)
     const parsed = JSON.parse(result.stdout) as { ok: boolean; tools: Array<{ id: string; installed: boolean }> }
     expect(parsed.ok).toBe(false)
     expect(parsed.tools.find(tool => tool.id === 'web-access')?.installed).toBe(true)
-    expect(parsed.tools.find(tool => tool.id === 'mcp-chrome-devtools')?.installed).toBe(false)
+    expect(parsed.tools.find(tool => tool.id === 'missing-tool-cli-test')?.installed).toBe(false)
   }, CLI_TEST_TIMEOUT_MS)
 
   it('creates a tool execution plan from task intent as JSON', async () => {

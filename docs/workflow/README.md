@@ -100,7 +100,7 @@ The performance baseline workflow uses typed `workflow_dispatch` inputs, emits w
 
 Dependabot opens weekly non-major npm dependency updates and monthly GitHub Actions updates so dependency maintenance stays visible without automatically taking major-version risk.
 
-The npm publish workflow runs on Node.js 20, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`.
+The npm publish workflow runs on Node.js 22, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`.
 
 Gitee release metadata sync is intentionally local-only. The tag workflow does not require or read a GitHub Actions `GITEE_TOKEN`; maintainers who need the Gitee release page mirrored run `npm run release:sync-gitee` locally with a process-scoped Gitee API token after npm and GitHub Release publication.
 

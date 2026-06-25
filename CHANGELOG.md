@@ -1,5 +1,21 @@
 ## Unreleased
 
+---
+
+## 0.52.0 - 2026-06-25
+
+### Runtime Baseline
+- Raise the supported Node.js runtime and CI baseline to Node 22, with source CI matrix coverage for Node 22 and Node 24.
+- Update bootstrap, environment doctor, generated GitHub Actions preflight templates, and user-facing docs so runtime guidance consistently points to Node.js 22+.
+
+### Workflow Governance
+- Harden ship disclosure so release reports include SQL/data/config/docs/resource impact, architecture compliance, runtime/dashboard evidence, and rollback notes.
+- Require standards and architecture evidence for M/L/CRITICAL task artifacts, including fact-source and unsupported-claim sections to reduce hallucinated delivery claims.
+
+### CI and Release
+- Add JSON summary output to the coverage command and make CI coverage/performance scripts run as CommonJS under Node 22.
+- Add publish prerequisite validation for `NPM_TOKEN`, keep publish verification focused on package health, and make CLI timeout/tool-doctor tests more deterministic.
+
 ### Reliability
 - Make `scale gate before-stop` hook-safe by default and require `--enforce` for the full gateway path, preventing Claude Code Stop hooks from initializing the artifact engine.
 - Run `scale meta-governance` without bootstrapping the full SQLite-backed engine and add doctor warnings for legacy before-stop hook commands.

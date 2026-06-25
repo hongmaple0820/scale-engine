@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -49,7 +49,7 @@ jobs:
         # Compare each gate's latest sample with earlier samples from this measurement.
         # Emits ::warning:: if any gate degrades by more than 20%.
         run: |
-          node - <<'EOF'
+          node --input-type=commonjs - <<'EOF'
           const fs = require('fs')
           const rows = fs.readFileSync('performance-trend.csv', 'utf8')
             .trim().split('\n').map(r => r.split(','))

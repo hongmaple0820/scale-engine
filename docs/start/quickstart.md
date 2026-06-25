@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-- Node.js 20+
+- Node.js 22+
 - npm
 - Git
 - Windows PowerShell、Git Bash、macOS/Linux shell 均可

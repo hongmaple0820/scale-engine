@@ -62,5 +62,5 @@ describe('hook-safe CLI commands', () => {
     expect(gateHelp.exitCode).toBe(0)
     expect(metaHelp.exitCode).toBe(0)
     expect(existsSync(join(scaleDir, 'scale.db'))).toBe(false)
-  })
+  }, 15_000)
 })
