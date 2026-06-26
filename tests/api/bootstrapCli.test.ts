@@ -187,6 +187,34 @@ describe('bootstrap CLI', () => {
     expect(report.final.runtimeChecks.map(check => check.id)).toContain('bun')
   }, CLI_TEST_TIMEOUT_MS)
 
+  it('limits setup planning to explicit dependency ids', async () => {
+    const scaleDir = makeDir('scale-bootstrap-cli-scale-')
+    const projectDir = makeDir('scale-bootstrap-cli-project-')
+    const homeDir = makeDir('scale-bootstrap-cli-home-')
+
+    const result = await runScale([
+      'setup',
+      '--dir',
+      projectDir,
+      '--pack',
+      'external-cli,memory,knowledge',
+      '--only',
+      'rtk,gbrain',
+      '--json',
+    ], scaleDir, projectDir, homeDir)
+
+    expect(result.exitCode).toBe(0)
+    const report = JSON.parse(result.stdout) as {
+      final: { items: Array<{ id: string }>; postCheckCommands: string[] }
+    }
+    expect(report.final.items.map(item => item.id)).toEqual(['rtk', 'gbrain'])
+    expect(report.final.postCheckCommands).toEqual(expect.arrayContaining([
+      'scale memory provider status --json',
+      'scale tool doctor --tools rtk --json',
+    ]))
+    expect(report.final.postCheckCommands.join('\n')).not.toContain('lark-cli')
+  }, CLI_TEST_TIMEOUT_MS)
+
   it('verifies governed setup readiness in one report', async () => {
     const scaleDir = makeDir('scale-bootstrap-cli-scale-')
     const projectDir = makeDir('scale-bootstrap-cli-project-')
@@ -262,6 +290,8 @@ describe('bootstrap CLI', () => {
       'codegraph',
       'graphify',
       'gitnexus',
+      'lark-cli',
+      'lark-skills',
       'web-access',
       'impeccable',
       'taste-skill',
@@ -279,8 +309,8 @@ describe('bootstrap CLI', () => {
     expect(report.postCheckCommands).toEqual(expect.arrayContaining([
       ...UI_POSTCHECK_COMMANDS,
       'scale memory provider status --json',
-      'scale tool doctor --tools codegraph,graphify,gitnexus --json',
-      'scale tool doctor --tools rtk,gitnexus,desktop-cua,codex-cli,gemini-cli,opencode-cli --json',
+      'scale tool doctor --tools codegraph,graphify,lark-cli,lark-skills,gitnexus --json',
+      'scale tool doctor --tools rtk,lark-cli,lark-skills,gitnexus,desktop-cua,codex-cli,gemini-cli,opencode-cli --json',
     ]))
   }, CLI_TEST_TIMEOUT_MS)
 

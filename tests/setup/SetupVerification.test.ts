@@ -335,7 +335,7 @@ describe('verifySetup', () => {
     expect(report.summary.dependencyStatus.needsInit).toEqual(['gbrain'])
   })
 
-  it('keeps full-pack setup usable when only gbrain provider initialization is pending', async () => {
+  it('blocks full-pack setup when gbrain provider initialization is pending', async () => {
     bootstrap.bootstrapDependencies.mockResolvedValue({
       ok: true,
       complete: false,
@@ -474,10 +474,13 @@ describe('verifySetup', () => {
 
     const report = await verifySetup({ packIds: ['full'] })
 
-    expect(report.ok).toBe(true)
-    expect(report.summary.blockingIssues).toEqual([])
-    expect(report.summary.dependencyStatus.needsInit).toEqual([])
-    expect(report.warnings).toContain('Memory provider is not initialized; full setup remains usable for installed non-memory capabilities.')
+    expect(report.ok).toBe(false)
+    expect(report.summary.blockingIssues).toEqual(expect.arrayContaining([
+      'Initialization required: gbrain',
+      'No memory provider is currently available',
+    ]))
+    expect(report.summary.dependencyStatus.needsInit).toEqual(['gbrain'])
+    expect(report.warnings).not.toContain('Memory provider is not initialized; full setup remains usable for installed non-memory capabilities.')
   })
 
   it('skips memory and code provider probes when their packs are not selected', async () => {

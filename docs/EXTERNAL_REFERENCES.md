@@ -15,6 +15,7 @@ The inventory is intentionally conservative:
 | --- | --- | --- | --- | --- |
 | [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files) | File-backed planning workflow reference | adapted concept, not vendored | MIT | `SkillRepository`, README, `THIRD_PARTY_SKILLS` |
 | [garrytan/gbrain](https://github.com/garrytan/gbrain) | Default graph-backed memory provider | external provider, default-enabled | MIT | `MemoryProviders`, `SkillRepository`, README |
+| [larksuite/cli](https://github.com/larksuite/cli) | Feishu/Lark CLI and official lark-* agent skills for IM, events, wiki, docs, Base, tasks, and mobile remote-control workflows | external CLI and skill provider, default-governed | review-required | `DependencyBootstrap`, `ToolCapabilityRegistry`, `FeishuChannelProvider`, setup docs |
 | [MemTensor/MemOS](https://github.com/MemTensor/MemOS) | Memory Operating System — graph-first 3-layer memory architecture | external provider, optional | Apache-2.0 | `MemoryProviders`, `SkillRepository`, README |
 | [safishamsi/graphify](https://github.com/safishamsi/graphify) | Default knowledge graph and semantic recall source | external provider, default-enabled | review-required | `GraphifyKnowledgeBase`, `CodeIntelligence`, docs |
 | [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph) | AST-based code review with blast radius analysis | external CLI, optional | MIT | `CodeIntelligence`, `SkillRepository`, MCP tools |

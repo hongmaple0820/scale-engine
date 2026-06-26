@@ -12,6 +12,7 @@ export interface SetupVerificationOptions {
   scaleDir?: string
   packIds?: string[]
   includeIds?: string[]
+  onlyIds?: string[]
 }
 
 export interface SetupVerificationReport {
@@ -53,6 +54,7 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
     scaleDir,
     packIds: options.packIds,
     includeIds: options.includeIds,
+    onlyIds: options.onlyIds,
     apply: false,
   })
   const includesMemory = dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')
@@ -231,31 +233,17 @@ const ENVIRONMENT_WARNING_TOOL_MAP: Record<string, string[]> = {
 }
 
 function resolveNonBlockingDependencyIds(
-  dependencyBootstrap: DependencyBootstrapReport,
+  _dependencyBootstrap: DependencyBootstrapReport,
   _memoryProviders: MemoryProviderStatusReport,
 ): Set<string> {
   const nonBlocking = new Set<string>()
-  if (!dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')) {
-    return nonBlocking
-  }
-  for (const item of dependencyBootstrap.items) {
-    if (!item.packs.includes('memory')) continue
-    if (!item.installed || item.status !== 'needs-init') continue
-    nonBlocking.add(item.id)
-  }
   return nonBlocking
 }
 
 function shouldBlockMemoryProviderUnavailability(dependencyBootstrap: DependencyBootstrapReport): boolean {
-  if (!dependencyBootstrap.packIds.includes('full') || dependencyBootstrap.packIds.includes('memory')) return true
-  const memoryItems = dependencyBootstrap.items.filter(item => item.packs.includes('memory'))
-  if (memoryItems.length === 0) return false
-  return memoryItems.some(item =>
-    item.status === 'failed'
-    || item.status === 'manual-review'
-    || item.status === 'ready'
-    || item.status === 'version-drift',
-  )
+  return dependencyBootstrap.packIds.includes('full')
+    || dependencyBootstrap.packIds.includes('memory')
+    || dependencyBootstrap.items.some(item => item.packs.includes('memory'))
 }
 
 function skippedMemoryProvidersReport(projectDir: string, scaleDir: string): MemoryProviderStatusReport {

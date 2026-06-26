@@ -412,6 +412,7 @@ const bootstrapDepsCommand = defineCommand({
     profile: { type: 'string', description: 'Resolve recommended packs from profile: minimal, standard, advanced' },
     'governance-pack': { type: 'string', description: 'Optional governance pack hint, for example frontend-app -> ui' },
     include: { type: 'string', description: 'Additional dependency ids to include explicitly' },
+    only: { type: 'string', description: 'Comma-separated dependency ids to limit the selected packs to' },
     apply: { type: 'boolean', default: false, description: 'Run install commands for ready dependencies' },
     lang: { type: 'string', description: 'Output language zh/en. Defaults to zh, then SCALE_LANG, then .scale/config.yaml locale.' },
     json: { type: 'boolean', default: false, description: 'Output bootstrap plan as JSON' },
@@ -431,6 +432,7 @@ const bootstrapDepsCommand = defineCommand({
       scaleDir: SCALE_DIR,
       packIds: explicitPacks.length > 0 ? uniqueStrings([...recommendedPacks, ...explicitPacks]) : recommendedPacks,
       includeIds: parseCommaList(args.include),
+      onlyIds: parseCommaList(args.only),
       apply: isTruthyFlag(args.apply),
     })
     if (args.json) {
@@ -460,6 +462,7 @@ export const setupCommand = defineCommand({
     profile: { type: 'string', description: 'Resolve recommended packs from profile: minimal, standard, advanced' },
     'governance-pack': { type: 'string', description: 'Optional governance pack hint, for example frontend-app -> ui' },
     include: { type: 'string', description: 'Additional dependency ids to include explicitly' },
+    only: { type: 'string', description: 'Comma-separated dependency ids to limit the selected packs to' },
     apply: { type: 'boolean', default: false, description: 'Run install commands for ready dependencies' },
     yes: { type: 'boolean', default: false, description: 'Confirm installation without prompting' },
     verify: { type: 'boolean', default: false, description: 'Verify governed setup and dependency readiness instead of running the setup wizard' },
@@ -482,6 +485,7 @@ export const setupCommand = defineCommand({
         scaleDir: SCALE_DIR,
         packIds: explicitPacks.length > 0 ? uniqueStrings([...recommendedPacks, ...explicitPacks]) : recommendedPacks,
         includeIds: parseCommaList(args.include),
+        onlyIds: parseCommaList(args.only),
       })
       if (args.json) {
         console.log(JSON.stringify(verification, null, 2))
@@ -496,7 +500,8 @@ export const setupCommand = defineCommand({
       scaleDir: SCALE_DIR,
       packIds: explicitPacks.length > 0 ? uniqueStrings([...recommendedPacks, ...explicitPacks]) : recommendedPacks,
       includeIds: parseCommaList(args.include),
-      promptPacks: explicitPacks.length === 0 && recommendedPacks.length === 0 && !args.include,
+      onlyIds: parseCommaList(args.only),
+      promptPacks: explicitPacks.length === 0 && recommendedPacks.length === 0 && !args.include && !args.only,
       apply: isTruthyFlag(args.apply),
       yes: isTruthyFlag(args.yes),
       interactive: isTruthyFlag(args.interactive) && !isTruthyFlag(args.json),

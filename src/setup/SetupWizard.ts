@@ -19,6 +19,7 @@ export interface SetupWizardOptions {
   scaleDir?: string
   packIds?: string[]
   includeIds?: string[]
+  onlyIds?: string[]
   promptPacks?: boolean
   apply?: boolean
   yes?: boolean
@@ -100,6 +101,7 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
     scaleDir: options.scaleDir,
     packIds,
     includeIds: options.includeIds,
+    onlyIds: options.onlyIds,
     apply: false,
   }
   plan = await bootstrap(planOptions)
@@ -131,7 +133,7 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
   }
 
   const final = shouldApply
-    ? await bootstrap({ ...planOptions, onlyIds: interactiveChoices.installIds, apply: true })
+    ? await bootstrap({ ...planOptions, onlyIds: interactiveChoices.installIds ?? options.onlyIds, apply: true })
     : plan
   const memoryProviderSwitch = memoryProvider && memoryProvider !== 'skip'
     ? (options.switchMemoryProvider ?? useMemoryProvider)({

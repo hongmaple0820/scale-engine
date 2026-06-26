@@ -16,6 +16,7 @@ export interface ToolCatalogEntry {
   requiredFor: string[]
   recommendedFor?: string[]
   skillId?: string
+  requiredSkillIds?: string[]
   skillAliases?: string[]
   command?: string
   versionArgs?: string[]
@@ -138,6 +139,27 @@ export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
     recommendedFor: ['review'],
     source: 'https://github.com/garrytan/gbrain',
     installHint: 'scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes',
+  },
+  {
+    id: 'lark-cli',
+    name: 'Feishu/Lark CLI',
+    category: 'cli',
+    command: 'lark-cli',
+    versionArgs: ['--version'],
+    requiredFor: ['communication', 'remoteControl', 'knowledge'],
+    recommendedFor: ['externalCli', 'review'],
+    source: 'https://github.com/larksuite/cli',
+    installHint: 'npx @larksuite/cli@latest install',
+  },
+  {
+    id: 'lark-skills',
+    name: 'Feishu/Lark Agent Skills',
+    category: 'skill',
+    requiredSkillIds: ['lark-shared', 'lark-im', 'lark-event', 'lark-wiki', 'lark-doc', 'lark-base', 'lark-task'],
+    requiredFor: ['communication', 'remoteControl', 'knowledge'],
+    recommendedFor: ['externalCli', 'review'],
+    source: 'https://github.com/larksuite/cli',
+    installHint: 'npx -y skills add larksuite/cli -g -y',
   },
   {
     id: 'codegraph',
@@ -317,19 +339,31 @@ function inspectToolCapability(tool: ToolCatalogEntry, deps: InspectToolCapabili
 }
 
 function inspectSkillTool(tool: ToolCatalogEntry, deps: InspectToolCapabilityDeps): ToolCapabilityEntry {
-  const skillIds = [tool.skillId ?? tool.id, ...(tool.skillAliases ?? [])]
+  const requiresAll = (tool.requiredSkillIds?.length ?? 0) > 0
+  const skillIds = requiresAll ? tool.requiredSkillIds! : [tool.skillId ?? tool.id, ...(tool.skillAliases ?? [])]
   const checkedPaths = [
     ...skillIds.flatMap(skillId => skillCandidatePaths(skillId, deps.projectDir, deps.homeDir)),
     ...(tool.extraPaths?.({ projectDir: deps.projectDir, homeDir: deps.homeDir }) ?? []),
   ]
-  const detectedPath = checkedPaths.find(path => existsSync(path))
+  const detectedPaths = requiresAll
+    ? skillIds.map(skillId => skillCandidatePaths(skillId, deps.projectDir, deps.homeDir).find(path => existsSync(path)))
+    : [checkedPaths.find(path => existsSync(path))]
+  const missingSkillIds = requiresAll
+    ? skillIds.filter((_, index) => !detectedPaths[index])
+    : []
+  const detectedPath = detectedPaths.filter(Boolean).join('; ') || undefined
+  const installed = requiresAll ? missingSkillIds.length === 0 : Boolean(detectedPath)
   return {
     ...tool,
     checkedPaths,
     detectedPath,
-    installed: Boolean(detectedPath),
-    status: detectedPath ? 'installed' : 'missing',
-    missingReason: detectedPath ? undefined : 'SKILL.md was not found in project or user skill directories',
+    installed,
+    status: installed ? 'installed' : 'missing',
+    missingReason: installed
+      ? undefined
+      : missingSkillIds.length > 0
+        ? `Required skills missing: ${missingSkillIds.join(', ')}`
+        : 'SKILL.md was not found in project or user skill directories',
   }
 }
 

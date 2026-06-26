@@ -26,6 +26,44 @@ function installedItem(id: string): DependencyBootstrapItemReport {
 }
 
 describe('dependency bootstrap post-checks', () => {
+  it('includes Feishu/Lark CLI and agent skills in the default external workflow bootstrap', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-lark-bootstrap-project-'))
+    const scaleDir = join(projectDir, '.scale')
+
+    try {
+      const report = await bootstrapDependencies({
+        projectDir,
+        scaleDir,
+        packIds: ['external-cli'],
+        onlyIds: ['lark-cli', 'lark-skills'],
+        apply: false,
+      })
+
+      expect(report.items.map(item => item.id)).toEqual(['lark-cli', 'lark-skills'])
+      expect(report.items.find(item => item.id === 'lark-cli')).toMatchObject({
+        id: 'lark-cli',
+        kind: 'cli',
+        packs: ['external-cli', 'knowledge'],
+        source: 'https://github.com/larksuite/cli',
+      })
+      expect(report.items.find(item => item.id === 'lark-skills')).toMatchObject({
+        id: 'lark-skills',
+        kind: 'skill',
+        packs: ['external-cli', 'knowledge'],
+        source: 'https://github.com/larksuite/cli',
+      })
+      expect(report.runtimeChecks.map(check => check.id)).toEqual(expect.arrayContaining(['node', 'npx']))
+      expect(report.postCheckCommands.join('\n')).toContain('lark-cli,lark-skills')
+      expect(report.recommendations.join('\n')).toContain('Feishu/Lark CLI')
+      expect(report.rollbackHints).toEqual(expect.arrayContaining([
+        'Feishu/Lark CLI rollback: npm uninstall -g @larksuite/cli, then run lark-cli auth logout first if credentials need to be revoked',
+        'Feishu/Lark skills rollback: remove ~/.agents/skills/lark-* after confirming no other agent workflow uses them',
+      ]))
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
   it('includes GitNexus in default knowledge bootstrap with automatic install support', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-gitnexus-bootstrap-project-'))
     const scaleDir = join(projectDir, '.scale')
@@ -47,7 +85,7 @@ describe('dependency bootstrap post-checks', () => {
       expect(['ready', 'needs-init', 'installed']).toContain(report.items[0].status)
       expect(report.items[0].packs).toEqual(['knowledge', 'external-cli'])
       expect(report.postCheckCommands).toEqual(expect.arrayContaining([
-        'scale tool doctor --tools codegraph,graphify,gitnexus --json',
+        'scale tool doctor --tools gitnexus --json',
         'scale codegraph status --json',
       ]))
       expect(report.recommendations.join('\n')).toContain('GitNexus is included in the default capability bootstrap')
@@ -268,7 +306,7 @@ describe('dependency bootstrap post-checks', () => {
     })
   })
 
-  it('warns instead of failing the full-pack post-check when gbrain initialization is pending', () => {
+  it('fails the full-pack post-check when gbrain initialization is pending', () => {
     const results = runDependencyBootstrapPostChecks({
       projectDir: 'E:/project/demo',
       scaleDir: 'E:/project/demo/.scale',
@@ -318,7 +356,7 @@ describe('dependency bootstrap post-checks', () => {
       status: 'passed',
     })
     expect(results.find(result => result.id === 'memory-provider')).toMatchObject({
-      status: 'warn',
+      status: 'failed',
       details: {
         gbrainReason: 'gbrain doctor failed in this runtime',
       },

@@ -176,6 +176,10 @@ const GRAPHIFY_PYTHON3_INSTALL = 'python3 -m pip install graphify && graphify in
 const GBRAIN_INSTALL = 'bun install -g github:garrytan/gbrain && gbrain init --pglite'
 const GBRAIN_SOURCE = 'https://github.com/garrytan/gbrain'
 const GITNEXUS_SOURCE = 'https://github.com/abhigyanpatwari/GitNexus'
+const LARK_CLI_SOURCE = 'https://github.com/larksuite/cli'
+const LARK_CLI_INSTALL = 'npx @larksuite/cli@latest install'
+const LARK_SKILLS_INSTALL = 'npx -y skills add larksuite/cli -g -y'
+const LARK_REQUIRED_SKILLS = ['lark-shared', 'lark-im', 'lark-event', 'lark-wiki', 'lark-doc', 'lark-base', 'lark-task']
 const WEB_ACCESS_INSTALL = 'npx -y skills add https://github.com/eze-is/web-access --skill web-access --yes'
 const AGENT_BROWSER_INSTALL = 'npm install -g agent-browser'
 const PLAYWRIGHT_INSTALL = 'npx -y playwright install'
@@ -306,6 +310,29 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     installCommand: ctx => buildGbrainInstallCommand(ctx),
     initializeCommands: () => ['gbrain init --pglite --no-embedding'],
     healthCheck: checkGbrainHealth,
+  },
+  {
+    id: 'lark-cli',
+    name: 'Feishu/Lark CLI',
+    kind: 'cli',
+    packs: ['external-cli', 'knowledge'],
+    source: LARK_CLI_SOURCE,
+    detectCommand: 'lark-cli',
+    prerequisites: ['npx'],
+    manualReason: 'Requires npm/npx to install Feishu/Lark CLI before governed IM, event, wiki, doc, base, task, and mobile remote-control workflows can be used.',
+    installCommand: ctx => ctx.commandExists('npx') ? LARK_CLI_INSTALL : null,
+    healthCheck: checkLarkCliHealth,
+  },
+  {
+    id: 'lark-skills',
+    name: 'Feishu/Lark Agent Skills',
+    kind: 'skill',
+    packs: ['external-cli', 'knowledge'],
+    source: LARK_CLI_SOURCE,
+    detect: detectLarkSkills,
+    prerequisites: ['npx'],
+    manualReason: 'Requires npm/npx to install the official lark-* skills used by Feishu IM, event, wiki, doc, base, and task workflows.',
+    installCommand: ctx => ctx.commandExists('npx') ? LARK_SKILLS_INSTALL : null,
   },
   {
     id: 'graphify',
@@ -526,6 +553,8 @@ function buildReport(
   if (items.some(item => item.id === 'awesome-design-md')) recommendations.push('Use awesome-design-md as the source of DESIGN.md, brand direction, and visual-language selection.')
   if (items.some(item => item.id === 'ui-ux-pro-max')) recommendations.push('Use ui-ux-pro-max for UX flow, UI state, accessibility, and responsive acceptance checks.')
   if (items.some(item => item.id === 'gbrain')) recommendations.push('After GBrain is installed, validate remote or thin-client health with `scale memory provider status --json`.')
+  if (items.some(item => item.id === 'lark-cli')) recommendations.push('After Feishu/Lark CLI is installed, run `lark-cli config init --new --lang zh`, `lark-cli auth login --recommend --no-wait`, and `lark-cli doctor` before enabling remote-control workflows.')
+  if (items.some(item => item.id === 'lark-skills')) recommendations.push('Feishu/Lark skills must include lark-shared, lark-im, lark-event, lark-wiki, lark-doc, lark-base, and lark-task for message, mobile-control, project, and knowledge workflows.')
   if (items.some(item => item.id === 'graphify' || item.id === 'codegraph')) recommendations.push('After knowledge tools are installed, run `scale codegraph status --json` and initialize the project index or graph artifacts as needed.')
   if (items.some(item => item.id === 'gitnexus')) recommendations.push('GitNexus is included in the default capability bootstrap; keep license and generated index evidence visible in tool doctor output.')
   if (items.some(item => item.id === 'desktop-cua')) recommendations.push('CUA is installed by default for desktop automation readiness; execution remains evidence-required and destructive actions are still policy-bound.')
@@ -572,6 +601,11 @@ function buildRuntimeChecks(items: DependencyBootstrapItemReport[]): DependencyB
   }
   if (ids.has('rtk')) requireRuntime('cargo', ['rtk'])
   if (ids.has('gbrain')) requireRuntime('bun', ['gbrain'])
+  if (ids.has('lark-cli') || ids.has('lark-skills')) {
+    const larkIds = ['lark-cli', 'lark-skills'].filter(id => ids.has(id))
+    requireRuntime('node', larkIds)
+    requireRuntime('npx', larkIds)
+  }
   if (ids.has('graphify')) {
     requireRuntime('python', ['graphify'])
     requireRuntime('python-installer', ['graphify'])
@@ -843,6 +877,8 @@ export function runDependencyBootstrapPostChecks(input: {
       'mcp-chrome-devtools',
       'rtk',
       'gbrain',
+      'lark-cli',
+      'lark-skills',
       'codegraph',
       'graphify',
       'gitnexus',
@@ -950,15 +986,9 @@ function shouldBlockMemoryProviderPostCheck(
   packIds: DependencyBootstrapPackId[],
   items: DependencyBootstrapItemReport[],
 ): boolean {
-  if (!packIds.includes('full') || packIds.includes('memory')) return true
-  const memoryItems = items.filter(item => item.packs.includes('memory'))
-  if (memoryItems.length === 0) return false
-  return memoryItems.some(item =>
-    item.status === 'failed'
-    || item.status === 'manual-review'
-    || item.status === 'ready'
-    || item.status === 'version-drift',
-  )
+  return packIds.includes('full')
+    || packIds.includes('memory')
+    || items.some(item => item.packs.includes('memory'))
 }
 
 function inspectDefinition(definition: DependencyBootstrapDefinition, context: BootstrapInstallContext): DependencyBootstrapItemReport {
@@ -1003,6 +1033,17 @@ function detectDefinition(definition: DependencyBootstrapDefinition, projectDir:
   }
   if (definition.detectCommand && externalCommandExists(definition.detectCommand)) return `PATH:${definition.detectCommand}`
   return 'missing'
+}
+
+function detectLarkSkills(context: BootstrapInstallContext): string {
+  const installed = LARK_REQUIRED_SKILLS
+    .map(skillId => findSkillPath(context.projectDir, context.homeDir, skillId))
+  if (installed.some(path => !path)) return 'missing'
+  return `skills:${LARK_REQUIRED_SKILLS.join(',')}`
+}
+
+function findSkillPath(projectDir: string, homeDir: string, skillId: string): string | undefined {
+  return skillCandidatePaths(projectDir, homeDir, skillId).find(candidate => existsSync(candidate))
 }
 
 function skillCandidatePaths(projectDir: string, homeDir: string, skillId: string): string[] {
@@ -1192,6 +1233,73 @@ function checkGbrainHealth(context: BootstrapInstallContext): DependencyBootstra
     recoveryHint: health.recoveryHint,
     nextCommands: health.nextCommands ?? ['gbrain init --pglite --no-embedding', 'gbrain doctor --json', 'scale memory provider status --json'],
   }
+}
+
+function checkLarkCliHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
+  const doctor = runHealthCommand('lark-cli', ['doctor'], 10_000, context.projectDir)
+  const output = `${doctor.stdout}\n${doctor.stderr}`.trim()
+  const report = parseLarkDoctorReport(output)
+  if (doctor.ok && (!report || report.ok !== false)) {
+    return {
+      status: 'ok',
+      reason: report ? summarizeLarkDoctor(report) : 'lark-cli doctor passed.',
+    }
+  }
+
+  const failedChecks = report?.checks.filter(check => check.status !== 'pass') ?? []
+  const configMissing = failedChecks.some(check => check.name === 'config_file')
+  const authMissing = failedChecks.some(check => /auth|token|login/i.test(check.name))
+  return {
+    status: 'warn',
+    bootstrapStatus: 'needs-init',
+    reason: report
+      ? summarizeLarkDoctor(report)
+      : `lark-cli doctor failed: ${firstLine(output)}`,
+    nextCommands: configMissing
+      ? ['lark-cli config init --new --lang zh', 'lark-cli auth login --recommend --no-wait', 'lark-cli doctor']
+      : authMissing
+        ? ['lark-cli auth login --recommend --no-wait', 'lark-cli doctor']
+        : ['lark-cli doctor', 'lark-cli config init --new --lang zh', 'lark-cli auth login --recommend --no-wait'],
+  }
+}
+
+type LarkDoctorCheck = {
+  name: string
+  status: string
+  message?: string
+  hint?: string
+}
+
+type LarkDoctorReport = {
+  ok?: boolean
+  checks: LarkDoctorCheck[]
+}
+
+function parseLarkDoctorReport(output: string): LarkDoctorReport | null {
+  try {
+    const parsed = JSON.parse(output) as Partial<LarkDoctorReport>
+    if (!Array.isArray(parsed.checks)) return null
+    return {
+      ok: typeof parsed.ok === 'boolean' ? parsed.ok : undefined,
+      checks: parsed.checks
+        .filter(check => check && typeof check.name === 'string' && typeof check.status === 'string')
+        .map(check => ({
+          name: check.name,
+          status: check.status,
+          message: typeof check.message === 'string' ? check.message : undefined,
+          hint: typeof check.hint === 'string' ? check.hint : undefined,
+        })),
+    }
+  } catch {
+    return null
+  }
+}
+
+function summarizeLarkDoctor(report: LarkDoctorReport): string {
+  const failed = report.checks.filter(check => check.status !== 'pass')
+  if (failed.length === 0) return 'lark-cli doctor passed; Feishu/Lark configuration and connectivity are ready.'
+  return `lark-cli doctor requires initialization: ${failed.map(check =>
+    `${check.name}=${check.message ?? check.status}`).join('; ')}`
 }
 
 async function reconcileDependencyBootstrapItems(
@@ -1685,24 +1793,18 @@ function buildPostCheckCommands(packIds: DependencyBootstrapPackId[], items: Dep
     if (browserToolIds.length > 0) commands.add(`scale tool doctor --tools ${browserToolIds.join(',')} --json`)
     commands.add('scale skill doctor --json')
   }
-  if (selectedPacks.has('memory') || ids.has('gbrain')) {
+  if (ids.has('gbrain')) {
     commands.add('scale memory provider status --json')
   }
-  if (selectedPacks.has('knowledge') || ids.has('codegraph') || ids.has('graphify') || ids.has('gitnexus')) {
-    const knowledgeToolIds = new Set<string>()
-    if (selectedPacks.has('knowledge')) {
-      knowledgeToolIds.add('codegraph')
-      knowledgeToolIds.add('graphify')
-    }
-    for (const id of ['codegraph', 'graphify', 'gitnexus']) {
-      if (ids.has(id)) knowledgeToolIds.add(id)
-    }
-    commands.add(`scale tool doctor --tools ${[...knowledgeToolIds].join(',')} --json`)
-    commands.add('scale codegraph status --json')
+  if (['codegraph', 'graphify', 'lark-cli', 'lark-skills', 'gitnexus'].some(id => ids.has(id))) {
+    const knowledgeToolIds = ['codegraph', 'graphify', 'lark-cli', 'lark-skills', 'gitnexus']
+      .filter(id => ids.has(id))
+    if (knowledgeToolIds.length > 0) commands.add(`scale tool doctor --tools ${knowledgeToolIds.join(',')} --json`)
+    if (ids.has('codegraph') || ids.has('graphify') || ids.has('gitnexus')) commands.add('scale codegraph status --json')
   }
   if (selectedPacks.has('external-cli') || ids.has('rtk')) {
-    const externalToolIds = ['rtk', 'gitnexus', 'desktop-cua', 'codex-cli', 'gemini-cli', 'opencode-cli']
-      .filter(id => ids.has(id) || (id === 'rtk' && selectedPacks.has('external-cli')))
+    const externalToolIds = ['rtk', 'lark-cli', 'lark-skills', 'gitnexus', 'desktop-cua', 'codex-cli', 'gemini-cli', 'opencode-cli']
+      .filter(id => ids.has(id))
     if (externalToolIds.length > 0) commands.add(`scale tool doctor --tools ${externalToolIds.join(',')} --json`)
   }
   commands.add('scale doctor')
@@ -1724,6 +1826,12 @@ function buildRollbackHints(items: DependencyBootstrapItemReport[]): string[] {
         break
       case 'gitnexus':
         hints.add('GitNexus rollback: npm uninstall -g gitnexus, then remove .gitnexus/ after confirming no shared index data is needed')
+        break
+      case 'lark-cli':
+        hints.add('Feishu/Lark CLI rollback: npm uninstall -g @larksuite/cli, then run lark-cli auth logout first if credentials need to be revoked')
+        break
+      case 'lark-skills':
+        hints.add('Feishu/Lark skills rollback: remove ~/.agents/skills/lark-* after confirming no other agent workflow uses them')
         break
       case 'agent-browser':
         hints.add('Agent Browser rollback: npm uninstall -g agent-browser')

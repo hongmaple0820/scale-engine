@@ -27,6 +27,7 @@ const gbrainHomeDir = join(smokeRoot, 'gbrain-home')
 const gbrainAuditDir = join(smokeRoot, 'gbrain-audit')
 const scaleInvocation = parseCommandLine(options.scaleCommand ?? 'node --import tsx src/api/cli.ts')
 const scaleCommand = formatCommand(scaleInvocation.file, scaleInvocation.args)
+const headlessSetupIds = 'rtk,gbrain,graphify,codegraph'
 const results = []
 
 mkdirSync(projectDir, { recursive: true })
@@ -93,7 +94,8 @@ function runSetupSmoke() {
     '--json',
   ], baseEnv)
   assertArrayContains(deps.runtimeChecks?.map(check => check.id), ['node', 'npm', 'cargo', 'bun', 'python', 'python-installer'], 'dependency plan should report all runtime dependency checks')
-  assertArrayContains(deps.items?.map(item => item.id), ['rtk', 'gbrain', 'graphify', 'codegraph'], 'dependency plan should include governed third-party capabilities')
+  assertArrayContains(deps.items?.map(item => item.id), ['rtk', 'gbrain', 'graphify', 'codegraph', 'lark-cli', 'lark-skills'], 'dependency plan should include governed third-party and Feishu/Lark capabilities')
+  assertIncludes(deps.postCheckCommands?.join('\n') ?? '', 'lark-cli,lark-skills', 'default dependency plan should surface Feishu/Lark doctor commands')
   assert(deps.apply === false, 'bootstrap smoke must not run installers')
 
   const envDoctor = runJson('doctor-env-json', ['doctor', 'env', '--json'], baseEnv)
@@ -127,6 +129,8 @@ function runSetupSmoke() {
     projectDir,
     '--pack',
     'external-cli,memory,knowledge',
+    '--only',
+    headlessSetupIds,
     '--apply',
     '--memory-provider',
     'gbrain',
@@ -159,6 +163,8 @@ function runSetupSmoke() {
     projectDir,
     '--pack',
     'external-cli,memory,knowledge',
+    '--only',
+    headlessSetupIds,
     '--json',
   ], baseEnv)
   assert(verify.ok === true, 'setup verify should pass after governed apply in the isolated home')

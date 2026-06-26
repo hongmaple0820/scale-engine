@@ -125,18 +125,54 @@ describe('ToolCapabilityRegistry', () => {
     const report = inspectToolCapabilities({
       projectDir: makeDir('scale-tools-project-'),
       homeDir: makeDir('scale-tools-home-'),
-      toolIds: ['gbrain', 'codegraph', 'graphify', 'gitnexus'],
-      commandExists: command => ['gbrain', 'codegraph', 'graphify', 'gitnexus'].includes(command),
+      toolIds: ['gbrain', 'lark-cli', 'codegraph', 'graphify', 'gitnexus'],
+      commandExists: command => ['gbrain', 'lark-cli', 'codegraph', 'graphify', 'gitnexus'].includes(command),
       runVersion: command => ({ ok: true, stdout: `${command} 1.0.0` }),
     })
 
     expect(report.ok).toBe(true)
-    expect(report.tools.map(tool => tool.id)).toEqual(['gbrain', 'codegraph', 'graphify', 'gitnexus'])
+    expect(report.tools.map(tool => tool.id)).toEqual(['gbrain', 'lark-cli', 'codegraph', 'graphify', 'gitnexus'])
     expect(report.tools.every(tool => tool.installed)).toBe(true)
     expect(report.tools.find(tool => tool.id === 'gbrain')?.installHint).toBe('scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes')
+    expect(report.tools.find(tool => tool.id === 'lark-cli')?.installHint).toBe('npx @larksuite/cli@latest install')
     expect(report.tools.find(tool => tool.id === 'codegraph')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
     expect(report.tools.find(tool => tool.id === 'graphify')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
     expect(report.tools.find(tool => tool.id === 'gitnexus')?.installHint).toBe('scale setup --pack knowledge --apply --yes')
+  })
+
+  it('requires the critical Feishu/Lark skills as a group', () => {
+    const homeDir = makeDir('scale-tools-home-')
+    const projectDir = makeDir('scale-tools-project-')
+    const required = ['lark-shared', 'lark-im', 'lark-event', 'lark-wiki', 'lark-doc', 'lark-base', 'lark-task']
+    for (const skill of required.slice(0, -1)) writeSkill(homeDir, skill)
+
+    const partial = inspectToolCapabilities({
+      projectDir,
+      homeDir,
+      toolIds: ['lark-skills'],
+    })
+
+    expect(partial.ok).toBe(false)
+    expect(partial.tools[0]).toMatchObject({
+      id: 'lark-skills',
+      installed: false,
+      status: 'missing',
+      missingReason: 'Required skills missing: lark-task',
+    })
+
+    writeSkill(homeDir, 'lark-task')
+    const complete = inspectToolCapabilities({
+      projectDir,
+      homeDir,
+      toolIds: ['lark-skills'],
+    })
+
+    expect(complete.ok).toBe(true)
+    expect(complete.tools[0]).toMatchObject({
+      id: 'lark-skills',
+      installed: true,
+      status: 'installed',
+    })
   })
 
   it('detects policy-selected skills that are not in the static tool catalog', () => {

@@ -17,6 +17,7 @@ This document records external skill projects that SCALE may learn from, recomme
 | --- | --- | --- | --- | --- |
 | Planning with Files | MIT | [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files) | Adapt concepts for file-backed plans, findings, progress logs, active-plan routing, and plan attestation. | Not vendored. |
 | GBrain | MIT | [garrytan/gbrain](https://github.com/garrytan/gbrain) | Default memory provider route for graph-backed cross-session recall. SCALE verifies that a brain is configured and recall-critical health checks pass; CLI existence alone is not enough. | Not vendored. |
+| Feishu/Lark CLI + lark-* skills | review-required | [larksuite/cli](https://github.com/larksuite/cli) | Default-governed communication and knowledge channel provider for IM messages, event streams, Wiki/Docs/Base/Task workflows, project notifications, and mobile remote-control UX. SCALE checks both `lark-cli` and the critical `lark-shared`, `lark-im`, `lark-event`, `lark-wiki`, `lark-doc`, `lark-base`, and `lark-task` skills. | External CLI/skills only; app config and auth stay outside the repo. |
 | impeccable | review-required | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | Required UI anti-pattern gate in skill routing and tool policy. Used as a deterministic check before visual acceptance. | External skill reference; not vendored. |
 | taste-skill | review-required | [LeonxlnX/taste-skill](https://github.com/LeonxlnX/taste-skill) | Recommended UI direction skill for setting visual language before implementation. | External skill reference; not vendored. |
 | awesome-design-md | MIT | [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md) | DESIGN.md catalog for brand, visual language, typography, and design-system direction. `scale setup --pack ui --apply` syncs upstream under `~/.scale/vendor/awesome-design-md` and creates `~/.agents/skills/awesome-design-md/SKILL.md`. | Installed only with explicit setup/apply. |
@@ -86,6 +87,18 @@ scale setup --pack memory --memory-provider gbrain --memory-mode external-first 
 scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes
 scale setup --verify --pack memory --json
 ```
+
+Feishu/Lark is included through the default `external-cli`, `knowledge`, and `full` packs:
+
+```bash
+scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+lark-cli config init --new --lang zh
+lark-cli auth login --recommend --no-wait
+lark-cli doctor
+scale setup --verify --pack full --json
+```
+
+The CLI and skills are governed capabilities, but Feishu is not the long-term memory backend. Keep GBrain as the default memory provider; import reviewed Feishu conversation summaries or Wiki/Doc evidence into memory/knowledge only after privacy and retention review.
 
 Repository maintainers should run the setup smoke before release or after changing installer behavior:
 
