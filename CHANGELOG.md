@@ -2,6 +2,22 @@
 
 ---
 
+## 0.54.1 - 2026-06-26
+
+### Loop Automation
+- Add a first-class loop registry and `scale loop` CLI for listing event-driven workflow loops, running dry-run loop evidence, and inspecting summary cards.
+- Cover permission, context-summary, long-task, and daily-brief loop templates with evidence output suitable for Hook-driven workflows.
+
+### Feishu Integration
+- Wire loop notification actions to the Feishu message-channel provider by generating guarded `lark-cli im +messages-send --dry-run` command plans.
+- Add `--feishu-chat-id`, `--feishu-user-id`, and `--message` options for dry-run notification planning without sending live messages.
+- Document Feishu CLI setup, memory-oriented third-party defaults, and the safe confirmation boundary for live message delivery.
+
+### Verification
+- Add CLI regression coverage for loop listing, loop dry-runs, Feishu command-plan generation, target warnings, and summary-card inspection.
+
+---
+
 ## 0.53.0 - 2026-06-25
 
 ### Skill Ecosystem

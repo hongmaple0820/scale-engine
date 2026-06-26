@@ -112,6 +112,11 @@ Evidence-driven continuous evolution with instinct extraction.
 |---------|-------------|
 | `scale workflow list` | List workflow presets |
 | `scale workflow effectiveness [--memory-query <query>] [--skip-memory-recall]` | Measure workflow effectiveness, including read-only memory provider recall quality |
+| `scale loop init` | Write the default hook-first loop configuration to `.scale/loops.yaml` |
+| `scale loop list` | List hook-first Loop Engineering presets from `.scale/loops.yaml` or built-in defaults |
+| `scale loop status` | Inspect loop readiness, required providers, and safety defaults |
+| `scale loop run <loop-id> --event <event> --json` | Dry-run a loop event and write `.scale/evidence/loop-runs/` evidence |
+| `scale loop run attention.permission-needed --event permission-needed --feishu-chat-id <oc_xxx> --json` | Build a Feishu/Lark `lark-cli im +messages-send --dry-run` notification plan without sending it |
 | `scale evidence list` | List evidence records |
 | `scale evidence show` | Show evidence details |
 | `scale token record` | Record token usage |

@@ -90,6 +90,7 @@ import { codegraphCommand } from '../cli/codegraphCommands.js'
 import { evalCommand } from '../cli/evalCommands.js'
 import { evolveCommand, doctorCommand } from '../cli/evolveDoctorCommands.js'
 import { workflowCommand, evidenceCommand } from '../cli/workflowEvidenceCommands.js'
+import { loopCommand } from '../cli/loopCommands.js'
 import { initCommand, bootstrapCommand, setupCommand, configCommand } from '../cli/initConfigCommands.js'
 import { upgradeCommand, assetsCommand, standardsCommand, artifactCommand } from '../cli/upgradeAssetsCommands.js'
 import { runtimeCommand, memoryCommand, outOfScopeCommand, skillCommand, token as tokenCommand } from '../cli/runtimeSkillCommands.js'
@@ -1775,6 +1776,7 @@ const main = defineCommand({
     workspace,
     status,
     workflow: workflowCommand,
+    loop: loopCommand,
     evidence: evidenceCommand,
     runtime: runtimeCommand,
     token: tokenCommand,

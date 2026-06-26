@@ -63,6 +63,62 @@ Initial command grammar:
 
 Read-only commands do not require approval. Write commands such as `plan`, `run`, `stop`, and `ship` must be confirmed through an interactive Feishu card or an equivalent explicit approval path before live execution.
 
+## Loop Integration
+
+SCALE treats Feishu/Lark as the default work-channel provider for the Attention Loop. The built-in loop is visible without project configuration:
+
+```bash
+scale loop list --json
+scale loop status --json
+scale loop run attention.permission-needed --event permission-needed --json
+scale loop run attention.permission-needed --event permission-needed --feishu-chat-id <oc_xxx> --json
+```
+
+`scale loop run` is dry-run only in the MVP. It writes `.scale/evidence/loop-runs/*.json` with the planned Feishu/Desktop actions, but does not call `lark-cli` or send a live message. When `--feishu-chat-id <oc_xxx>` or `--feishu-user-id <ou_xxx>` is provided, the evidence includes a provider command plan built through `FeishuChannelProvider`, for example:
+
+```json
+{
+  "command": "lark-cli",
+  "args": [
+    "im",
+    "+messages-send",
+    "--as",
+    "bot",
+    "--chat-id",
+    "oc_xxx",
+    "--text",
+    "SCALE Loop attention.permission-needed triggered by permission-needed...",
+    "--dry-run"
+  ],
+  "requiresConfirmation": false
+}
+```
+
+Enable real Feishu delivery only after the target chat/user is confirmed and the approval path is in place. Do not remove `--dry-run` from generated message-channel plans in automated loop execution.
+
+Project teams can override or add loops with `.scale/loops.yaml`. Keep write-capable loops disabled until their approval, rollback, and evidence rules are reviewed:
+
+```yaml
+version: 1
+loops:
+  - id: file.inbox-organizer
+    name: File inbox organizer proposal
+    description: Propose rename and move operations for newly created files.
+    enabled: false
+    events:
+      - file-created
+    policy:
+      riskLevel: write-capable
+      dryRunDefault: true
+      requiresApproval: true
+      allowWrite: false
+      evidenceRequired: true
+    actions:
+      - type: propose-file-organization
+        provider: skill
+        description: Draft file rename and destination suggestions.
+```
+
 ## UX Rules
 
 - Default outbound messages should use `--dry-run` until the user explicitly confirms the target chat/user.

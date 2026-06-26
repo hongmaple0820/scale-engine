@@ -113,6 +113,7 @@ export { wireEffects } from './orchestration/EffectsWiring.js'
 // Tool Orchestration Governance
 export * from './tools/index.js'
 export * from './communication/index.js'
+export * from './loops/LoopRegistry.js'
 export * from './workflow/WorkflowGuidance.js'
 export * from './workflow/WorkflowOpenTasks.js'
 export * from './agents/AcpCollaboration.js'
