@@ -409,6 +409,11 @@
 
     eventSource = new EventSource('/api/stream')
 
+    eventSource.addEventListener('open', () => {
+      sseDot?.classList.add('connected')
+      if (sseLabel) sseLabel.textContent = t('sse.live')
+    })
+
     eventSource.addEventListener('init', (e) => {
       sseDot?.classList.add('connected')
       if (sseLabel) sseLabel.textContent = t('sse.live')
@@ -431,7 +436,6 @@
     eventSource.onerror = () => {
       sseDot?.classList.remove('connected')
       if (sseLabel) sseLabel.textContent = t('sse.reconnecting')
-      setTimeout(connectSSE, 5000)
     }
   }
 

@@ -13,6 +13,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { logger } from '../core/logger.js'
+import { renderAgentFullWorkflowGuidance } from './AgentKnowledgeDoc.js'
 import type { IAgentAdapter, AdapterConfig, InitResult, SettingsJson } from './ClaudeCodeAdapter.js'
 
 // ============================================================================
@@ -170,6 +171,8 @@ define → plan → build → verify → review → ship
 | ReviewStore | 持久化 review 记录 (.scale/reviews/) |
 | ReviewAnalyzer | 扫描 diff 中的高风险代码 |
 | Detectors | OWASP Top 10 + 行为检测 (19 类) |
+
+${renderAgentFullWorkflowGuidance()}
 
 ### Rules
 

@@ -43,7 +43,8 @@
     "scripts/workflow/learning-health.mjs",
     "scripts/workflow/run-vitest.mjs",
     "scripts/workflow/setup-smoke.mjs",
-    "scripts/workflow/provider-rehearsal.mjs"
+    "scripts/workflow/provider-rehearsal.mjs",
+    "scripts/dashboard-service.ps1"
   ],
   "publishConfig": {
     "access": "public"
@@ -66,7 +67,8 @@
     "release:sync-gitee": "node scripts/release/sync-gitee-releases.mjs",
     "release:check": "npm run learning:health && npm run docs:health && npm run typecheck && npm run lint && npm test && npm run smoke:setup && npm run smoke:providers -- --write-report --large-project examples/demo-projects/agent-governance-demo && npm run build && npm run smoke:package && npm audit --omit=dev && git diff --check && npm pack --dry-run",
     "mcp": "node dist/api/mcp.js",
-    "serve": "node dist/api/http.js"
+    "serve": "node dist/api/http.js",
+    "dashboard:daemon": "node dist/api/cli.js dashboard daemon"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.4",

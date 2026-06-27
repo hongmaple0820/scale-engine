@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { IAgentAdapter, AdapterConfig, InitResult, SettingsJson } from './ClaudeCodeAdapter.js'
+import { renderAgentFullWorkflowGuidance } from './AgentKnowledgeDoc.js'
 
 // ============================================================================
 // Codex CLI Adapter
@@ -96,6 +97,7 @@ This project uses SCALE Engine for AI engineering governance.
 3. Dangerous commands are physically blocked
 4. Tests must pass before completion
 
+${renderAgentFullWorkflowGuidance()}
 ### Commands
 - \`scale create <type> <title>\` — Create artifact
 - \`scale transition <id> <action>\` — State transition

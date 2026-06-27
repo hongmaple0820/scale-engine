@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "sessions": [
+    {
+      "version": 1,
+      "sessionId": "default",
+      "name": "scale-engine Codex local control",
+      "platformId": "codex",
+      "modelId": "balanced",
+      "channelProvider": "dashboard",
+      "channelRouteId": "dashboard-local",
+      "commandPrefix": "/scale",
+      "mode": "dry-run",
+      "autoImportKnowledge": true,
+      "updatedAt": 1782548376655
+    },
+    {
+      "version": 1,
+      "sessionId": "feishu-scale-engine-aider",
+      "name": "scale-engine default agent",
+      "platformId": "aider",
+      "modelId": "balanced",
+      "channelProvider": "dashboard",
+      "channelRouteId": "feishu-scale-engine-aider",
+      "commandPrefix": "/scale",
+      "mode": "dry-run",
+      "autoImportKnowledge": true,
+      "updatedAt": 1782548376655
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "generatedBy": "scale-agent-os-bootstrap",
+  "platform": "codex",
+  "dashboard": {
+    "url": "http://127.0.0.1:3210",
+    "sessionId": "default"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": "scale dashboard daemon ensure --dir . --port 3210 --json",
+        "nonBlocking": true
+      }
+    ]
+  },
+  "updatedAt": 1782548376637
+}

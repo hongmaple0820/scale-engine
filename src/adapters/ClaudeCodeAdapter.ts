@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { logger } from '../core/logger.js'
 import type { AgentPlatform } from '../artifact/types.js'
+import { renderAgentFullWorkflowGuidance } from './AgentKnowledgeDoc.js'
 
 // ============================================================================
 // Types
@@ -166,6 +167,7 @@ This project uses SCALE Engine for AI engineering governance.
 4. **Verify** → Must run tests before claiming done (Stop gate enforced)
 5. **Learn** → Defects auto-extract to lessons → rules → hooks
 
+${renderAgentFullWorkflowGuidance()}
 ### Rules
 - 🔴 Dangerous commands (rm -rf, DROP TABLE) are physically blocked
 - 🔴 Hardcoded secrets are blocked on Edit/Write
@@ -249,4 +251,3 @@ hooks/*.sh
 // ============================================================================
 // Adapter Factory — moved to ./index.ts
 // ============================================================================
-

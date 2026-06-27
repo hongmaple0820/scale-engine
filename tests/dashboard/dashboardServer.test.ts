@@ -28,6 +28,15 @@ describe('DashboardServer API', () => {
     expect(vue.status).toBe(200)
     expect(await vue.text()).toContain('SCALE Engine Dashboard')
 
+    const health = await app.request('/api/health')
+    expect(health.status).toBe(200)
+    await expect(health.json()).resolves.toEqual(expect.objectContaining({
+      status: 'ok',
+      projectDir,
+      scaleDir,
+      pid: expect.any(Number),
+    }))
+
     const legacySpa = await app.request('/spa/')
     expect(legacySpa.status).toBe(302)
     expect(legacySpa.headers.get('location')).toBe('/')
@@ -281,8 +290,12 @@ describe('DashboardServer API', () => {
     if (root.status === 200) {
       const rootHtml = await root.text()
       expect(rootHtml).toContain('window.__SCALE_DASHBOARD_BOOTSTRAP__=')
-      expect(rootHtml).toContain('/api/prompts')
-      expect(rootHtml).toContain('product-ceo-discovery')
+      expect(rootHtml).toContain('/api/projects')
+      expect(rootHtml).toContain('/api/integrations')
+      expect(rootHtml).toContain('/api/agent-control')
+      expect(rootHtml).toContain('/api/dashboard/service')
+      expect(rootHtml).not.toContain('/api/prompts')
+      expect(rootHtml).not.toContain('product-ceo-discovery')
     } else {
       expect(root.status).toBe(503)
     }
@@ -384,15 +397,16 @@ describe('DashboardServer API', () => {
     })
 
     const server = new DashboardServer({ projectDir, scaleDir, projectName: 'Capability Project' })
+    const app = server.getApp()
     const report = await json<{
       summary: { total: number; ready: number; partial: number; missing: number }
       realtime: { mode: string; heartbeatOnly: boolean }
       writeOps: { artifactTransitions: boolean; promptOptimization: boolean; documentEditing: boolean; knowledgeImport: boolean }
       dataSources: Array<{ id: string; status: string; count: number; emptyReason?: string }>
-    }>(await server.getApp().request('/api/dashboard/capabilities'))
+    }>(await app.request('/api/dashboard/capabilities'))
 
     const source = (id: string) => report.dataSources.find(item => item.id === id)
-    expect(report.summary.total).toBeGreaterThanOrEqual(9)
+    expect(report.summary.total).toBeGreaterThanOrEqual(10)
     expect(report.summary.ready).toBeGreaterThanOrEqual(4)
     expect(report.summary.partial).toBeGreaterThanOrEqual(2)
     expect(report.realtime).toEqual(expect.objectContaining({
@@ -409,6 +423,17 @@ describe('DashboardServer API', () => {
     expect(source('model-usage')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
     expect(source('documents')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
     expect(source('agent-collaboration')).toEqual(expect.objectContaining({ status: 'ready', count: 1 }))
+    expect(source('dashboard-service')).toEqual(expect.objectContaining({
+      status: expect.stringMatching(/missing|partial|ready/),
+      source: join(scaleDir, 'artifacts', 'dashboard-service'),
+    }))
+    expect(source('feishu-channel')).toEqual(expect.objectContaining({
+      status: expect.stringMatching(/missing|partial|ready/),
+    }))
+    expect(source('agent-control-plane')).toEqual(expect.objectContaining({
+      status: expect.stringMatching(/partial|ready/),
+      count: expect.any(Number),
+    }))
     expect(source('knowledge-base')).toEqual(expect.objectContaining({
       status: 'missing',
       emptyReason: expect.stringContaining('knowledge docs'),
@@ -420,6 +445,1112 @@ describe('DashboardServer API', () => {
     expect(source('artifact-fsm')).toEqual(expect.objectContaining({
       status: 'partial',
       emptyReason: expect.stringContaining('FSM'),
+    }))
+
+    const integrations = await json<{
+      summary: { providers: number }
+      providers: Array<{
+        id: string
+        category: string
+        command: string
+        configBoundary: string
+        dryRunSendPlan: { command: string; args: string[]; requiresConfirmation: boolean }
+        eventConsumePlan: { command: string; args: string[]; risk: string }
+        routeConfig: {
+          configured: boolean
+          configPath: string
+          targetType: string
+          targetId: string
+          agentPlatformId: string
+          agentSessionId: string
+          dryRunSendPlan?: { command: string; args: string[]; requiresConfirmation: boolean }
+          eventConsumePlan: { command: string; args: string[]; risk: string }
+        }
+        routeConfigs?: Array<{ agentPlatformId: string; routeId: string; configured: boolean }>
+        knowledgeConfig?: { configured: boolean; configPath: string; consoleUrl: string }
+        scope: { level: string; projectDir: string; projectScoped: boolean }
+        platformTargets: Array<{ id: string; status: string; settingsPath?: string }>
+        actions: Array<{ id: string; kind: string; plan: { command: string; args: string[] } }>
+        setupCommands: string[]
+        verifyCommands: string[]
+      }>
+      connectorWorkflow: {
+        summary: { channels: number; readyChannels: number; providerPresets: number; skillPresets: number; automationLoops: number }
+        config: { configured: boolean; configPath: string; bridge: { enabled: boolean; hasToken: boolean; allowPlatforms: string[] }; managementApi: { enabled: boolean; hasToken: boolean }; automation: { heartbeatIntervalMins: number }; endpoints: { bridgeWebSocket: string; managementApi: string } }
+        channels: Array<{ id: string; status: string; configScope: string; capabilities: string[] }>
+        bridge: { protocolVersion: number; inboundTypes: string[]; outboundTypes: string[]; restEndpoints: string[] }
+        managementApi: { endpoints: string[] }
+        providerPresets: Array<{ id: string; agents: string[]; authFields: string[] }>
+        skillPresets: Array<{ id: string; defaultInstall: boolean; required: boolean }>
+        automationLoops: Array<{ id: string; enabled: boolean }>
+        daemon: { commands: string[]; hooks: string[] }
+      }
+      agentOs: {
+        score: number
+        status: string
+        primaryAction: string
+        summary: { ready: number; partial: number; missing: number; error: number; remoteControlReady: boolean; mobileControlReady: boolean; knowledgeReady: boolean; daemonReady: boolean }
+        stages: Array<{ id: string; status: string; score: number; tab: string; primaryAction: string; evidence: string[]; blockers: string[]; commands: string[] }>
+      }
+      acceptance: {
+        status: string
+        score: number
+        path: string
+        steps: Array<{ id: string; status: string; error?: string }>
+        nextActions: string[]
+      }
+    }>(await app.request('/api/integrations'))
+    expect(integrations.summary.providers).toBe(2)
+    expect(integrations.agentOs.score).toBeGreaterThanOrEqual(0)
+    expect(integrations.agentOs.score).toBeLessThanOrEqual(100)
+    expect(integrations.agentOs.primaryAction).toEqual(expect.any(String))
+    expect(
+      integrations.agentOs.summary.ready
+      + integrations.agentOs.summary.partial
+      + integrations.agentOs.summary.missing
+      + integrations.agentOs.summary.error,
+    ).toBe(integrations.agentOs.stages.length)
+    expect(integrations.agentOs.stages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'remote-control', tab: 'agent-connect', commands: expect.arrayContaining([expect.stringContaining('scale agent-control inbox')]) }),
+      expect.objectContaining({ id: 'mobile-message-channel', tab: 'messages', commands: expect.arrayContaining(['lark-cli doctor']) }),
+      expect.objectContaining({ id: 'agent-control-session', tab: 'overview' }),
+      expect.objectContaining({ id: 'knowledge-memory', tab: 'knowledge' }),
+      expect.objectContaining({ id: 'loop-automation', tab: 'automation' }),
+      expect.objectContaining({ id: 'diagnostic-acceptance', tab: 'diagnostics' }),
+    ]))
+    expect(integrations.connectorWorkflow.summary.channels).toBeGreaterThanOrEqual(13)
+    expect(integrations.connectorWorkflow.config).toEqual(expect.objectContaining({
+      configured: false,
+      configPath: join(scaleDir, 'integrations', 'agent-connect.json'),
+    }))
+    expect(integrations.connectorWorkflow.channels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'dashboard-local', status: 'ready', configScope: 'session' }),
+      expect.objectContaining({ id: 'feishu', configScope: 'agent-platform' }),
+      expect.objectContaining({ id: 'bridge-custom', capabilities: expect.arrayContaining(['stream-preview']) }),
+      expect.objectContaining({ id: 'wecom' }),
+      expect.objectContaining({ id: 'dingtalk' }),
+      expect.objectContaining({ id: 'slack' }),
+      expect.objectContaining({ id: 'telegram' }),
+      expect.objectContaining({ id: 'discord' }),
+      expect.objectContaining({ id: 'matrix' }),
+      expect.objectContaining({ id: 'qq' }),
+      expect.objectContaining({ id: 'qqbot' }),
+      expect.objectContaining({ id: 'weixin-ilink' }),
+      expect.objectContaining({ id: 'wps-xiezuo' }),
+      expect.objectContaining({ id: 'max-webhook' }),
+    ]))
+    expect(integrations.connectorWorkflow.bridge).toEqual(expect.objectContaining({
+      protocolVersion: 1,
+      inboundTypes: expect.arrayContaining(['register', 'message', 'preview_ack']),
+      outboundTypes: expect.arrayContaining(['reply', 'reply_stream', 'update_message']),
+      restEndpoints: expect.arrayContaining([
+        'GET /bridge/sessions',
+        'POST /bridge/events',
+        'GET /bridge/sessions/{id}/events',
+        'POST /agent-connect/webhook',
+        'POST /bridge/sessions/switch',
+      ]),
+    }))
+    expect(integrations.connectorWorkflow.managementApi.endpoints).toEqual(expect.arrayContaining([
+      'GET /api/v1/status',
+      'POST /api/v1/reload',
+      'GET /api/v1/projects/{name}/sessions',
+      'POST /api/v1/projects/{name}/send',
+    ]))
+    expect(integrations.connectorWorkflow.providerPresets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'minimax', agents: expect.arrayContaining(['codex']), authFields: expect.arrayContaining(['apiKey']) }),
+      expect.objectContaining({ id: 'aihubmix' }),
+    ]))
+    expect(integrations.connectorWorkflow.skillPresets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'gbrain-memory', required: true, defaultInstall: true }),
+      expect.objectContaining({ id: 'hookify-rules', required: true, defaultInstall: true }),
+      expect.objectContaining({ id: 'find-skills', defaultInstall: true }),
+    ]))
+    expect(integrations.connectorWorkflow.automationLoops).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'permission-request' }),
+      expect.objectContaining({ id: 'heartbeat' }),
+      expect.objectContaining({ id: 'daemon-watchdog' }),
+    ]))
+    expect(integrations.connectorWorkflow.daemon.commands).toEqual(expect.arrayContaining([
+      'scale dashboard daemon ensure --dir .',
+    ]))
+    const feishuProvider = integrations.providers.find(provider => provider.id === 'feishu')
+    const imaProvider = integrations.providers.find(provider => provider.id === 'tencent-ima')
+    expect(feishuProvider).toEqual(expect.objectContaining({
+      id: 'feishu',
+      category: 'message-channel',
+      command: 'lark-cli',
+      configBoundary: expect.stringContaining('keychain'),
+      setupCommands: expect.arrayContaining([
+        'lark-cli config init --new --lang zh',
+      ]),
+      verifyCommands: expect.arrayContaining([
+        'lark-cli doctor',
+      ]),
+      scope: expect.objectContaining({
+        level: 'machine',
+        projectScoped: false,
+      }),
+    }))
+    expect(feishuProvider?.routeConfigs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ agentPlatformId: 'hermes' }),
+      expect.objectContaining({ agentPlatformId: 'openclaw' }),
+    ]))
+    expect(feishuProvider?.platformTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'hermes' }),
+      expect.objectContaining({ id: 'openclaw' }),
+    ]))
+    expect(feishuProvider?.actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'doctor', kind: 'probe' }),
+      expect.objectContaining({ id: 'dry-run-send', kind: 'dry-run' }),
+      expect.objectContaining({ id: 'consume-once', kind: 'read' }),
+    ]))
+    expect(feishuProvider?.dryRunSendPlan).toEqual(expect.objectContaining({
+      command: 'lark-cli',
+      requiresConfirmation: false,
+    }))
+    expect(feishuProvider?.dryRunSendPlan.args).toContain('--dry-run')
+    expect(feishuProvider?.eventConsumePlan.args).toEqual(expect.arrayContaining(['event', 'consume', 'im.message.receive_v1']))
+    expect(feishuProvider?.routeConfig).toEqual(expect.objectContaining({
+      configured: false,
+      targetType: 'chat',
+      targetId: '',
+      agentPlatformId: 'codex',
+      agentSessionId: 'default',
+      configPath: join(scaleDir, 'integrations', 'feishu-channel.json'),
+    }))
+    expect(feishuProvider?.routeConfig.eventConsumePlan.args).toEqual(expect.arrayContaining(['event', 'consume', 'im.message.receive_v1']))
+    expect(imaProvider).toEqual(expect.objectContaining({
+      id: 'tencent-ima',
+      category: 'knowledge-provider',
+      command: 'browser',
+      knowledgeConfig: expect.objectContaining({
+        configured: false,
+        configPath: join(scaleDir, 'integrations', 'tencent-ima-knowledge.json'),
+        consoleUrl: 'https://ima.qq.com/agent-interface',
+      }),
+    }))
+
+    const bootstrappedAgentOs = await json<{
+      ok: boolean
+      saved: boolean
+      config: {
+        configured: boolean
+        configPath: string
+        managementApi: { enabled: boolean; hasToken: boolean; tokenMasked?: string }
+        bridge: { enabled: boolean; hasToken: boolean; allowPlatforms: string[]; tokenMasked?: string }
+        webhook: { enabled: boolean; hasToken: boolean; tokenMasked?: string }
+        automation: { cronEnabled: boolean; heartbeatEnabled: boolean; maxTurnTimeMins: number; resetOnIdleMins: number }
+      }
+      agentOs: {
+        score: number
+        stages: Array<{ id: string; status: string; blockers: string[] }>
+      }
+      secrets: { path: string; rawStored: boolean; tokens: { managementApi: string; bridge: string; webhook: string } }
+      actions: string[]
+    }>(await app.request('/api/integrations/agent-os/bootstrap-local', { method: 'POST' }))
+    expect(bootstrappedAgentOs).toEqual(expect.objectContaining({
+      ok: true,
+      saved: true,
+      config: expect.objectContaining({
+        configured: true,
+        configPath: join(scaleDir, 'integrations', 'agent-connect.json'),
+        managementApi: expect.objectContaining({ enabled: true, hasToken: true }),
+        bridge: expect.objectContaining({ enabled: true, hasToken: true, allowPlatforms: expect.arrayContaining(['feishu', 'bridge-custom', 'matrix']) }),
+        webhook: expect.objectContaining({ enabled: true, hasToken: true }),
+        automation: expect.objectContaining({ cronEnabled: true, heartbeatEnabled: true, maxTurnTimeMins: 90, resetOnIdleMins: 20 }),
+      }),
+      secrets: expect.objectContaining({
+        path: join(scaleDir, 'secrets', 'agent-connect.local.json'),
+        rawStored: true,
+        tokens: expect.objectContaining({
+          managementApi: expect.stringMatching(/^mgmt\.\.\.\w{4}$/),
+          bridge: expect.stringMatching(/^brid\.\.\.\w{4}$/),
+          webhook: expect.stringMatching(/^webh\.\.\.\w{4}$/),
+        }),
+      }),
+      actions: expect.arrayContaining([
+        expect.stringContaining('Agent Connect config saved'),
+      ]),
+    }))
+    expect(bootstrappedAgentOs.agentOs.score).toBeGreaterThan(integrations.agentOs.score)
+    expect(bootstrappedAgentOs.agentOs.stages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'remote-control', status: 'ready', blockers: [] }),
+      expect.objectContaining({ id: 'agent-control-session', status: 'ready', blockers: [] }),
+      expect.objectContaining({ id: 'loop-automation', status: 'partial' }),
+    ]))
+    const acceptance = await json<{
+      ok: boolean
+      status: string
+      score: number
+      path: string
+      steps: Array<{ id: string; status: string; error?: string }>
+      nextActions: string[]
+    }>(await app.request('/api/integrations/agent-os/acceptance', { method: 'POST' }))
+    expect(acceptance.status).toMatch(/^(passed|failed|blocked)$/)
+    expect(acceptance.score).toBeGreaterThanOrEqual(0)
+    expect(acceptance.score).toBeLessThanOrEqual(100)
+    expect(acceptance.path).toBe(join(scaleDir, 'integrations', 'agent-os-acceptance.json'))
+    expect(acceptance.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'integrations-api' }),
+      expect.objectContaining({ id: 'agent-control-ready' }),
+      expect.objectContaining({ id: 'dashboard-daemon' }),
+      expect.objectContaining({ id: 'lark-cli-doctor' }),
+      expect.objectContaining({ id: 'feishu-route-target' }),
+      expect.objectContaining({ id: 'tencent-ima-provider' }),
+    ]))
+    expect(JSON.parse(readFileSync(join(scaleDir, 'integrations', 'agent-os-acceptance.json'), 'utf-8'))).toEqual(expect.objectContaining({
+      status: acceptance.status,
+      steps: expect.any(Array),
+    }))
+    const feishuAuth = await json<{
+      provider: string
+      ok: boolean
+      status: string
+      command: string
+      args: string[]
+      verificationUrl?: string
+      setupCommand?: string
+      error?: string
+    }>(await app.request('/api/integrations/feishu/auth/start', { method: 'POST' }))
+    expect(feishuAuth).toEqual(expect.objectContaining({
+      provider: 'feishu',
+      command: 'lark-cli',
+      args: expect.arrayContaining(['auth', 'login', '--no-wait', '--json']),
+    }))
+    expect(['started', 'blocked', 'failed']).toContain(feishuAuth.status)
+    if (feishuAuth.status === 'started') {
+      expect(feishuAuth.verificationUrl).toEqual(expect.any(String))
+    } else {
+      expect(feishuAuth.setupCommand || feishuAuth.error).toEqual(expect.any(String))
+    }
+    const bootstrapConfigFile = readFileSync(join(scaleDir, 'integrations', 'agent-connect.json'), 'utf-8')
+    expect(bootstrapConfigFile).not.toContain('mgmt_')
+    expect(bootstrapConfigFile).not.toContain('bridge_')
+    expect(bootstrapConfigFile).not.toContain('webhook_')
+    const bootstrapSecretFile = JSON.parse(readFileSync(join(scaleDir, 'secrets', 'agent-connect.local.json'), 'utf-8')) as { tokens: Record<string, string> }
+    expect(bootstrapSecretFile.tokens.managementApi).toMatch(/^mgmt_[a-f0-9]{48}$/)
+    expect(bootstrapSecretFile.tokens.bridge).toMatch(/^bridge_[a-f0-9]{48}$/)
+    expect(bootstrapSecretFile.tokens.webhook).toMatch(/^webhook_[a-f0-9]{48}$/)
+
+    const savedAgentConnect = await json<{
+      ok: boolean
+      saved: boolean
+      config: {
+        configured: boolean
+        configPath: string
+        managementApi: { enabled: boolean; hasToken: boolean; tokenMasked?: string }
+        bridge: { enabled: boolean; hasToken: boolean; allowPlatforms: string[]; tokenMasked?: string }
+        webhook: { enabled: boolean; hasToken: boolean; tokenMasked?: string }
+        automation: { cronEnabled: boolean; heartbeatEnabled: boolean; heartbeatIntervalMins: number; maxTurnTimeMins: number; resetOnIdleMins: number }
+        endpoints: { managementApi: string; bridgeWebSocket: string; webhook: string }
+      }
+    }>(await app.request('/api/integrations/agent-connect', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        managementApi: {
+          enabled: true,
+          host: '127.0.0.1',
+          port: 9820,
+          token: 'management-token-123456',
+          corsOrigins: ['http://127.0.0.1:3210'],
+        },
+        bridge: {
+          enabled: true,
+          host: '127.0.0.1',
+          port: 9810,
+          path: '/bridge/ws',
+          token: 'bridge-token-123456',
+          allowPlatforms: ['feishu', 'bridge-custom', 'matrix'],
+        },
+        webhook: {
+          enabled: true,
+          path: '/agent-connect/webhook',
+          token: 'webhook-token-123456',
+        },
+        automation: {
+          cronEnabled: true,
+          heartbeatEnabled: true,
+          heartbeatIntervalMins: 15,
+          maxTurnTimeMins: 90,
+          resetOnIdleMins: 20,
+          longTaskNotifications: true,
+        },
+      }),
+    }))
+    expect(savedAgentConnect).toEqual(expect.objectContaining({
+      ok: true,
+      saved: true,
+      config: expect.objectContaining({
+        configured: true,
+        configPath: join(scaleDir, 'integrations', 'agent-connect.json'),
+        managementApi: expect.objectContaining({ enabled: true, hasToken: true, tokenMasked: 'mana...3456' }),
+        bridge: expect.objectContaining({ enabled: true, hasToken: true, allowPlatforms: ['feishu', 'bridge-custom', 'matrix'], tokenMasked: 'brid...3456' }),
+        webhook: expect.objectContaining({ enabled: true, hasToken: true, tokenMasked: 'webh...3456' }),
+        automation: expect.objectContaining({ cronEnabled: true, heartbeatEnabled: true, heartbeatIntervalMins: 15, maxTurnTimeMins: 90, resetOnIdleMins: 20 }),
+        endpoints: expect.objectContaining({ bridgeWebSocket: 'ws://127.0.0.1:9810/bridge/ws' }),
+      }),
+    }))
+    const savedAgentConnectFile = JSON.parse(readFileSync(join(scaleDir, 'integrations', 'agent-connect.json'), 'utf-8')) as Record<string, unknown>
+    expect(JSON.stringify(savedAgentConnectFile)).not.toContain('bridge-token-123456')
+    expect(savedAgentConnectFile).toEqual(expect.objectContaining({
+      enabled: true,
+      bridge: expect.objectContaining({
+        enabled: true,
+        hasToken: true,
+        tokenMasked: 'brid...3456',
+        allowPlatforms: ['feishu', 'bridge-custom', 'matrix'],
+      }),
+    }))
+
+    const refreshedAgentConnect = await json<{
+      configured: boolean
+      bridge: { hasToken: boolean; allowPlatforms: string[] }
+      automation: { heartbeatIntervalMins: number }
+    }>(await app.request('/api/integrations/agent-connect'))
+    expect(refreshedAgentConnect).toEqual(expect.objectContaining({
+      configured: true,
+      bridge: expect.objectContaining({ hasToken: true, allowPlatforms: ['feishu', 'bridge-custom', 'matrix'] }),
+      automation: expect.objectContaining({ heartbeatIntervalMins: 15 }),
+    }))
+
+    const refreshedIntegrationsAfterAgentConnect = await json<{
+      connectorWorkflow: { config: { configured: boolean }; channels: Array<{ id: string; status: string }>; automationLoops: Array<{ id: string; enabled: boolean }> }
+    }>(await app.request('/api/integrations'))
+    expect(refreshedIntegrationsAfterAgentConnect.connectorWorkflow.config.configured).toBe(true)
+    expect(refreshedIntegrationsAfterAgentConnect.connectorWorkflow.channels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'bridge-custom', status: 'ready' }),
+    ]))
+    expect(refreshedIntegrationsAfterAgentConnect.connectorWorkflow.automationLoops).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'cron', enabled: true }),
+      expect.objectContaining({ id: 'heartbeat', enabled: true }),
+    ]))
+
+    const savedRoute = await json<{
+      ok: boolean
+      saved: boolean
+      route: {
+        configured: boolean
+        targetType: string
+        targetId: string
+        agentPlatformId: string
+        agentSessionId: string
+        projectDir: string
+        dryRunSendPlan?: { command: string; args: string[]; requiresConfirmation: boolean }
+      }
+    }>(await app.request('/api/integrations/feishu/route', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        routeName: 'Release channel',
+        targetType: 'chat',
+        targetId: 'oc_release_channel',
+        agentPlatformId: 'openclaw',
+        agentSessionId: 'release-session',
+        allowWriteCommands: true,
+      }),
+    }))
+    expect(savedRoute).toEqual(expect.objectContaining({
+      ok: true,
+      saved: true,
+      route: expect.objectContaining({
+        configured: true,
+        targetType: 'chat',
+        targetId: 'oc_release_channel',
+        agentPlatformId: 'openclaw',
+        agentSessionId: 'release-session',
+        projectDir,
+      }),
+    }))
+    expect(savedRoute.route.dryRunSendPlan).toEqual(expect.objectContaining({
+      command: 'lark-cli',
+      requiresConfirmation: false,
+    }))
+    expect(savedRoute.route.dryRunSendPlan?.args).toEqual(expect.arrayContaining(['--chat-id', 'oc_release_channel', '--dry-run']))
+    const savedRouteFile = JSON.parse(readFileSync(join(scaleDir, 'integrations', 'feishu-channel.json'), 'utf-8')) as Record<string, unknown>
+    expect(savedRouteFile).toEqual(expect.objectContaining({
+      projectDir,
+      provider: 'feishu',
+      routes: expect.arrayContaining([
+        expect.objectContaining({
+          routeName: 'Release channel',
+          targetId: 'oc_release_channel',
+          allowWriteCommands: true,
+          agentPlatformId: 'openclaw',
+        }),
+      ]),
+    }))
+
+    const refreshedRoute = await json<{
+      configured: boolean
+      targetId: string
+      dryRunSendPlan?: { args: string[] }
+    }>(await app.request('/api/integrations/feishu/route'))
+    expect(refreshedRoute).toEqual(expect.objectContaining({
+      configured: true,
+      targetId: 'oc_release_channel',
+    }))
+    expect(refreshedRoute.dryRunSendPlan?.args).toEqual(expect.arrayContaining(['--chat-id', 'oc_release_channel']))
+
+    const initialAgentControl = await json<{
+      summary: { sessions: number; queuedMessages: number }
+      modelOptions: Array<{ id: string; modelId: string }>
+      platformTargets: Array<{ id: string; status: string }>
+      sessions: Array<{ sessionId: string; status: string; channel: { provider: string } }>
+    }>(await app.request('/api/agent-control'))
+    expect(initialAgentControl.summary.sessions).toBeGreaterThanOrEqual(1)
+    expect(initialAgentControl.modelOptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'balanced' }),
+      expect.objectContaining({ id: 'deepseek-v3', modelId: 'deepseek-v3' }),
+    ]))
+    expect(initialAgentControl.platformTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'hermes' }),
+      expect.objectContaining({ id: 'openclaw' }),
+    ]))
+
+    const savedAgentSession = await json<{
+      ok: boolean
+      session: {
+        sessionId: string
+        platformId: string
+        modelId: string
+        channelProvider: string
+        channel: { provider: string; targetLabel: string; routeId: string }
+      }
+    }>(await app.request('/api/agent-control/sessions/release-session', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Release agent',
+        platformId: 'openclaw',
+        modelId: 'deepseek-v3',
+        channelProvider: 'feishu',
+        mode: 'interactive',
+        commandPrefix: '/scale',
+      }),
+    }))
+    expect(savedAgentSession).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({
+        sessionId: 'release-session',
+        platformId: 'openclaw',
+        modelId: 'deepseek-v3',
+        channelProvider: 'feishu',
+        channel: expect.objectContaining({
+          provider: 'feishu',
+          targetLabel: 'chat:oc_release_channel',
+        }),
+      }),
+    }))
+
+    const managementStatus = await json<{
+      ok: boolean
+      project: { id: string; name: string }
+      agentControl: { sessions: number }
+      connectorWorkflow: { channels: number }
+      security: { managementTokenConfigured: boolean; bridgeTokenConfigured: boolean; plaintextTokensStored: boolean }
+    }>(await app.request('/api/v1/status'))
+    expect(managementStatus).toEqual(expect.objectContaining({
+      ok: true,
+      project: expect.objectContaining({ id: 'capability-project', name: 'Capability Project' }),
+      security: expect.objectContaining({
+        managementTokenConfigured: true,
+        bridgeTokenConfigured: true,
+        plaintextTokensStored: false,
+      }),
+    }))
+    expect(managementStatus.agentControl.sessions).toBeGreaterThanOrEqual(1)
+    expect(managementStatus.connectorWorkflow.channels).toBeGreaterThanOrEqual(13)
+
+    const managementProjects = await json<{
+      projects: Array<{ id: string; name: string }>
+      currentProject: { id: string }
+    }>(await app.request('/api/v1/projects'))
+    expect(managementProjects.currentProject.id).toBe('capability-project')
+    expect(managementProjects.projects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'capability-project' }),
+    ]))
+
+    const managementSessions = await json<{
+      ok: boolean
+      sessions: Array<{ sessionId: string; platformId: string; modelId: string }>
+    }>(await app.request('/api/v1/projects/capability-project/sessions'))
+    expect(managementSessions).toEqual(expect.objectContaining({
+      ok: true,
+      sessions: expect.arrayContaining([
+        expect.objectContaining({ sessionId: 'release-session', platformId: 'openclaw' }),
+      ]),
+    }))
+
+    const managementProviders = await json<{
+      ok: boolean
+      providers: Array<{ id: string }>
+      channels: Array<{ id: string }>
+      modelOptions: Array<{ id: string }>
+      platformTargets: Array<{ id: string }>
+    }>(await app.request('/api/v1/projects/capability-project/providers'))
+    expect(managementProviders).toEqual(expect.objectContaining({
+      ok: true,
+      providers: expect.arrayContaining([expect.objectContaining({ id: 'feishu' })]),
+      channels: expect.arrayContaining([expect.objectContaining({ id: 'bridge-custom' })]),
+      modelOptions: expect.arrayContaining([expect.objectContaining({ id: 'balanced' })]),
+      platformTargets: expect.arrayContaining([expect.objectContaining({ id: 'openclaw' })]),
+    }))
+
+    const managementModel = await json<{
+      ok: boolean
+      session: { sessionId: string; platformId: string; modelId: string; channelProvider: string }
+    }>(await app.request('/api/v1/projects/capability-project/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'remote-model-session',
+        name: 'Remote model session',
+        platformId: 'openclaw',
+        modelId: 'balanced',
+        channelProvider: 'dashboard',
+      }),
+    }))
+    expect(managementModel).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({
+        sessionId: 'remote-model-session',
+        platformId: 'openclaw',
+        modelId: 'balanced',
+      }),
+    }))
+
+    const managementSend = await json<{
+      ok: boolean
+      message: { id: string; sessionId: string; status: string; text: string; from: string }
+    }>(await app.request('/api/v1/projects/capability-project/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'remote-model-session',
+        text: 'remote management api coding task',
+        dryRun: true,
+        from: 'mobile-panel',
+      }),
+    }))
+    expect(managementSend).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        sessionId: 'remote-model-session',
+        status: 'queued',
+        text: 'remote management api coding task',
+        from: 'mobile-panel',
+      }),
+    }))
+    const managementCompleted = await json<{
+      ok: boolean
+      message: { id: string; sessionId: string; status: string }
+      reply?: { text: string; from: string }
+    }>(await app.request(`/api/agent-control/sessions/remote-model-session/messages/${managementSend.message.id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: 'remote-management-runtime',
+        status: 'completed',
+        text: 'remote management api task accepted',
+      }),
+    }))
+    expect(managementCompleted).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        id: managementSend.message.id,
+        sessionId: 'remote-model-session',
+        status: 'completed',
+      }),
+      reply: expect.objectContaining({
+        from: 'remote-management-runtime',
+        text: 'remote management api task accepted',
+      }),
+    }))
+
+    const cronLoops = await json<{
+      ok: boolean
+      loops: Array<{ id: string; enabled: boolean }>
+    }>(await app.request('/api/v1/cron'))
+    expect(cronLoops).toEqual(expect.objectContaining({
+      ok: true,
+      loops: expect.arrayContaining([expect.objectContaining({ id: 'heartbeat', enabled: true })]),
+    }))
+    const heartbeatExec = await json<{
+      ok: boolean
+      result: string
+      loop: { id: string }
+    }>(await app.request('/api/v1/cron/heartbeat/exec', { method: 'POST' }))
+    expect(heartbeatExec).toEqual(expect.objectContaining({
+      ok: true,
+      result: 'trigger-recorded',
+      loop: expect.objectContaining({ id: 'heartbeat' }),
+    }))
+
+    const bridgeAdapters = await json<{
+      ok: boolean
+      enabled: boolean
+      tokenConfigured: boolean
+      allowPlatforms: string[]
+      adapters: Array<{ id: string; status: string }>
+    }>(await app.request('/api/v1/bridge/adapters'))
+    expect(bridgeAdapters).toEqual(expect.objectContaining({
+      ok: true,
+      enabled: true,
+      tokenConfigured: true,
+      allowPlatforms: ['feishu', 'bridge-custom', 'matrix'],
+      adapters: expect.arrayContaining([expect.objectContaining({ id: 'bridge-custom', status: 'ready' })]),
+    }))
+
+    const bridgeCreated = await json<{
+      ok: boolean
+      activeSessionId?: string
+      session: { id: string; platform: string; agentPlatformId: string; agentSessionId: string; active: boolean }
+      sessions: Array<{ id: string; agentSessionId: string; active: boolean }>
+    }>(await app.request('/bridge/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'bridge-custom',
+        agentPlatformId: 'openclaw',
+        agentSessionId: 'bridge-release',
+        user: 'mobile-user',
+        title: 'Mobile bridge release',
+        active: true,
+        capabilities: ['text', 'card'],
+      }),
+    }))
+    expect(bridgeCreated).toEqual(expect.objectContaining({
+      ok: true,
+      activeSessionId: bridgeCreated.session.id,
+      session: expect.objectContaining({
+        platform: 'bridge-custom',
+        agentPlatformId: 'openclaw',
+        agentSessionId: 'bridge-release',
+        active: true,
+      }),
+      sessions: expect.arrayContaining([expect.objectContaining({ agentSessionId: 'bridge-release', active: true })]),
+    }))
+
+    const bridgeSession = await json<{
+      ok: boolean
+      session: { id: string; agentSessionId: string }
+    }>(await app.request(`/bridge/sessions/${bridgeCreated.session.id}`))
+    expect(bridgeSession).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({ agentSessionId: 'bridge-release' }),
+    }))
+
+    const bridgeSwitched = await json<{
+      ok: boolean
+      activeSessionId?: string
+      session: { id: string; active: boolean }
+    }>(await app.request('/bridge/sessions/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentSessionId: 'bridge-release' }),
+    }))
+    expect(bridgeSwitched).toEqual(expect.objectContaining({
+      ok: true,
+      activeSessionId: bridgeCreated.session.id,
+      session: expect.objectContaining({ id: bridgeCreated.session.id, active: true }),
+    }))
+
+    const bridgeRegister = await json<{
+      ok: boolean
+      event: { id: string; payload: { token?: string } }
+      session: { id: string; platform: string; agentSessionId: string }
+      outbound: Array<{ type: string; sessionId: string; agentSessionId?: string }>
+    }>(await app.request('/bridge/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'register',
+        platform: 'bridge-custom',
+        agentPlatformId: 'openclaw',
+        agentSessionId: 'bridge-runtime',
+        user: 'mobile-user',
+        title: 'Bridge runtime',
+        capabilities: ['text', 'card'],
+        token: 'bridge-runtime-secret',
+      }),
+    }))
+    expect(bridgeRegister).toEqual(expect.objectContaining({
+      ok: true,
+      event: expect.objectContaining({
+        payload: expect.objectContaining({ token: '***' }),
+      }),
+      session: expect.objectContaining({
+        platform: 'bridge-custom',
+        agentSessionId: 'bridge-runtime',
+      }),
+      outbound: expect.arrayContaining([
+        expect.objectContaining({ type: 'register_ack', agentSessionId: 'bridge-runtime' }),
+      ]),
+    }))
+    expect(readFileSync(join(scaleDir, 'agents', 'bridge-events.jsonl'), 'utf-8')).not.toContain('bridge-runtime-secret')
+
+    const bridgeMessage = await json<{
+      ok: boolean
+      session: { id: string; agentSessionId: string }
+      agentMessage: { id: string; sessionId: string; status: string; text: string }
+      outbound: Array<{ type: string; messageId?: string }>
+    }>(await app.request('/bridge/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'message',
+        sessionId: bridgeRegister.session.id,
+        text: 'bridge runtime task',
+        dryRun: true,
+      }),
+    }))
+    expect(bridgeMessage).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({ agentSessionId: 'bridge-runtime' }),
+      agentMessage: expect.objectContaining({
+        sessionId: 'bridge-runtime',
+        status: 'queued',
+        text: 'bridge runtime task',
+      }),
+      outbound: expect.arrayContaining([
+        expect.objectContaining({ type: 'preview_start', messageId: bridgeMessage.agentMessage.id }),
+      ]),
+    }))
+
+    const bridgeCompleted = await json<{
+      ok: boolean
+      message: { id: string; sessionId: string; status: string }
+      reply?: { text: string; direction: string }
+    }>(await app.request(`/api/agent-control/sessions/bridge-runtime/messages/${bridgeMessage.agentMessage.id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: 'bridge-runtime-agent',
+        status: 'completed',
+        text: 'bridge runtime reply delivered',
+      }),
+    }))
+    expect(bridgeCompleted).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        id: bridgeMessage.agentMessage.id,
+        status: 'completed',
+      }),
+      reply: expect.objectContaining({
+        direction: 'agent-to-operator',
+        text: 'bridge runtime reply delivered',
+      }),
+    }))
+
+    const bridgePolled = await json<{
+      ok: boolean
+      session: { id: string; agentSessionId: string }
+      nextCursor: number
+      events: Array<{ type: string; text: string; messageId: string }>
+    }>(await app.request(`/bridge/sessions/${bridgeRegister.session.id}/events?cursor=0`))
+    expect(bridgePolled).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({ agentSessionId: 'bridge-runtime' }),
+      events: expect.arrayContaining([
+        expect.objectContaining({ type: 'preview_start', text: 'bridge runtime task' }),
+        expect.objectContaining({ type: 'reply', text: 'bridge runtime reply delivered' }),
+      ]),
+    }))
+    expect(bridgePolled.nextCursor).toBeGreaterThan(0)
+
+    const webhookMessage = await json<{
+      ok: boolean
+      session: { id: string; platform: string; agentSessionId: string; user: string }
+      agentMessage: { id: string; sessionId: string; status: string; text: string }
+    }>(await app.request('/agent-connect/webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'feishu',
+        agentPlatformId: 'openclaw',
+        agentSessionId: 'webhook-release',
+        senderId: 'ou_release_user',
+        text: 'webhook inbound task',
+        dryRun: true,
+      }),
+    }))
+    expect(webhookMessage).toEqual(expect.objectContaining({
+      ok: true,
+      session: expect.objectContaining({
+        platform: 'feishu',
+        agentSessionId: 'webhook-release',
+        user: 'ou_release_user',
+      }),
+      agentMessage: expect.objectContaining({
+        sessionId: 'webhook-release',
+        status: 'queued',
+        text: 'webhook inbound task',
+      }),
+    }))
+
+    const webhookCompleted = await json<{
+      ok: boolean
+      message: { id: string; sessionId: string; status: string }
+    }>(await app.request(`/api/agent-control/sessions/webhook-release/messages/${webhookMessage.agentMessage.id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: 'webhook-runtime-agent',
+        status: 'completed',
+        text: 'webhook task delivered',
+      }),
+    }))
+    expect(webhookCompleted).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        id: webhookMessage.agentMessage.id,
+        sessionId: 'webhook-release',
+        status: 'completed',
+      }),
+    }))
+
+    const bridgeDeleted = await json<{
+      ok: boolean
+      deleted: { id: string; agentSessionId: string }
+    }>(await app.request(`/bridge/sessions/${bridgeCreated.session.id}`, { method: 'DELETE' }))
+    expect(bridgeDeleted).toEqual(expect.objectContaining({
+      ok: true,
+      deleted: expect.objectContaining({ id: bridgeCreated.session.id, agentSessionId: 'bridge-release' }),
+    }))
+
+    const queuedMessage = await json<{
+      ok: boolean
+      message: {
+        id: string
+        sessionId: string
+        status: string
+        dryRun: boolean
+        text: string
+        commandPlan?: { command: string; args: string[] }
+      }
+    }>(await app.request('/api/agent-control/sessions/release-session/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: '请检查发布风险并给出下一步建议',
+        dryRun: true,
+        from: 'dashboard',
+      }),
+    }))
+    expect(queuedMessage).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        sessionId: 'release-session',
+        status: 'queued',
+        dryRun: true,
+        text: '请检查发布风险并给出下一步建议',
+      }),
+    }))
+    expect(queuedMessage.message.commandPlan).toEqual(expect.objectContaining({
+      command: 'lark-cli',
+      args: expect.arrayContaining(['--chat-id', 'oc_release_channel', '--dry-run']),
+    }))
+
+    const inbox = await json<{
+      sessionId: string
+      messages: Array<{ id: string; sessionId: string; status: string; text: string }>
+    }>(await app.request('/api/agent-control/sessions/release-session/inbox'))
+    expect(inbox).toEqual(expect.objectContaining({
+      sessionId: 'release-session',
+      messages: expect.arrayContaining([
+        expect.objectContaining({ status: 'queued', text: '请检查发布风险并给出下一步建议' }),
+      ]),
+    }))
+
+    const claimedTask = await json<{
+      ok: boolean
+      message: { id: string; sessionId: string; status: string; claimedBy?: string; claimedAt?: number }
+    }>(await app.request(`/api/agent-control/sessions/release-session/messages/${queuedMessage.message.id}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: 'codex-runtime' }),
+    }))
+    expect(claimedTask).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        id: queuedMessage.message.id,
+        status: 'claimed',
+        claimedBy: 'codex-runtime',
+      }),
+    }))
+    expect(claimedTask.message.claimedAt).toBeGreaterThan(0)
+
+    const defaultInboxAfterClaim = await json<{
+      messages: Array<{ id: string; status: string }>
+    }>(await app.request('/api/agent-control/sessions/release-session/inbox'))
+    expect(defaultInboxAfterClaim.messages).toEqual([])
+
+    const claimedInbox = await json<{
+      messages: Array<{ id: string; status: string; claimedBy?: string }>
+    }>(await app.request('/api/agent-control/sessions/release-session/inbox?includeClaimed=true'))
+    expect(claimedInbox.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: queuedMessage.message.id,
+        status: 'claimed',
+        claimedBy: 'codex-runtime',
+      }),
+    ]))
+
+    const completedTask = await json<{
+      ok: boolean
+      message: { id: string; status: string; result?: string; completedAt?: number; evidencePath?: string }
+      reply?: { sessionId: string; status: string; direction: string; from: string; text: string }
+    }>(await app.request(`/api/agent-control/sessions/release-session/messages/${queuedMessage.message.id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: 'codex-runtime',
+        status: 'completed',
+        text: 'release risk checked by runtime',
+        evidencePath: '.scale/evidence/runtime/release-check.json',
+      }),
+    }))
+    expect(completedTask).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        id: queuedMessage.message.id,
+        status: 'completed',
+        result: 'completed',
+        evidencePath: '.scale/evidence/runtime/release-check.json',
+      }),
+      reply: expect.objectContaining({
+        direction: 'agent-to-operator',
+        from: 'codex-runtime',
+        status: 'delivered',
+        text: 'release risk checked by runtime',
+      }),
+    }))
+    expect(completedTask.message.completedAt).toBeGreaterThan(0)
+
+    const agentReply = await json<{
+      ok: boolean
+      message: { sessionId: string; status: string; direction: string; text: string }
+    }>(await app.request('/api/agent-control/sessions/release-session/replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '已收到，建议先运行发版验证。' }),
+    }))
+    expect(agentReply).toEqual(expect.objectContaining({
+      ok: true,
+      message: expect.objectContaining({
+        sessionId: 'release-session',
+        direction: 'agent-to-operator',
+        status: 'delivered',
+      }),
+    }))
+
+    const refreshedAgentControl = await json<{
+      summary: { sessions: number; queuedMessages: number; claimedMessages: number; completedMessages: number }
+      sessions: Array<{ sessionId: string; messageCount: number; pendingCount: number }>
+      messages: Array<{ sessionId: string; text: string }>
+    }>(await app.request('/api/agent-control'))
+    expect(refreshedAgentControl.summary.queuedMessages).toBe(0)
+    expect(refreshedAgentControl.summary.claimedMessages).toBe(0)
+    expect(refreshedAgentControl.summary.completedMessages).toBeGreaterThanOrEqual(1)
+    expect(refreshedAgentControl.sessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sessionId: 'release-session',
+        messageCount: 3,
+        pendingCount: 0,
+      }),
+    ]))
+    expect(refreshedAgentControl.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: 'release-session', text: 'release risk checked by runtime' }),
+      expect.objectContaining({ sessionId: 'release-session', text: '已收到，建议先运行发版验证。' }),
+    ]))
+
+    const transcript = await json<{
+      session: { sessionId: string; platformName: string }
+      messageCount: number
+      messages: Array<{ id: string; direction: string; status: string; text: string }>
+      summary: { sessionId: string; messageCount: number; completedMessages: number; latestAgentText?: string; markdown: string }
+      storage: { messagesPath: string; summaryPath: string }
+    }>(await app.request('/api/agent-control/sessions/release-session/transcript'))
+    expect(transcript.session).toEqual(expect.objectContaining({
+      sessionId: 'release-session',
+      platformName: 'OpenClaw',
+    }))
+    expect(transcript.messageCount).toBe(3)
+    expect(transcript.messages.map(message => message.id)).toContain(queuedMessage.message.id)
+    expect(transcript.summary).toEqual(expect.objectContaining({
+      sessionId: 'release-session',
+      messageCount: 3,
+      completedMessages: 1,
+    }))
+    expect(transcript.summary.markdown).toContain('Release agent conversation summary')
+    expect(transcript.storage.messagesPath).toBe('.scale/agents/messages/release-session.jsonl')
+    expect(transcript.storage.summaryPath).toBe('.scale/agents/summaries/release-session.json')
+
+    const transcriptSearch = await json<{
+      query: string
+      total: number
+      hits: Array<{ sessionId: string; message: { id: string; status: string }; matchPreview: string }>
+    }>(await app.request('/api/agent-control/transcripts?query=release%20risk&sessionId=release-session'))
+    expect(transcriptSearch.query).toBe('release risk')
+    expect(transcriptSearch.total).toBeGreaterThanOrEqual(1)
+    expect(transcriptSearch.hits).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sessionId: 'release-session',
+        message: expect.objectContaining({ status: 'delivered' }),
+        matchPreview: expect.stringContaining('release risk'),
+      }),
+    ]))
+
+    const persistedSummary = await json<{
+      ok: boolean
+      summary: { sessionId: string; markdown: string; nextActions: string[] }
+    }>(await app.request('/api/agent-control/sessions/release-session/summary', { method: 'POST' }))
+    expect(persistedSummary).toEqual(expect.objectContaining({
+      ok: true,
+      summary: expect.objectContaining({
+        sessionId: 'release-session',
+        markdown: expect.stringContaining('Release agent conversation summary'),
+      }),
+    }))
+    expect(readFileSync(join(scaleDir, 'agents', 'summaries', 'release-session.json'), 'utf-8')).toContain('Release agent conversation summary')
+
+    const invalidAgentSessionResponse = await app.request('/api/agent-control/sessions/release-session', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelId: 'not-a-real-model' }),
+    })
+    expect(invalidAgentSessionResponse.status).toBe(400)
+    const invalidAgentSession = await invalidAgentSessionResponse.json() as { ok: boolean; error: string }
+    expect(invalidAgentSession).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.stringContaining('Unsupported model'),
+    }))
+
+    const invalidRouteResponse = await app.request('/api/integrations/feishu/route', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentPlatformId: 'unknown-agent' }),
+    })
+    expect(invalidRouteResponse.status).toBe(400)
+    const invalidRoute = await invalidRouteResponse.json() as { ok: boolean; saved: boolean; error: string }
+    expect(invalidRoute).toEqual(expect.objectContaining({
+      ok: false,
+      saved: false,
+      error: expect.stringContaining('Unsupported agent platform'),
+    }))
+
+    const blockedAction = await json<{
+      ok: boolean
+      status: string
+      error: string
+    }>(await app.request('/api/integrations/feishu/actions/live-send', { method: 'POST' }))
+    expect(blockedAction).toEqual(expect.objectContaining({
+      ok: false,
+      status: 'blocked',
+      error: expect.stringContaining('Unsupported Feishu integration action'),
     }))
   })
 

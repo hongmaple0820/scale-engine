@@ -4,6 +4,8 @@
 
 SCALE 不替代 Codex、Claude Code、Cursor、Cline、Windsurf 这类 Agent。SCALE 是一层 repo-native 工作流治理系统：把需求澄清、计划、实现、验证、评审、记忆、知识库、token 统计和发版门禁落到可执行命令、项目文件和证据记录里。
 
+如果用户只想开始远程 coding 或让 Agent 自动检查第三方能力，先使用 [Agent 满血工作流一键接入](agent-full-workflow.md)。这份安装教程保留给需要逐项理解 22 个 adapter 的维护者。
+
 ## 先理解接入模型
 
 SCALE 接入 Agent 分三层：
@@ -31,7 +33,7 @@ npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
 mkdir scale-demo
 cd scale-demo
 npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
-npx -y @hongmaple0820/scale-engine@latest setup --pack memory,knowledge,external-cli --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
 npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 npx -y @hongmaple0820/scale-engine@latest status --dir .
 ```
@@ -40,7 +42,8 @@ npx -y @hongmaple0820/scale-engine@latest status --dir .
 
 - `--agent` 选择当前项目主要使用的 Agent；不传时会尝试 auto-detect。
 - 新项目统一推荐 `gbrain` 作为记忆供应商。
-- `setup --json` 是依赖计划和环境检查，不等于第三方服务都已可用。
+- full workflow 默认检查 rtk、gbrain、CodeGraph、Graphify、浏览器/E2E；消息提醒或远程控制场景再检查飞书 CLI/消息通道。
+- `setup --verify --pack full --json` 是第三方能力可用性检查；如果需要安装，再让 Agent 输出计划并在确认后运行 `setup --pack full --apply --yes`。
 - 真正交付前至少跑 `scale preflight --preflight-profile quick` 或项目自己的 build/lint/test。
 
 ## 2. 已有项目接入
@@ -111,7 +114,7 @@ scale preflight --preflight-profile quick
 ```bash
 scale init --agent codex --dir .
 scale init --agent cursor --dir .
-npx -y @hongmaple0820/scale-engine@latest setup --pack memory,knowledge,external-cli --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
 ```
 
 结果：Codex 读取 `AGENTS.md` 和 `.codex/hooks.json`；Cursor 读取 `.cursor/settings.json` 和 `.cursorrules`；两者共享 `.scale/` 证据、知识库、token 和 gate 配置。
@@ -200,17 +203,26 @@ scale agent plan \
 
 新项目推荐：知识库先放可审查文档，记忆只沉淀经过验证的经验，图谱作为检索和结构理解能力，不要把三者混成一个黑盒。
 
-## 8. 启动 Vue 面板
+## 8. 启动常驻 Vue 面板
 
 在 `scale-engine` 源码仓库内：
 
 ```bash
 npm run build
-$env:SCALE_DASHBOARD_PORT="auto"
-npm run serve
+scale dashboard daemon ensure --dir . --port 3210 --json
 ```
 
-服务会打印 URL，通常是 `http://localhost:3210/`。如果端口被占用，`SCALE_DASHBOARD_PORT=auto` 会自动寻找后续可用端口。
+打开 `http://127.0.0.1:3210/#agents`。Agent Control 页面可以配置 agent 平台、模型、消息通道、会话队列、飞书 route，并显示 dashboard service 的 supervisor PID、server PID、心跳、重启次数和日志路径。
+
+常驻服务的日常命令：
+
+```bash
+scale dashboard daemon status --dir . --json
+scale dashboard daemon restart --dir . --port 3210
+scale dashboard daemon logs --dir . --lines 120
+```
+
+如果只是临时预览，也可以继续使用 `scale serve`。服务会打印 URL，通常是 `http://localhost:3210/`。如果端口被占用，`SCALE_DASHBOARD_PORT=auto` 会自动寻找后续可用端口。
 
 使用全局 npm 包时，可以直接运行包里的 HTTP 入口：
 
@@ -230,6 +242,8 @@ node "$scaleRoot/dist/api/http.js"
 ```
 
 面板会按项目分别分配端口并打印 URL。面板数据来自 `.scale/`、runtime evidence、token usage、知识库、gbrain 和图谱产物；如果某个面板为空，应优先看页面里的 empty reason 和 `/api/dashboard/capabilities`。
+
+面板空白页优先检查 `http://127.0.0.1:3210/api/health` 和 `scale dashboard daemon status --dir . --json`。详细守护说明见 [Dashboard Daemon and Watchdog](../guides/DASHBOARD_DAEMON.md)。
 
 ## 9. 推荐落地顺序
 

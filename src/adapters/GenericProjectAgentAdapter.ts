@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import { logger } from '../core/logger.js'
 import type { AgentPlatform } from '../artifact/types.js'
 import type { AdapterConfig, HookEntry, IAgentAdapter, InitResult, SettingsJson } from './ClaudeCodeAdapter.js'
+import { renderAgentFullWorkflowGuidance } from './AgentKnowledgeDoc.js'
 
 export type SettingsShape = 'scale-hooks' | 'qoder-hooks'
 
@@ -160,6 +161,7 @@ This project uses SCALE Engine for AI engineering governance via ${this.options.
 4. Verify - Must run tests before claiming done
 5. Learn - Defects become lessons, rules, and hooks
 
+${renderAgentFullWorkflowGuidance()}
 ### Rules
 - Dangerous commands are blocked through SCALE gates where the platform supports executable hooks.
 - Hardcoded secrets must be rejected before edits are committed.

@@ -55,6 +55,10 @@ describe('CodexAdapter', () => {
     expect(doc).toContain('# my-codex-project')
     expect(doc).toContain('Python')
     expect(doc).toContain('SCALE Engine')
+    expect(doc).toContain('Agent Full Workflow Bootstrap')
+    expect(doc).toContain('scale setup --verify --pack full')
+    expect(doc).toContain('gbrain')
+    expect(doc).toContain('codegraph status')
   })
 
   it('init is idempotent', async () => {
@@ -229,4 +233,3 @@ describe('ScaleMCPServer', () => {
     expect(res.error).toBeDefined()
   })
 })
-

@@ -18,6 +18,20 @@ npm：https://www.npmjs.com/package/@hongmaple0820/scale-engine
 语言：[中文](README.md) | [English](README.en.md)
 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
+## 给 Agent 的最短用法
+
+如果用户反馈“文档太多、看不到重点”，先不要让用户逐条执行命令。打开项目后，把 [Agent 满血工作流一键接入](docs/start/agent-full-workflow.md) 里的提示词发给当前 coding agent，让 Agent 自己检查 SCALE、gbrain、CodeGraph、Graphify、rtk、浏览器/E2E 和飞书消息通道状态，再输出安装计划和验证证据。
+
+核心命令是：
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes --dir .
+npx -y @hongmaple0820/scale-engine@latest dashboard daemon ensure --dir . --port 3210 --json
+```
+
+面板默认走常驻守护模式。打开 `http://127.0.0.1:3210/#agents` 后，用户在 Agent Control 里配置 agent 平台、模型、消息通道、会话队列和飞书 route；Agent runtime 通过 `scale agent-control inbox/reply` 消费队列，不需要用户手写 JSON。
+
 ## 它解决什么问题
 
 | 常见问题 | SCALE 的处理方式 |
@@ -55,7 +69,7 @@ scale diagnose plan --task-id TASK-001 --symptom "callback 在 state 过期时�
 scale tdd slice --task-id TASK-001 --behavior "拒绝过期 OAuth state" --failing-test "expired state returns 401"
 ```
 
-完整教程见 [npx 与交互式安装指南](docs/start/npx-interactive-install.md)、[3 分钟快速开始](docs/start/quickstart.md)、[22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
+完整教程见 [Agent 满血工作流一键接入](docs/start/agent-full-workflow.md)、[npx 与交互式安装指南](docs/start/npx-interactive-install.md)、[3 分钟快速开始](docs/start/quickstart.md)、[22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
 
 ## 安装
 
@@ -154,7 +168,7 @@ scale cortex inject --minimal
 
 ## AI OS Runtime
 
-Agent role planning is available through `scale agent plan --task "<task>" --json` and the dashboard Prompt Studio; the generated `agentCollaboration` plan includes selected agent profiles, DAG edges, handoff contracts, review gates, and per-role token budget. The same plan is embedded in `scale ai-os plan/run`; guarded runs with verification commands now add `agentExecution` settlement evidence, and `scale ai-os status --json` reports both through the `agent-collaboration` intelligence signal.
+Agent role planning is available through `scale agent plan --task "<task>" --json` and the dashboard Prompt Studio; the generated `agentCollaboration` plan includes selected agent profiles, DAG edges, handoff contracts, review gates, and per-role token budget. The dashboard Agent Control page is the visual entry for remote coding control: choose the agent platform, switch models, bind dashboard/Feishu message channels, queue messages, and expose the agent inbox/reply APIs. Use `scale dashboard daemon ensure --dir . --port 3210 --json` to keep that control surface resident with health checks, restart count, PID files, and logs. The same plan is embedded in `scale ai-os plan/run`; guarded runs with verification commands now add `agentExecution` settlement evidence, and `scale ai-os status --json` reports both through the `agent-collaboration` intelligence signal.
 
 AI OS Runtime 是 SCALE 的核心运行时规划层。`scale ai-os plan` 在一次命令里生成风险治理模式、Context Compiler 预算、Memory Provider 召回、Skill Routing 执行计划和 Governance ROI，让 Agent 在开始任务前就知道应该加载什么上下文、调用什么能力、补什么证据。
 
@@ -174,6 +188,7 @@ scale ai-os plan \
 
 | 目标 | 入口 | 你应该学会什么 |
 | --- | --- | --- |
+| 让 Agent 直接接管 | [Agent 满血工作流一键接入](docs/start/agent-full-workflow.md) | 复制提示词，让 Agent 检查 full setup、gbrain、CodeGraph、Graphify、rtk、浏览器/E2E 和飞书消息通道 |
 | 无全局安装试用 | [npx 与交互式安装指南](docs/start/npx-interactive-install.md) | 用 `npx` 跑 `onboard`、`init --interactive`、`setup` |
 | 先跑起来 | [3 分钟快速开始](docs/start/quickstart.md) | 安装 CLI、初始化治理文件、运行 preflight |
 | 接入具体 Agent | [22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) | Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 的初始化、验证和面板入口 |

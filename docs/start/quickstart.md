@@ -2,6 +2,8 @@
 
 目标：在一个项目里安装 SCALE 工作流，完成依赖检查，并看到可验证的治理产物。
 
+如果你只是想让 Agent 接管，不想先读完命令教程，直接把 [Agent 满血工作流一键接入](agent-full-workflow.md) 里的提示词发给当前 coding agent。Agent 应该先跑 full setup verify，确认 gbrain、CodeGraph、Graphify、rtk、浏览器/E2E 和飞书消息通道是否可用，再给你安装计划和验证结果。
+
 ## 前置条件
 
 - Node.js 22+
@@ -51,7 +53,7 @@ npx -y @hongmaple0820/scale-engine@latest init --agent claude-code --governance-
 npx -y @hongmaple0820/scale-engine@latest init --agent cursor --governance-pack standard --dir .
 ```
 
-22 个 adapter 的逐项说明见 [22 种 Agent 安装与使用教程](agent-installation-guide.md)。
+22 个 adapter 的逐项说明见 [22 种 Agent 安装与使用教程](agent-installation-guide.md)。如果目标是“少操作、让 Agent 自己判断”，优先使用 [Agent 满血工作流一键接入](agent-full-workflow.md)。
 
 ```bash
 scale upgrade --dir .
@@ -152,6 +154,14 @@ npx -y @hongmaple0820/scale-engine@latest runtime doctor --level S --dir .
 npx -y @hongmaple0820/scale-engine@latest memory provider status --dir . --json
 npx -y @hongmaple0820/scale-engine@latest codegraph status --dir . --json
 ```
+
+需要图形化控制 Agent 时，启动常驻面板：
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest dashboard daemon ensure --dir . --port 3210 --json
+```
+
+然后打开 `http://127.0.0.1:3210/#agents`。Agent Control 是默认配置入口：选择 agent 平台、模型、消息通道、会话队列和飞书 route。面板空白时先检查 `http://127.0.0.1:3210/api/health` 和 `scale dashboard daemon status --dir . --json`。
 
 未运行验证，不要声称通过。`setup --json` 只代表依赖计划可解析，不等于第三方服务已经可用；需要再跑 `setup --verify --pack full --json` 或对应 smoke。
 

@@ -87,6 +87,10 @@ describe('ClaudeCodeAdapter', () => {
     expect(doc).toContain('TypeScript')
     expect(doc).toContain('SCALE Engine Integration')
     expect(doc).toContain('scale create')
+    expect(doc).toContain('Agent Full Workflow Bootstrap')
+    expect(doc).toContain('scale setup --verify --pack full')
+    expect(doc).toContain('gbrain')
+    expect(doc).toContain('codegraph status')
   })
 
   it('init creates all required files', async () => {
@@ -121,6 +125,19 @@ describe('ClaudeCodeAdapter', () => {
 })
 
 describe('agent hook safety', () => {
+  it('documents full workflow setup for every supported adapter', () => {
+    for (const agent of SUPPORTED_AGENTS) {
+      const adapter = createAdapter(agent)
+      const doc = adapter.generateKnowledgeDoc('agent-project', ['TypeScript'])
+      expect(doc, agent).toContain('Agent Full Workflow Bootstrap')
+      expect(doc, agent).toContain('scale setup --verify --pack full')
+      expect(doc, agent).toContain('gbrain')
+      expect(doc, agent).toContain('CodeGraph')
+      expect(doc, agent).toContain('Graphify')
+      expect(doc, agent).toContain('Feishu notifications')
+    }
+  })
+
   it('generates hook-safe before-stop commands for all supported adapters', () => {
     for (const agent of SUPPORTED_AGENTS) {
       const adapter = createAdapter(agent)
@@ -358,4 +375,3 @@ describe('Integration: Full Engine Lifecycle', () => {
     expect(types).toContain('artifact.transitioned')
   })
 })
-

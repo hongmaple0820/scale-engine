@@ -95,6 +95,8 @@ import { initCommand, bootstrapCommand, setupCommand, configCommand } from '../c
 import { upgradeCommand, assetsCommand, standardsCommand, artifactCommand } from '../cli/upgradeAssetsCommands.js'
 import { runtimeCommand, memoryCommand, outOfScopeCommand, skillCommand, token as tokenCommand } from '../cli/runtimeSkillCommands.js'
 import { toolCommand, agentCommand, teamCommand } from '../cli/toolAgentCommands.js'
+import { agentControlCommand } from '../cli/agentControlCommands.js'
+import { dashboardCommand } from '../cli/dashboardCommands.js'
 import { productCommand } from '../cli/productCommands.js'
 import { writeGovernanceTemplates, type GovernanceMode } from '../workflow/GovernanceTemplates.js'
 import {
@@ -1790,6 +1792,8 @@ const main = defineCommand({
     skill: skillCommand,
     skills: skillCommand,
     agent: agentCommand,
+    'agent-control': agentControlCommand,
+    dashboard: dashboardCommand,
     team: teamCommand,
     product: productCommand,
     products: productCommand,

@@ -52,6 +52,12 @@
         "command": "bash .claude/hooks/session-start-reminder.sh",
         "timeout": 3000,
         "description": "Show concise scale-engine workflow entry points."
+      },
+      {
+        "matcher": "",
+        "command": "bash .claude/hooks/dashboard-service-ensure.sh",
+        "timeout": 5000,
+        "description": "Ensure the SCALE dashboard watchdog is running for visual Agent Control."
       }
     ],
     "PreToolUse": [

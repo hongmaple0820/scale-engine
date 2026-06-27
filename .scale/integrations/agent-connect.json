@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "enabled": true,
+  "managementApi": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 9820,
+    "hasToken": true,
+    "tokenMasked": "mgmt...2799",
+    "corsOrigins": [
+      "http://127.0.0.1:3210"
+    ]
+  },
+  "bridge": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 9810,
+    "path": "/bridge/ws",
+    "hasToken": true,
+    "tokenMasked": "brid...ef2a",
+    "allowPlatforms": [
+      "feishu",
+      "bridge-custom",
+      "matrix"
+    ],
+    "defaultProjectId": "scale-engine",
+    "protocolVersion": 1
+  },
+  "webhook": {
+    "enabled": true,
+    "path": "/agent-connect/webhook",
+    "hasToken": true,
+    "tokenMasked": "webh...a6c7"
+  },
+  "automation": {
+    "cronEnabled": true,
+    "heartbeatEnabled": true,
+    "heartbeatIntervalMins": 15,
+    "maxTurnTimeMins": 90,
+    "resetOnIdleMins": 20,
+    "longTaskNotifications": true
+  },
+  "updatedAt": 1782548376640
+}

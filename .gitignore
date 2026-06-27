@@ -23,7 +23,10 @@ graphify-out/
 .scale/checkpoints/
 .scale/tmp/
 .scale/vectors/
+.scale/secrets/
 !.scale/artifacts/
+.scale/artifacts/dashboard-service/
+.scale/artifacts/dashboard-service-*.png
 !.scale/rules/enforced/
 !.scale/config.yaml
 .omx/
@@ -84,5 +87,6 @@ coverage/
 .tmp/
 tmp-*/
 dashboard-*.png
+agent-control-*.png
 packages/
 test-fixtures/

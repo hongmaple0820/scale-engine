@@ -18,6 +18,17 @@ npm: https://www.npmjs.com/package/@hongmaple0820/scale-engine
 Language: [Chinese](README.md) | [English](README.en.md)
 Changelog: [CHANGELOG.md](CHANGELOG.md)
 
+## Shortest Agent-First Setup
+
+If the docs feel too long for an end user, do not make the user run every command manually. Open the project and paste the prompt from [Agent Full Workflow Setup](docs/start/agent-full-workflow.md) into the active coding agent. The agent should inspect SCALE, gbrain, CodeGraph, Graphify, rtk, browser/E2E tooling, and the Feishu message channel when notifications or remote control are required, then report the install plan and verification evidence.
+
+The core commands are:
+
+```bash
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes --dir .
+```
+
 ## What It Solves
 
 | Failure mode | SCALE mechanism |
@@ -55,7 +66,7 @@ scale diagnose plan --task-id TASK-001 --symptom "callback returns 500 when stat
 scale tdd slice --task-id TASK-001 --behavior "reject expired OAuth state" --failing-test "expired state returns 401"
 ```
 
-Read [npx and Interactive Install](docs/start/npx-interactive-install.md), [Quickstart](docs/start/quickstart.md), [22-Agent Installation Guide](docs/start/agent-installation-guide.md), and [Agent Governance Demo](docs/start/agent-governance-demo.md) for the complete walkthrough. For positioning against other workflows and agent frameworks, see [Workflow Capability and Competitive Comparison](docs/workflow/competitive-comparison.md).
+Read [Agent Full Workflow Setup](docs/start/agent-full-workflow.md), [npx and Interactive Install](docs/start/npx-interactive-install.md), [Quickstart](docs/start/quickstart.md), [22-Agent Installation Guide](docs/start/agent-installation-guide.md), and [Agent Governance Demo](docs/start/agent-governance-demo.md) for the complete walkthrough. For positioning against other workflows and agent frameworks, see [Workflow Capability and Competitive Comparison](docs/workflow/competitive-comparison.md).
 
 ## Installation
 
@@ -103,6 +114,8 @@ Node.js 22 or newer is required.
 
 AI OS Runtime is SCALE's core runtime planning layer. `scale ai-os plan` generates governance mode, Context Compiler budget, Memory Provider recall, Skill Routing execution plan, and Governance ROI in one command — so the agent knows what context to load, what capabilities to use, and what evidence to collect before starting.
 
+The dashboard Agent Control page is the visual entry for remote coding control: choose the agent platform, switch models, bind dashboard/Feishu message channels, queue messages, and expose the agent inbox/reply APIs.
+
 ```bash
 scale ai-os plan \
   --task-id TASK-123 \
@@ -119,6 +132,7 @@ See [AI OS Runtime docs](docs/AI_ENGINEERING_OS_POSITIONING.md) for the full com
 
 | Goal | Entry point | What you learn |
 | --- | --- | --- |
+| Let the agent take over | [Agent Full Workflow Setup](docs/start/agent-full-workflow.md) | Paste one prompt so the agent checks full setup, gbrain, CodeGraph, Graphify, rtk, browser/E2E, and Feishu messaging |
 | Try without global install | [npx and Interactive Install](docs/start/npx-interactive-install.md) | Run `onboard`, `init --interactive`, and `setup` with `npx` |
 | Get running | [Quickstart](docs/start/quickstart.md) | Install CLI, init governance files, run preflight |
 | Connect an agent | [22-Agent Installation Guide](docs/start/agent-installation-guide.md) | Initialize and verify Codex, Claude Code, Cursor, Cline, Windsurf, and other adapters |

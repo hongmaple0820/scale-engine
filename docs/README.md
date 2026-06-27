@@ -7,6 +7,7 @@
 | 文档 | 说明 |
 | --- | --- |
 | [start/README.md](start/README.md) | 入门路径总览 |
+| [start/agent-full-workflow.md](start/agent-full-workflow.md) | 面向用户复制给 Agent 的满血工作流接入提示词 |
 | [start/npx-interactive-install.md](start/npx-interactive-install.md) | npx 临时执行、交互式安装、固定版本和国内镜像 fallback |
 | [start/quickstart.md](start/quickstart.md) | 3 分钟快速开始 |
 | [start/agent-installation-guide.md](start/agent-installation-guide.md) | 22 种 Agent 安装、初始化、验证、面板和多 Agent 使用教程 |
@@ -48,6 +49,8 @@
 | [EXTERNAL_REFERENCES.md](EXTERNAL_REFERENCES.md) | 外部项目、skills、MCP、CLI 和适配器引用的完整清单 |
 | [UPGRADE_MANAGEMENT.md](UPGRADE_MANAGEMENT.md) | SCALE CLI、governance pack、skills、MCP 和 CLI 工具的安全升级流程 |
 | [GOVERNANCE_DASHBOARD.md](GOVERNANCE_DASHBOARD.md) | Runtime、eval、memory、resource、HTML artifact 的统一治理面板 |
+| [guides/DASHBOARD_DAEMON.md](guides/DASHBOARD_DAEMON.md) | 常驻 Vue 面板、Agent Control、Feishu/Lark 路由和 watchdog 守护说明 |
+| [guides/FEISHU_INTEGRATION.md](guides/FEISHU_INTEGRATION.md) | Feishu/Lark CLI 作为消息通道、手机端控制和知识库供应商的集成路径 |
 | [RELEASE_READINESS.md](RELEASE_READINESS.md) | 发版前质量门槛、官方 demo 和真实项目落地验收 |
 | [DOCUMENT_STANDARDS.md](DOCUMENT_STANDARDS.md) | 文档编写与维护规范 |
 | [GITLAB_FLOW.md](GITLAB_FLOW.md) | GitLab Flow 分支、发版、tag 和临时 worktree 生命周期规范 |

@@ -5,6 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../core/logger.js'
+import { renderAgentFullWorkflowGuidance } from './AgentKnowledgeDoc.js'
 import type { IAgentAdapter, AdapterConfig, InitResult, SettingsJson } from './ClaudeCodeAdapter.js'
 
 // ============================================================================
@@ -101,6 +102,8 @@ This project uses SCALE Engine for AI engineering governance via Qwen Code CLI.
 3. **Implement** → Role: implementer (Edit/Write/Bash unlocked)
 4. **Verify** → Must run tests before claiming done
 5. **Learn** → Defects → Lessons → Rules → Hooks
+
+${renderAgentFullWorkflowGuidance()}
 
 ### Rules
 - 🔴 Dangerous commands are physically blocked

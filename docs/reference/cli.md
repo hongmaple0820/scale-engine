@@ -132,6 +132,22 @@ Evidence-driven continuous evolution with instinct extraction.
 | `scale runtime doctor` | Diagnose runtime health |
 | `scale runtime final-check` | Run final delivery check |
 
+## Dashboard And Agent Control
+
+| Command | Description |
+|---------|-------------|
+| `scale dashboard daemon ensure --dir . --port 3210 --json` | Start or reuse the resident dashboard watchdog for Agent Control, Feishu/Lark routing, health checks, PID files, and logs |
+| `scale dashboard daemon status --dir . --json` | Show supervisor/server process state, heartbeat, restart count, task installation state, and log paths |
+| `scale dashboard daemon restart --dir . --port 3210` | Restart the resident dashboard watchdog and HTTP server |
+| `scale dashboard daemon logs --dir . --lines 120` | Print dashboard watchdog logs |
+| `scale dashboard daemon install --dir . --port 3210` | Install the dashboard watchdog as an OS login task where supported |
+| `scale agent-control status --dir . --json` | Show project-scoped agent sessions, selected platform/model/channel, and queue counts |
+| `scale agent-control inbox --session <session-id> --claim-first --json` | Let an agent runtime claim queued remote-coding messages from the dashboard queue |
+| `scale agent-control reply --session <session-id> --message <message-id> --text "<result>" --json` | Complete a claimed message and write the agent reply/evidence back to the queue |
+| `scale agent-control transcript --session <session-id> --json` | Show the full session transcript, storage paths, and deterministic summary card |
+| `scale agent-control search --query "<keyword>" --session <session-id> --json` | Search project-scoped agent conversation history |
+| `scale agent-control summary --session <session-id> --json` | Generate and persist `.scale/agents/summaries/<session-id>.json` |
+
 ## Skills
 
 | Command | Description |
