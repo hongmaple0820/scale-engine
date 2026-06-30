@@ -117,6 +117,7 @@ SCALE now treats strong memory systems as providers instead of rebuilding them i
 Default provider order:
 
 ```text
+hrain
 gbrain
 ```
 
@@ -125,6 +126,7 @@ Commands:
 ```bash
 scale memory provider init
 scale memory provider status --json
+scale memory provider use hrain --mode local-only --json
 scale memory provider use gbrain --json
 scale tool doctor --tools gbrain --json
 scale memory provider recall "OAuth callback Redis state" --json
@@ -133,12 +135,13 @@ scale ai-os plan --task "Fix OAuth callback Redis state" --files src/auth/oauth.
 
 Provider rules:
 
-- `gbrain` is the default external-first provider. SCALE treats CLI existence as insufficient: `scale memory provider status --json` requires a configured brain with working connection/schema checks before marking it available. Full `gbrain doctor --json` warnings that are unrelated to recall, such as local skill resolver issues, are reported as degraded health but do not block read-only recall. If the CLI exists but no brain is configured, the status remains unavailable and points to `gbrain init --pglite`.
+- `hrain` is the default local-only provider for first-run memory. It stores and recalls project memory from the repo-local SCALE memory directory and does not require OpenAI, hosted embedding APIs, or a remote memory service.
+- `gbrain` remains an optional graph memory provider. SCALE treats CLI existence as insufficient: `scale memory provider status --json` requires a configured brain with working connection/schema checks before marking it available. Full `gbrain doctor --json` warnings that are unrelated to recall, such as local skill resolver issues, are reported as degraded health but do not block read-only recall. If the CLI exists but no brain is configured, the status remains unavailable and points to the local setup path instead of silently falling back to an online provider.
 - The preferred remote production path is the official thin-client flow: run `gbrain serve --http` on the host, then configure the local CLI with `gbrain init --mcp-only` so SCALE can keep calling `gbrain query` through the thin client instead of inventing a separate ad-hoc REST contract.
-- This repository's checked-in provider routing is intentionally gbrain-only. Additional providers are not part of the default workflow contract unless a project explicitly opts into a separate provider policy.
+- This repository's checked-in provider routing is intentionally local-first: `hrain -> gbrain` in `local-only` mode. Projects can opt into external-first routing explicitly, but onboarding should work without external network or API keys.
 - `memory provider use <id>` is the fast path for switching the default route without hand-editing `.scale/memory-providers.json`.
 - External providers are read-only by default. Writes require an explicit provider policy change.
-- Legacy local memory-provider config is treated as historical/local-only state; the governed workflow route is gbrain-only and reports blocked when gbrain is not ready.
+- Legacy local memory-provider config is treated as historical/local-only state; the governed workflow route prefers `hrain` and reports optional `gbrain` health separately.
 - `memory pack` automatically includes a `provider-memory` section when provider recall returns relevant active memories.
 - `ai-os plan` includes both the provider recall summary and the Memory Fabric context pack, so agents can route memory before planning without pretending external memory is always available.
 
@@ -148,6 +151,7 @@ Setup shortcut:
 
 ```bash
 scale setup --pack memory
+scale setup --pack memory --memory-provider hrain --memory-mode local-only --json
 scale setup --pack memory --memory-provider gbrain --memory-mode external-first --json
 scale memory provider status --json
 ```

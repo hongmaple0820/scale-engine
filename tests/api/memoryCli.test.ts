@@ -45,7 +45,7 @@ describe('memory CLI', () => {
     expect(init.exitCode).toBe(0)
     const initReport = parseJson<{ written: boolean; path: string; config: { routing: { defaultOrder: string[] } } }>(init.stdout)
     expect(initReport.written).toBe(true)
-    expect(initReport.config.routing.defaultOrder).toEqual(['gbrain'])
+    expect(initReport.config.routing.defaultOrder).toEqual(['hrain', 'gbrain'])
     expect(existsSync(initReport.path)).toBe(true)
 
     const status = await runScale(['memory', 'provider', 'status', '--json'], scaleDir, projectDir)
@@ -58,12 +58,13 @@ describe('memory CLI', () => {
     expect(statusReport.configExists).toBe(true)
     expect(statusReport.providers).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'gbrain', safetyLevel: 'review-required', writeMode: 'disabled' }),
+      expect.objectContaining({ id: 'hrain', safetyLevel: 'review-required', writeMode: 'candidate-only', available: true }),
     ]))
-    expect(statusReport.providers.map(provider => provider.id)).toEqual(['gbrain'])
+    expect(statusReport.providers.map(provider => provider.id)).toEqual(['hrain', 'gbrain'])
     expect(statusReport.warnings).toEqual([])
   }, 120_000)
 
-  it('keeps gbrain as the only switchable memory provider', async () => {
+  it('switches between gbrain and the local hrain provider', async () => {
     const scaleDir = makeDir('scale-memory-cli-scale-')
     const projectDir = makeDir('scale-memory-cli-project-')
 
@@ -84,14 +85,31 @@ describe('memory CLI', () => {
       provider: 'gbrain',
       mode: 'external-first',
     })
-    expect(switchedReport.previousOrder).toEqual(['gbrain'])
-    expect(switchedReport.nextOrder).toEqual(['gbrain'])
+    expect(switchedReport.previousOrder).toEqual(['hrain', 'gbrain'])
+    expect(switchedReport.nextOrder).toEqual(['gbrain', 'hrain'])
+
+    const localOnly = await runScale(['memory', 'provider', 'use', 'hrain', '--mode', 'local-only', '--json'], scaleDir, projectDir)
+    expect(localOnly.exitCode).toBe(0)
+    const localOnlyReport = parseJson<{
+      ok: boolean
+      provider: string
+      mode: string
+      nextOrder: string[]
+      providerStatus?: { available: boolean; reason: string }
+    }>(localOnly.stdout)
+    expect(localOnlyReport).toMatchObject({
+      ok: true,
+      provider: 'hrain',
+      mode: 'local-only',
+      nextOrder: ['hrain', 'gbrain'],
+    })
+    expect(localOnlyReport.providerStatus).toMatchObject({ available: true })
 
     const status = await runScale(['memory', 'provider', 'status', '--json'], scaleDir, projectDir)
     expect(status.exitCode).toBe(0)
     const statusReport = parseJson<{ routing: { mode: string; defaultOrder: string[] } }>(status.stdout)
-    expect(statusReport.routing.mode).toBe('external-first')
-    expect(statusReport.routing.defaultOrder).toEqual(['gbrain'])
+    expect(statusReport.routing.mode).toBe('local-only')
+    expect(statusReport.routing.defaultOrder).toEqual(['hrain', 'gbrain'])
   }, 120_000)
 
   it('renders a memory context pack for a scoped task', async () => {
@@ -149,7 +167,7 @@ describe('memory CLI', () => {
     ]))
   }, 120_000)
 
-  it('fails provider recall closed when gbrain is not configured', async () => {
+  it('recalls provider memory through local hrain when external embeddings are unavailable', async () => {
     const scaleDir = makeDir('scale-memory-cli-scale-')
     const projectDir = makeDir('scale-memory-cli-project-')
     const memoryFile = join(projectDir, 'memory.jsonl')
@@ -173,6 +191,9 @@ describe('memory CLI', () => {
     const imported = await runScale(['memory', 'import', memoryFile, '--json'], scaleDir, projectDir)
     expect(imported.exitCode).toBe(0)
 
+    const switched = await runScale(['memory', 'provider', 'use', 'hrain', '--mode', 'local-only', '--json'], scaleDir, projectDir)
+    expect(switched.exitCode).toBe(0)
+
     const recall = await runScale([
       'memory',
       'provider',
@@ -188,11 +209,17 @@ describe('memory CLI', () => {
       items: Array<{ provider: string; id: string; title: string }>
       warnings: string[]
     }>(recall.stdout)
-    expect(recallReport.ok).toBe(false)
-    expect(recallReport.selectedProviders).toEqual([])
+    expect(recallReport.ok).toBe(true)
+    expect(recallReport.selectedProviders).toEqual(['hrain'])
     expect(recallReport.fallbackUsed).toBe(false)
-    expect(recallReport.items).toEqual([])
-    expect(recallReport.warnings).toContainEqual(expect.stringContaining('gbrain skipped'))
+    expect(recallReport.items).toEqual([
+      expect.objectContaining({
+        provider: 'hrain',
+        id: 'MEM-provider-oauth',
+        title: 'OAuth callback uses Redis state',
+      }),
+    ])
+    expect(recallReport.warnings).toEqual([])
 
     const packResult = await runScale([
       'memory',
@@ -206,8 +233,10 @@ describe('memory CLI', () => {
     expect(packResult.exitCode).toBe(0)
     const pack = parseJson<{ sections: Array<{ id: string; included: boolean; items: Array<{ type: string; provider?: string; id?: string }> }> }>(packResult.stdout)
     const providerMemory = pack.sections.find(section => section.id === 'provider-memory')
-    expect(providerMemory).toMatchObject({ included: false })
-    expect(providerMemory?.items).toEqual([])
+    expect(providerMemory).toMatchObject({ included: true })
+    expect(providerMemory?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'hrain', id: 'MEM-provider-oauth' }),
+    ]))
   }, 120_000)
 
   it('rejects memory import paths that escape the project directory', async () => {

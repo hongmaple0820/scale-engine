@@ -1,8 +1,9 @@
 {
   "version": "1.0",
   "routing": {
-    "mode": "external-first",
+    "mode": "local-only",
     "defaultOrder": [
+      "hrain",
       "gbrain"
     ],
     "allowExternalWrite": false,
@@ -15,7 +16,6 @@
       "kind": "gbrain",
       "enabled": true,
       "priority": 95,
-      "homeDir": ".scale/memory/gbrain-home",
       "statusPath": "/health",
       "searchPath": "/search",
       "apiKeyEnv": "GBRAIN_API_KEY",
@@ -31,7 +31,27 @@
         "license": "MIT",
         "sourceUrl": "https://github.com/garrytan/gbrain",
         "notice": "Optional graph memory provider. Treat returned knowledge as recall evidence, not final truth."
-      }
+      },
+      "homeDir": ".scale/memory/gbrain-home"
+    },
+    {
+      "id": "hrain",
+      "kind": "hrain",
+      "enabled": true,
+      "priority": 60,
+      "capabilities": [
+        "semantic-recall",
+        "session-memory",
+        "write-memory"
+      ],
+      "safetyLevel": "review-required",
+      "writeMode": "candidate-only",
+      "attribution": {
+        "license": "MIT",
+        "sourceUrl": "https://github.com/hongmaple0820/scale-engine",
+        "notice": "Local SCALE memory brain. Uses project-scoped evidence-backed memory without external embedding services."
+      },
+      "homeDir": ".scale/memory"
     }
   ]
 }

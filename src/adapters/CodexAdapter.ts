@@ -41,7 +41,7 @@ export class CodexAdapter implements IAgentAdapter {
           { matcher: '', command: 'scale gate pre-tool Bash --args-json "$ARGS" --session-id "$SESSION_ID"' },
         ],
         'post-exec': [
-          { matcher: '', command: 'scale gate post-tool Bash --exit-code "$EXIT_CODE" --session-id "$SESSION_ID"' },
+          { matcher: '', command: 'scale gate post-tool Bash --args-json "$ARGS" --exit-code "$EXIT_CODE" --session-id "$SESSION_ID"' },
         ],
       },
     }
@@ -173,4 +173,3 @@ ${renderAgentFullWorkflowGuidance()}
     }
   }
 }
-

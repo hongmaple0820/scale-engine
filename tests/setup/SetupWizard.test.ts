@@ -5,7 +5,7 @@ import type { DependencyBootstrapReport } from '../../src/bootstrap/DependencyBo
 import type { MemoryProviderUseReport } from '../../src/memory/MemoryProviders.js'
 
 describe('setup wizard', () => {
-  it('lets interactive users choose gbrain routing before install confirmation', async () => {
+  it('lets interactive users choose local hrain routing before install confirmation', async () => {
     const prompts: string[] = []
     const report = await runSetupWizard({
       projectDir: process.cwd(),
@@ -25,27 +25,26 @@ describe('setup wizard', () => {
         provider: options.provider,
         mode: options.mode ?? 'auto',
         path: '.scale-test/memory-providers.json',
-        previousOrder: ['gbrain'],
+        previousOrder: ['gbrain', 'hrain'],
         nextOrder: [options.provider],
         warnings: [],
       }) as MemoryProviderUseReport,
     })
 
     expect(report.interactiveChoices).toMatchObject({
-      memoryProvider: 'gbrain',
-      memoryMode: 'external-first',
+      memoryProvider: 'hrain',
+      memoryMode: 'local-only',
     })
     expect(report.memoryProviderSwitch).toMatchObject({
-      provider: 'gbrain',
-      mode: 'external-first',
+      provider: 'hrain',
+      mode: 'local-only',
     })
     expect(report.applied).toBe(false)
     expect(report.prompts).toEqual(expect.arrayContaining([
       expect.stringContaining('Memory provider'),
-      expect.stringContaining('gbrain routing mode'),
       expect.stringContaining('Run installation'),
     ]))
-    expect(prompts.join('')).toContain('gbrain')
+    expect(prompts.join('')).toContain('hrain')
   })
 
   it('lets interactive users choose packs and selected install items', async () => {

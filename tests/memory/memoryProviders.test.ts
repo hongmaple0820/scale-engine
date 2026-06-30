@@ -14,7 +14,7 @@ const gbrainRuntime = vi.hoisted(() => ({
 vi.mock('../../src/core/ExternalCommand.js', () => externalCommand)
 vi.mock('../../src/core/GbrainRuntime.js', () => gbrainRuntime)
 
-import { inspectGbrainCliHealth, inspectMemoryProviders } from '../../src/memory/MemoryProviders.js'
+import { defaultMemoryProvidersConfig, inspectGbrainCliHealth, inspectMemoryProviders } from '../../src/memory/MemoryProviders.js'
 
 const degradedDoctor = JSON.stringify({
   schema_version: 2,
@@ -56,6 +56,14 @@ describe('MemoryProviders gbrain health', () => {
     gbrainRuntime.runGbrainCommandSync.mockReset()
   })
 
+  it('defaults to local-only hrain before optional gbrain', () => {
+    const config = defaultMemoryProvidersConfig()
+
+    expect(config.routing.mode).toBe('local-only')
+    expect(config.routing.defaultOrder).toEqual(['hrain', 'gbrain'])
+    expect(config.providers.map(provider => provider.id)).toEqual(['hrain', 'gbrain'])
+  })
+
   it('treats configured gbrain as available when only non-recall doctor checks fail', () => {
     externalCommand.externalCommandExists.mockReturnValue(true)
     gbrainRuntime.runGbrainCommandSync.mockImplementation(() => ({
@@ -94,7 +102,10 @@ describe('MemoryProviders gbrain health', () => {
 
     expect(gbrain).toMatchObject({
       available: false,
-      reason: 'gbrain CLI is installed but no brain is configured; run `gbrain init --pglite` before autonomous recall',
+      reason: 'gbrain CLI is installed but no brain is configured; use local hrain or initialize a local embedding-backed gbrain before autonomous recall',
+    })
+    expect(report.providers.find(provider => provider.id === 'hrain')).toMatchObject({
+      available: true,
     })
   })
 

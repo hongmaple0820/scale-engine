@@ -190,7 +190,7 @@ describe('dependency bootstrap post-checks', () => {
             capabilities: ['graph-recall'],
             safetyLevel: 'review-required',
             writeMode: 'disabled',
-            reason: 'gbrain CLI is available for default graph-backed recall',
+            reason: 'gbrain CLI is available for optional graph-backed recall',
           },
         ],
         availableProviderCount: 1,

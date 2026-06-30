@@ -92,18 +92,18 @@ export class ClaudeCodeAdapter implements IAgentAdapter {
           { matcher: '', command: 'scale context inject --session-id $CLAUDE_SESSION_ID' },
         ],
         PreToolUse: [
-          { matcher: 'Bash', command: 'scale gate pre-tool Bash --args-json $TOOL_INPUT_JSON --session-id $CLAUDE_SESSION_ID' },
-          { matcher: 'Edit|Write|MultiEdit', command: 'scale gate pre-tool Edit --args-json $TOOL_INPUT_JSON --session-id $CLAUDE_SESSION_ID' },
+          { matcher: 'Bash', command: 'scale gate pre-tool Bash --args-json "$TOOL_INPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
+          { matcher: 'Edit|Write|MultiEdit', command: 'scale gate pre-tool Edit --args-json "$TOOL_INPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
         ],
         PostToolUse: [
-          { matcher: 'Edit|Write|MultiEdit', command: 'scale gate post-tool Edit --args-json $TOOL_INPUT_JSON --output-json $TOOL_OUTPUT_JSON --session-id $CLAUDE_SESSION_ID' },
-          { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json $TOOL_INPUT_JSON --exit-code $TOOL_EXIT_CODE --session-id $CLAUDE_SESSION_ID' },
+          { matcher: 'Edit|Write|MultiEdit', command: 'scale gate post-tool Edit --args-json "$TOOL_INPUT_JSON" --output-json "$TOOL_OUTPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
+          { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json "$TOOL_INPUT_JSON" --exit-code "$TOOL_EXIT_CODE" --session-id "$CLAUDE_SESSION_ID"' },
         ],
         Stop: [
-          { matcher: '', command: 'scale gate before-stop --session-id $CLAUDE_SESSION_ID --hook-safe' },
+          { matcher: '', command: 'scale gate before-stop --session-id "$CLAUDE_SESSION_ID" --hook-safe' },
         ],
         SessionEnd: [
-          { matcher: '', command: 'scale session end --session-id $CLAUDE_SESSION_ID' },
+          { matcher: '', command: 'scale session end --session-id "$CLAUDE_SESSION_ID"' },
         ],
       },
       permissions: {

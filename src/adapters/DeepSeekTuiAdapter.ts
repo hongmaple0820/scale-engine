@@ -88,19 +88,19 @@ max_subagents = 5
 #
 # [[hooks.hooks]]
 # event = "session_start"
-# command = "scale context inject --session-id $DEEPSEEK_SESSION_ID"
+# command = "scale context inject --session-id '$DEEPSEEK_SESSION_ID'"
 #
 # [[hooks.hooks]]
 # event = "tool_call_before"
-# command = "scale gate pre-tool Bash --args-json '$TOOL_INPUT_JSON' --session-id $DEEPSEEK_SESSION_ID"
+# command = "scale gate pre-tool Bash --args-json '$TOOL_INPUT_JSON' --session-id '$DEEPSEEK_SESSION_ID'"
 #
 # [[hooks.hooks]]
 # event = "tool_call_after"
-# command = "scale gate post-tool Bash --exit-code '$TOOL_EXIT_CODE' --session-id $DEEPSEEK_SESSION_ID"
+# command = "scale gate post-tool Bash --args-json '$TOOL_INPUT_JSON' --exit-code '$TOOL_EXIT_CODE' --session-id '$DEEPSEEK_SESSION_ID'"
 #
 # [[hooks.hooks]]
 # event = "session_end"
-# command = "scale session end --session-id $DEEPSEEK_SESSION_ID"
+# command = "scale session end --session-id '$DEEPSEEK_SESSION_ID'"
 `
 
     return config

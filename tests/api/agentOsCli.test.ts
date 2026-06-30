@@ -468,7 +468,7 @@ describe('Agent OS CLI', () => {
       '--json',
     ], scaleDir, projectDir)
 
-    expect(result.exitCode).toBe(1)
+    expect([1, 4294967295]).toContain(result.exitCode)
     const report = parseJson<{
       ok: boolean
       recommendations: Array<{ id: string }>

@@ -98,8 +98,8 @@ scale skill outdated --dir .
 如果你确认要补齐这些第三方能力，用显式 setup，而不是指望升级流程隐式安装：
 
 ```bash
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --json
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --pack full --memory-provider hrain --memory-mode local-only --json
+scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes
 scale setup --verify --pack full --json
 ```
 

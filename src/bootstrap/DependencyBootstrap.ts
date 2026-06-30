@@ -173,7 +173,7 @@ const GRAPHIFY_PIP_INSTALL = 'pip install graphify && graphify install --platfor
 const GRAPHIFY_PIP3_INSTALL = 'pip3 install graphify && graphify install --platform codex'
 const GRAPHIFY_PYTHON_INSTALL = 'python -m pip install graphify && graphify install --platform codex'
 const GRAPHIFY_PYTHON3_INSTALL = 'python3 -m pip install graphify && graphify install --platform codex'
-const GBRAIN_INSTALL = 'bun install -g github:garrytan/gbrain && gbrain init --pglite'
+const GBRAIN_INSTALL = 'bun install -g github:garrytan/gbrain'
 const GBRAIN_SOURCE = 'https://github.com/garrytan/gbrain'
 const GITNEXUS_SOURCE = 'https://github.com/abhigyanpatwari/GitNexus'
 const LARK_CLI_SOURCE = 'https://github.com/larksuite/cli'
@@ -299,16 +299,28 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     healthCheck: checkRtkHealth,
   },
   {
+    id: 'hrain',
+    name: 'Hrain Local Memory',
+    kind: 'cli',
+    packs: ['memory'],
+    source: 'https://github.com/hongmaple0820/scale-engine',
+    detect: () => 'built-in:scale-memory-brain',
+    prerequisites: [],
+    manualReason: 'Built into SCALE as the dependency-free local memory provider.',
+    installCommand: () => null,
+    healthCheck: checkHrainHealth,
+  },
+  {
     id: 'gbrain',
     name: 'GBrain',
     kind: 'cli',
-    packs: ['memory'],
+    packs: [],
     source: GBRAIN_SOURCE,
     detectCommand: 'gbrain',
     prerequisites: ['bun'],
-    manualReason: 'The official standalone GBrain install needs Bun and then a configured brain (`gbrain init --pglite`) before cross-session recall is usable.',
+    manualReason: 'Optional graph memory enhancement. It needs Bun and a configured local embedding-backed brain before semantic recall is usable.',
     installCommand: ctx => buildGbrainInstallCommand(ctx),
-    initializeCommands: () => ['gbrain init --pglite --no-embedding'],
+    initializeCommands: () => ['gbrain init --pglite --embedding-model ollama:nomic-embed-text --embedding-dimensions 768'],
     healthCheck: checkGbrainHealth,
   },
   {
@@ -552,7 +564,8 @@ function buildReport(
   if (items.some(item => item.id === 'taste-skill')) recommendations.push('Use taste-skill to set product visual direction before UI implementation.')
   if (items.some(item => item.id === 'awesome-design-md')) recommendations.push('Use awesome-design-md as the source of DESIGN.md, brand direction, and visual-language selection.')
   if (items.some(item => item.id === 'ui-ux-pro-max')) recommendations.push('Use ui-ux-pro-max for UX flow, UI state, accessibility, and responsive acceptance checks.')
-  if (items.some(item => item.id === 'gbrain')) recommendations.push('After GBrain is installed, validate remote or thin-client health with `scale memory provider status --json`.')
+  if (items.some(item => item.id === 'hrain')) recommendations.push('Local hrain memory is built in; validate routing with `scale memory provider status --json`.')
+  if (items.some(item => item.id === 'gbrain')) recommendations.push('After GBrain is installed, validate local embedding-backed health with `scale memory provider status --json`.')
   if (items.some(item => item.id === 'lark-cli')) recommendations.push('After Feishu/Lark CLI is installed, run `lark-cli config init --new --lang zh`, `lark-cli auth login --recommend --no-wait`, and `lark-cli doctor` before enabling remote-control workflows.')
   if (items.some(item => item.id === 'lark-skills')) recommendations.push('Feishu/Lark skills must include lark-shared, lark-im, lark-event, lark-wiki, lark-doc, lark-base, and lark-task for message, mobile-control, project, and knowledge workflows.')
   if (items.some(item => item.id === 'graphify' || item.id === 'codegraph')) recommendations.push('After knowledge tools are installed, run `scale codegraph status --json` and initialize the project index or graph artifacts as needed.')
@@ -888,9 +901,10 @@ export function runDependencyBootstrapPostChecks(input: {
       'opencode-cli',
     ].includes(id)))
   const results: DependencyBootstrapPostCheckResult[] = []
-  const memoryReport = input.items.some(item => item.id === 'gbrain')
+  const memoryReport = input.items.some(item => item.id === 'hrain' || item.id === 'gbrain')
     ? inspectMemory({ projectDir: input.projectDir, scaleDir: input.scaleDir })
     : undefined
+  const availableMemoryProviders = memoryReport?.providers.filter(provider => provider.available) ?? []
   const gbrain = memoryReport?.providers.find(provider => provider.id === 'gbrain')
 
   if (toolIds.length > 0) {
@@ -918,7 +932,7 @@ export function runDependencyBootstrapPostChecks(input: {
 
   if (memoryReport) {
     const warnings = [...memoryReport.warnings]
-    const status = !gbrain?.available
+    const status = availableMemoryProviders.length === 0
       ? shouldBlockMemoryProviderPostCheck(input.packIds, input.items) ? 'failed' : 'warn'
       : warnings.length > 0 ? 'warn' : 'passed'
     results.push({
@@ -926,12 +940,15 @@ export function runDependencyBootstrapPostChecks(input: {
       label: 'Memory Provider',
       command: 'scale memory provider status --json',
       status,
-      summary: gbrain
-        ? `mode=${memoryReport.routing.mode}; order=${memoryReport.routing.defaultOrder.join(' -> ')}; gbrain=${gbrain.available ? 'available' : 'unavailable'}`
-        : 'gbrain provider entry is missing from routing policy',
+      summary: `mode=${memoryReport.routing.mode}; order=${memoryReport.routing.defaultOrder.join(' -> ')}; available=${availableMemoryProviders.map(provider => provider.id).join(', ') || 'none'}`,
       details: {
         warnings,
         gbrainReason: gbrain?.reason,
+        providers: memoryReport.providers.map(provider => ({
+          id: provider.id,
+          available: provider.available,
+          reason: provider.reason,
+        })),
       },
     })
   }
@@ -1237,7 +1254,29 @@ function checkGbrainHealth(context: BootstrapInstallContext): DependencyBootstra
       ? 'gbrain CLI is installed but no brain is configured yet; cross-session recall will fail until initialized.'
       : health.reason,
     recoveryHint: health.recoveryHint,
-    nextCommands: health.nextCommands ?? ['gbrain init --pglite --no-embedding', 'gbrain doctor --json', 'scale memory provider status --json'],
+    nextCommands: health.nextCommands ?? [
+      'scale memory provider use hrain --mode local-only --json',
+      'gbrain init --pglite --embedding-model ollama:nomic-embed-text --embedding-dimensions 768',
+      'gbrain doctor --json',
+      'scale memory provider status --json',
+    ],
+  }
+}
+
+function checkHrainHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
+  const providerReport = inspectMemoryProviders({ projectDir: context.projectDir })
+  const provider = providerReport.providers.find(item => item.id === 'hrain')
+  if (provider?.available) {
+    return {
+      status: 'ok',
+      reason: provider.reason,
+    }
+  }
+  return {
+    status: 'warn',
+    bootstrapStatus: 'needs-init',
+    reason: provider?.reason ?? 'hrain provider is missing from memory routing policy.',
+    nextCommands: ['scale memory provider use hrain --mode local-only --json'],
   }
 }
 
@@ -1752,10 +1791,15 @@ export function applyDependencyBootstrapPostActions(
   const ids = new Set(items.map(item => item.id))
   const actions: string[] = []
 
-  if (ids.has('gbrain')) {
+  if (ids.has('hrain') || ids.has('gbrain')) {
     const memoryConfig = writeMemoryConfig({ projectDir, scaleDir })
     actions.push(`${memoryConfig.written ? 'Wrote' : 'Reused'} ${memoryConfig.path}`)
-    const provider = switchMemoryProvider({ projectDir, scaleDir, provider: 'gbrain' })
+    const provider = switchMemoryProvider({
+      projectDir,
+      scaleDir,
+      provider: ids.has('hrain') ? 'hrain' : 'gbrain',
+      mode: ids.has('hrain') ? 'local-only' : 'external-first',
+    })
     const previousOrder = provider.previousOrder.join(' -> ')
     const nextOrder = provider.nextOrder.join(' -> ')
     actions.push(previousOrder === nextOrder
@@ -1799,7 +1843,7 @@ function buildPostCheckCommands(packIds: DependencyBootstrapPackId[], items: Dep
     if (browserToolIds.length > 0) commands.add(`scale tool doctor --tools ${browserToolIds.join(',')} --json`)
     commands.add('scale skill doctor --json')
   }
-  if (ids.has('gbrain')) {
+  if (ids.has('hrain') || ids.has('gbrain')) {
     commands.add('scale memory provider status --json')
   }
   if (['codegraph', 'graphify', 'lark-cli', 'lark-skills', 'gitnexus'].some(id => ids.has(id))) {

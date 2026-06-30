@@ -4,6 +4,7 @@
 import type { IDetector, DetectorContext } from './Gateway.js'
 import type { ToolUseInput, ToolResultInput, StopInput, DetectorResult } from '../artifact/types.js'
 import { createHash } from 'node:crypto'
+import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
 
 const hashArgs = (args: unknown): string =>
   createHash('md5').update(JSON.stringify(args)).digest('hex').slice(0, 8)
@@ -112,19 +113,23 @@ export class PrematureDoneDetector implements IDetector {
       filter: (e) => ['Edit', 'Write', 'MultiEdit'].includes((e.payload as { tool: string }).tool),
     })
     if (edits.length === 0) return { triggered: false }
+    const lastEditTimestamp = Math.max(...edits.map(event => event.timestamp))
 
     // Harness: 检查验证命令是否运行
     const verifications = await ctx.eventBus.query({
       sessionId: input.sessionId,
-      types: ['tool.completed'],
+      types: ['tool.completed', 'tool.failed', 'verification.recorded'],
       filter: (e) => {
-        const p = e.payload as { tool: string; args: { command?: string } }
-        return p.tool === 'Bash' && /test|lint|build|typecheck/i.test(p.args.command ?? '')
+        const p = e.payload as { tool?: string; args?: { command?: string }; command?: string }
+        const command = p.args?.command ?? p.command
+        return (p.tool === 'Bash' || e.type === 'verification.recorded') && isVerificationCommand(command)
       },
     })
 
+    const latestRuntimeVerification = latestRuntimeVerificationForSession(input.sessionId, lastEditTimestamp)
+
     // 情况1：完全未验证
-    if (verifications.length === 0) {
+    if (verifications.length === 0 && !latestRuntimeVerification) {
       ctx.eventBus.emit('behavior.premature_done', { reason: 'no_verification' }, { sessionId: input.sessionId })
       return {
         triggered: true,
@@ -135,9 +140,13 @@ export class PrematureDoneDetector implements IDetector {
     }
 
     // 情况2：验证在编辑之前（文章：Premature Victory Declaration）
-    const lastVerify = verifications[0]
-    const lastEdit = edits[0]
-    if (lastVerify.timestamp < lastEdit.timestamp) {
+    const latestEventVerificationTimestamp = verifications.length > 0
+      ? Math.max(...verifications.map(event => event.timestamp))
+      : 0
+    const latestRuntimeVerificationTimestamp = latestRuntimeVerification
+      ? Date.parse(latestRuntimeVerification.createdAt)
+      : 0
+    if (Math.max(latestEventVerificationTimestamp, latestRuntimeVerificationTimestamp) < lastEditTimestamp) {
       return {
         triggered: true,
         severity: 'block',
@@ -145,12 +154,18 @@ export class PrematureDoneDetector implements IDetector {
       }
     }
 
+    if (latestRuntimeVerification?.status === 'failed') {
+      ctx.eventBus.emit('behavior.premature_done', { reason: 'verification_failed' }, { sessionId: input.sessionId })
+      return {
+        triggered: true,
+        severity: 'block',
+        reason: '检测到最近一次验证失败，不能声称完成。请修复失败后重新运行验证。',
+      }
+    }
+
     // 情况3：Harness 新增 - 检查测试结果是否真正通过
     // 文章启发：Agent 可能认为 "SUCCESS" 就通过，但实际测试 0/0
-    const testCmd = verifications.find(e => {
-      const p = e.payload as { args: { command?: string } }
-      return /test/i.test(p.args.command ?? '')
-    })
+    const testCmd = verifications.find(e => /test/i.test(commandFromVerificationEvent(e.payload) ?? ''))
     if (testCmd) {
       const output = (testCmd.payload as { output?: string }).output ?? ''
       // 检测测试 0/0 异常
@@ -176,10 +191,7 @@ export class PrematureDoneDetector implements IDetector {
     }
 
     // 情况4：Harness 新增 - 检查编译是否通过
-    const buildCmd = verifications.find(e => {
-      const p = e.payload as { args: { command?: string } }
-      return /build|compile|tsc/i.test(p.args.command ?? '')
-    })
+    const buildCmd = verifications.find(e => /build|compile|tsc/i.test(commandFromVerificationEvent(e.payload) ?? ''))
     if (buildCmd) {
       const exitCode = (buildCmd.payload as { exitCode?: number }).exitCode ?? 0
       if (exitCode !== 0) {
@@ -195,6 +207,52 @@ export class PrematureDoneDetector implements IDetector {
 
     return { triggered: false }
   }
+}
+
+function latestRuntimeVerificationForSession(sessionId: string, afterTimestamp: number): RuntimeEvidenceRecord | null {
+  const evidence = new RuntimeEvidenceLedger({
+    projectDir: process.env.SCALE_PROJECT_DIR ?? process.cwd(),
+    scaleDir: process.env.SCALE_DIR ?? '.scale',
+    createDirs: false,
+  })
+
+  const records = evidence.list({ sessionId, limit: 100 })
+    .filter(record => record.kind === 'command')
+    .filter(record => isVerificationCommand(record.command))
+    .filter(record => Date.parse(record.createdAt) >= afterTimestamp)
+
+  return records[0] ?? null
+}
+
+function commandFromVerificationEvent(payload: unknown): string | undefined {
+  const event = payload as {
+    args?: { command?: unknown; cmd?: unknown; script?: unknown }
+    command?: unknown
+    cmd?: unknown
+    script?: unknown
+  }
+  return firstString(
+    event.args?.command,
+    event.args?.cmd,
+    event.args?.script,
+    event.command,
+    event.cmd,
+    event.script,
+  )
+}
+
+function isVerificationCommand(command: unknown): boolean {
+  return typeof command === 'string'
+    && /\b(test|lint|build|typecheck|tsc|vitest|jest|playwright|preflight|verify)\b/i.test(command)
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const normalized = value.trim()
+    if (normalized.length > 0) return normalized
+  }
+  return undefined
 }
 
 // 5. 甩锅检测

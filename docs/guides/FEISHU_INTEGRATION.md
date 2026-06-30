@@ -19,7 +19,7 @@ This guide defines the default SCALE integration path for Feishu/Lark as a commu
 Recommended setup:
 
 ```bash
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes
 lark-cli config init --new --lang zh
 lark-cli auth login --recommend --no-wait
 lark-cli doctor

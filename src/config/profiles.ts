@@ -164,7 +164,7 @@ export function getBootstrapPlanForProfile(profileId: string, governancePack?: s
   const profile = getProfile(profileId)
   const packs = getRecommendedBootstrapPacks(profile.id, governancePack)
   const packArg = packs.join(',')
-  const memoryArgs = packs.includes('memory') ? ' --memory-provider gbrain --memory-mode external-first' : ''
+  const memoryArgs = packs.includes('memory') ? ' --memory-provider hrain --memory-mode local-only' : ''
   return {
     profileId: profile.id,
     governancePack,
@@ -206,7 +206,7 @@ export function generateConfigForProfile(
     lines.push(`    backend: graphify`)
     lines.push(`    graph: graphify-out/graph.json`)
     lines.push(`  memory:`)
-    lines.push(`    provider: gbrain`)
+    lines.push(`    provider: hrain`)
   }
   lines.push(``)
 

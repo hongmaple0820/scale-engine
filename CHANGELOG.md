@@ -2,6 +2,21 @@
 
 ---
 
+## 0.54.3 - 2026-06-30
+
+### Local Memory
+- Make `hrain` the default local-only memory provider path for install, setup, doctor, quickstart, and profile guidance so first-run memory does not depend on OpenAI or any external embedding service.
+- Keep `gbrain` as an optional graph memory provider while preserving local-only routing and provider recall fallback behavior.
+
+### Gate Reliability
+- Record Bash verification commands as runtime evidence and emit `verification.recorded` events so `scale gate before-stop` can recognize real lint, test, build, preflight, and verify runs instead of looping on missing validation signals.
+- Make hook session resolution more tolerant of missing adapter session ids while preserving evidence ordering after edits.
+
+### Real Project Validation
+- Validate the published-style preflight path against `E:\project\qwen-project\blog`, including build fixes for localized links and Markdown rendering without `dangerouslySetInnerHTML`.
+
+---
+
 ## 0.54.2 - 2026-06-30
 
 ### Installer

@@ -124,10 +124,11 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
         title: lang === 'zh' ? '记忆供应商' : 'Memory provider',
         message: lang === 'zh'
           ? 'gbrain 是默认推荐；也可以跳过，稍后再配置。'
-          : 'gbrain is recommended by default; you can skip and configure it later.',
+          : 'hrain is the local default and needs no external API; gbrain can be enabled explicitly.',
         lang,
-        defaultValue: 'gbrain',
+        defaultValue: 'hrain',
         choices: [
+          { value: 'hrain', label: 'hrain', hint: 'Local SCALE memory, no API key or external embedding service.' },
           { value: 'gbrain', label: 'gbrain', hint: lang === 'zh' ? '图记忆 CLI 模式，推荐。' : 'Graph memory CLI mode, recommended.' },
           { value: 'skip', label: lang === 'zh' ? '跳过' : 'Skip', hint: lang === 'zh' ? '不修改记忆路由。' : 'Do not change memory routing.' },
         ],
@@ -140,10 +141,11 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
         title: lang === 'zh' ? 'gbrain 路由模式' : 'gbrain routing mode',
         message: lang === 'zh'
           ? 'external-first 优先使用外部记忆，失败时再回落。'
-          : 'external-first uses external memory first, then falls back when needed.',
+          : 'local-only uses local memory only; external-first prefers an external provider.',
         lang,
-        defaultValue: 'external-first',
+        defaultValue: memoryProvider === 'hrain' ? 'local-only' : 'external-first',
         choices: [
+          { value: 'local-only', label: 'local-only' },
           { value: 'external-first', label: 'external-first' },
           { value: 'auto', label: 'auto' },
         ],
