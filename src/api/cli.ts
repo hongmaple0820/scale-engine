@@ -69,6 +69,7 @@ import { gatesCommand } from '../cli/gateStatusCommands.js'
 import { scoreCommand } from '../cli/scoreCommands.js'
 import { promptCommand } from '../cli/promptCommands.js'
 import { quickstartCommand } from '../cli/quickstartCommands.js'
+import { installCommand } from '../cli/installCommands.js'
 import { onboardCommand } from '../cli/onboardCommands.js'
 import { tuiCommand } from '../cli/tuiCommands.js'
 import { qaCommand } from '../cli/qaCommands.js'
@@ -98,6 +99,14 @@ import { toolCommand, agentCommand, teamCommand } from '../cli/toolAgentCommands
 import { agentControlCommand } from '../cli/agentControlCommands.js'
 import { dashboardCommand } from '../cli/dashboardCommands.js'
 import { productCommand } from '../cli/productCommands.js'
+import {
+  bridgeCommand as agentOsBridgeCommand,
+  capabilityCommand as agentOsCapabilityCommand,
+  cortexPromotionCommand as agentOsCortexPromotionCommand,
+  delegationCommand as agentOsDelegationCommand,
+  shellCommand as agentOsShellCommand,
+  taskCommand as agentOsTaskCommand,
+} from '../cli/agentOsCommands.js'
 import { writeGovernanceTemplates, type GovernanceMode } from '../workflow/GovernanceTemplates.js'
 import {
   getBootstrapPlanForProfile,
@@ -1745,6 +1754,7 @@ const main = defineCommand({
 
     // Original commands (preserved)
     init: initCommand,
+    install: installCommand,
     setup: setupCommand,
     bootstrap: bootstrapCommand,
     doctor: doctorCommand,
@@ -1781,6 +1791,12 @@ const main = defineCommand({
     loop: loopCommand,
     evidence: evidenceCommand,
     runtime: runtimeCommand,
+    task: agentOsTaskCommand,
+    bridge: agentOsBridgeCommand,
+    capability: agentOsCapabilityCommand,
+    shell: agentOsShellCommand,
+    delegation: agentOsDelegationCommand,
+    'cortex-promotion': agentOsCortexPromotionCommand,
     token: tokenCommand,
     memory: memoryCommand,
     diagnose: diagnoseCommand,

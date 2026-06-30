@@ -1,14 +1,38 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.54.1-orange?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.54.2-orange?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
   <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
-  <img src="https://img.shields.io/badge/npm-0.54.1-cb3837?style=flat-square&logo=npm" alt="npm" />
+  <img src="https://img.shields.io/badge/npm-0.54.2-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
 
 [![RepoStars](https://repostars.dev/api/embed?repo=hongmaple0820%2Fscale-engine&theme=copper)](https://repostars.dev/?repos=hongmaple0820%2Fscale-engine&theme=copper)
 
-# SCALE Engine v0.54.1
+# SCALE Engine v0.54.2
+
+## 客户安装入口
+
+首次接入项目时，优先使用一条主命令：
+
+```bash
+cd your-project
+npx -y @hongmaple0820/scale-engine@latest install --dir .
+```
+
+已全局安装时：
+
+```bash
+cd your-project
+scale install --dir .
+```
+
+`scale install` 会统一完成项目检测、标准化编号选择、工作流初始化、第三方能力规划/确认、安装进度显示、异常反馈和验收摘要。底层的 `scale init`、`scale setup`、`scale setup --verify` 仍保留给高级维护和 CI 拆分步骤。
+
+CI 或团队模板推荐显式参数：
+
+```bash
+scale install --agent codex --profile standard --governance-pack frontend-app --pack core --dir . --json
+```
 
 SCALE Engine 让 AI Agent 不再只靠"自觉"遵守工程规范。它把探索、规划、实现、验证、评审、发版这些要求变成可执行的命令、门禁和证据文件，让人类可以看见 Agent 做了什么、跳过了什么、为什么能交付或不能交付。
 

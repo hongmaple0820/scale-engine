@@ -8,6 +8,10 @@ import { execSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 
 const SILENT_GIT_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore']
+const parsedGitInspectTimeoutMs = Number.parseInt(process.env.SCALE_GIT_INSPECT_TIMEOUT_MS ?? '', 10)
+const GIT_INSPECT_TIMEOUT_MS = Number.isFinite(parsedGitInspectTimeoutMs) && parsedGitInspectTimeoutMs > 0
+  ? parsedGitInspectTimeoutMs
+  : 15_000
 
 // ============================================================================
 // Types
@@ -332,15 +336,15 @@ export class CommitDiscipline {
       const projectDir = this.config.projectDir ?? process.cwd()
 
       const staged = execSync('git diff --cached --name-only', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim().split('\n').filter(Boolean).length
 
       const unstaged = execSync('git diff --name-only', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim().split('\n').filter(Boolean).length
 
       const untracked = execSync('git ls-files --others --exclude-standard', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim().split('\n').filter(Boolean).length
 
       return { staged, unstaged, untracked }
@@ -354,15 +358,15 @@ export class CommitDiscipline {
       const projectDir = this.config.projectDir ?? process.cwd()
 
       const staged = execSync('git diff --cached --name-only', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim().split('\n').filter(Boolean)
 
       const unstaged = execSync('git diff --name-only', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim().split('\n').filter(Boolean)
 
       const untracked = execSync('git ls-files --others --exclude-standard', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim().split('\n').filter(Boolean)
 
       return [...new Set([...staged, ...unstaged, ...untracked])]
@@ -375,7 +379,7 @@ export class CommitDiscipline {
     try {
       const projectDir = this.config.projectDir ?? process.cwd()
       const ts = execSync('git log -1 --format=%ct', {
-        cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: SILENT_GIT_STDIO,
+        cwd: projectDir, encoding: 'utf-8', timeout: GIT_INSPECT_TIMEOUT_MS, stdio: SILENT_GIT_STDIO,
       }).trim()
       const lastCommitEpoch = parseInt(ts, 10) * 1000
       return (this.now().getTime() - lastCommitEpoch) / 60000

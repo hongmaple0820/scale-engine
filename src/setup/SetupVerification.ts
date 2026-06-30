@@ -160,7 +160,7 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
     ...dependencyBootstrap.recommendations,
     ...environment.recommendations,
     ...codeIntelligence.recommendations,
-    `scale tool doctor --tools ${toolIds.join(',')} --json`,
+    toolIds.length > 0 ? `scale tool doctor --tools ${toolIds.join(',')} --json` : '',
   ].filter(Boolean))
 
   return {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer, type Server } from 'node:net'
@@ -8,13 +8,14 @@ import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
 import { MemoryBrain } from '../../src/memory/MemoryBrain.js'
 import { ModelUsageLedger } from '../../src/runtime/ModelUsageLedger.js'
 import { resolveDashboardLaunchPlan } from '../../src/api/DashboardHttpConfig.js'
+import { safeRmSync } from '../helpers/fs.js'
 
 const tempRoots: string[] = []
 const servers: Server[] = []
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.close()
-  for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const root of tempRoots.splice(0)) safeRmSync(root)
 })
 
 describe('DashboardServer API', () => {
@@ -366,6 +367,241 @@ describe('DashboardServer API', () => {
       body: JSON.stringify({ rawPrompt: '   ' }),
     })
     expect(empty.status).toBe(400)
+  })
+
+  it('serves Agent OS task lifecycle and capability contracts through v1 API', async () => {
+    const projectDir = makeTempDir('scale-dashboard-agent-os-api-')
+    const scaleDir = join(projectDir, '.scale')
+    const server = new DashboardServer({ projectDir, scaleDir, projectName: 'Agent OS API Project' })
+    const app = server.getApp()
+
+    const createdResponse = await app.request('/api/v1/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'TASK-HTTP-OS',
+        name: 'HTTP Agent OS task',
+        level: 'L',
+        files: ['src/os/AgentOsTaskStore.ts'],
+        services: ['runtime'],
+        surfaces: ['dashboard', 'agent-tool'],
+      }),
+    })
+    expect(createdResponse.status).toBe(201)
+    const created = await createdResponse.json() as { task: { taskId: string; status: string; level: string } }
+    expect(created.task).toMatchObject({ taskId: 'TASK-HTTP-OS', status: 'created', level: 'L' })
+
+    const started = await json<{ run: { runId: string; status: string }; task: { status: string } }>(await app.request('/api/v1/tasks/TASK-HTTP-OS/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runId: 'RUN-HTTP-OS', agent: 'dashboard-api', contextPackId: 'CTX-HTTP-RUN' }),
+    }))
+    expect(started).toMatchObject({
+      run: { runId: 'RUN-HTTP-OS', status: 'running' },
+      task: { status: 'running' },
+    })
+
+    const checkpointResponse = await app.request('/api/v1/tasks/TASK-HTTP-OS/checkpoints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: 'kernel exposed over HTTP',
+        completedSteps: ['store', 'routes'],
+        remainingSteps: ['tests'],
+        openApprovals: ['approve dashboard bridge scopes'],
+        contextPackId: 'CTX-HTTP-CHECKPOINT',
+      }),
+    })
+    expect(checkpointResponse.status).toBe(201)
+    const checkpoint = await checkpointResponse.json() as { checkpoint: { checkpointId: string; resumePrompt: string } }
+    expect(checkpoint.checkpoint.checkpointId).toMatch(/^CKP-/)
+    expect(checkpoint.checkpoint.resumePrompt).toContain('TASK-HTTP-OS')
+
+    const snapshot = await json<{
+      task: { status: string }
+      run: { status: string }
+      checkpoints: Array<{ summary: string }>
+      timeline: Array<{ kind: string; summary: string }>
+    }>(await app.request('/api/v1/tasks/TASK-HTTP-OS'))
+    expect(snapshot.task.status).toBe('running')
+    expect(snapshot.run.status).toBe('running')
+    expect(snapshot.checkpoints).toContainEqual(expect.objectContaining({ summary: 'kernel exposed over HTTP' }))
+    expect(snapshot.timeline.map(entry => entry.kind)).toEqual(expect.arrayContaining(['event', 'run', 'checkpoint']))
+
+    const workbench = await json<{
+      summary: { tasks: { running: number }; capabilities: { total: number } }
+      tasks: { focused: { task: { taskId: string } } }
+      approvals: { open: Array<{ summary: string; source: string }> }
+      contextPacks: Array<{ id: string; source: string }>
+      panels: Array<{ id: string; status: string; count: number }>
+      timeline: Array<{ kind: string }>
+    }>(await app.request('/api/v1/tasks/TASK-HTTP-OS/workbench?limit=20'))
+    expect(workbench.tasks.focused.task.taskId).toBe('TASK-HTTP-OS')
+    expect(workbench.summary.tasks.running).toBe(1)
+    expect(workbench.summary.capabilities.total).toBeGreaterThan(0)
+    expect(workbench.approvals.open).toContainEqual(expect.objectContaining({
+      summary: 'approve dashboard bridge scopes',
+      source: 'checkpoint',
+    }))
+    expect(workbench.contextPacks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'CTX-HTTP-RUN', source: 'run' }),
+      expect.objectContaining({ id: 'CTX-HTTP-CHECKPOINT', source: 'checkpoint' }),
+    ]))
+    expect(workbench.panels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'approvals', status: 'attention', count: 1 }),
+    ]))
+    expect(workbench.timeline.map(entry => entry.kind)).toEqual(expect.arrayContaining(['run', 'checkpoint', 'event']))
+
+    const completed = await json<{
+      ok: boolean
+      completion: { outcome: string; evidenceIds: string[] }
+      task: { status: string }
+      evidence: { id: string; kind: string; status: string; metadata: { source: string } }
+    }>(await app.request('/api/v1/tasks/TASK-HTTP-OS/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        runId: 'RUN-HTTP-OS',
+        summary: 'HTTP completion signal recorded',
+        validation: ['npm run typecheck'],
+        changedFiles: ['src/dashboard/DashboardServer.ts'],
+      }),
+    }))
+    expect(completed.ok).toBe(true)
+    expect(completed.task.status).toBe('completed')
+    expect(completed.completion.outcome).toBe('complete')
+    expect(completed.completion.evidenceIds).toContain(completed.evidence.id)
+    expect(completed.evidence).toMatchObject({
+      kind: 'final-report',
+      status: 'passed',
+      metadata: { source: 'dashboard-api' },
+    })
+
+    const capabilities = await json<{
+      descriptors: Array<{ id: string; kind: string; trust: string; policyEnabled: boolean }>
+    }>(await app.request('/api/v1/capabilities?capabilities=cua'))
+    expect(capabilities.descriptors).toContainEqual(expect.objectContaining({
+      id: 'desktop-cua',
+      kind: 'desktop',
+      trust: 'blocked',
+      policyEnabled: false,
+    }))
+
+    const mapped = await json<{
+      ok: boolean
+      recommendations: Array<{ id: string }>
+      capabilities: { descriptors: Array<{ id: string; kind: string; status: string }> }
+    }>(await app.request('/api/v1/capabilities/map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: 'Use CUA to inspect a WPS desktop workflow' }),
+    }))
+    expect(mapped.ok).toBe(false)
+    expect(mapped.recommendations.map(item => item.id)).toContain('cua')
+    expect(mapped.capabilities.descriptors).toContainEqual(expect.objectContaining({
+      id: 'desktop-cua',
+      kind: 'desktop',
+      status: 'blocked',
+    }))
+
+    const filtered = await json<{
+      total: number
+      tasks: Array<{ taskId: string; status: string }>
+    }>(await app.request('/api/v1/tasks?status=completed&level=L&agent=dashboard-api&service=runtime&surface=agent-tool&file=src/os/AgentOsTaskStore.ts'))
+    expect(filtered.total).toBe(1)
+    expect(filtered.tasks).toEqual([expect.objectContaining({ taskId: 'TASK-HTTP-OS', status: 'completed' })])
+  })
+
+  it('serves Agent OS bridge registration, heartbeats, auth, and event streams through v1 API', async () => {
+    const projectDir = makeTempDir('scale-dashboard-agent-os-bridge-api-')
+    const scaleDir = join(projectDir, '.scale')
+    const server = new DashboardServer({ projectDir, scaleDir, projectName: 'Agent OS Bridge API Project' })
+    const app = server.getApp()
+    const originalToken = process.env.SCALE_AGENT_OS_API_TOKEN
+
+    try {
+      process.env.SCALE_AGENT_OS_API_TOKEN = 'local-api-token'
+      const unauthorized = await app.request('/api/v1/bridges/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bridgeId: 'BRIDGE-HTTP-IM', name: 'IM Bridge', kind: 'im' }),
+      })
+      expect(unauthorized.status).toBe(401)
+
+      const registeredResponse = await app.request('/api/v1/bridges/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-scale-token': 'local-api-token',
+        },
+        body: JSON.stringify({
+          bridgeId: 'BRIDGE-HTTP-IM',
+          name: 'IM Bridge',
+          kind: 'im',
+          endpoint: 'https://example.test/bridge',
+          token: 'bridge-secret',
+          scopes: ['tasks:read', 'events:read', 'tasks:write'],
+          capabilityIds: ['im-bridge'],
+          metadata: { projectRef: 'cc-connect' },
+        }),
+      })
+      expect(registeredResponse.status).toBe(201)
+      const registered = await registeredResponse.json() as {
+        bridge: { bridgeId: string; kind: string; status: string; tokenHash: string }
+        token: string
+        event: { type: string }
+      }
+      expect(registered.token).toBe('bridge-secret')
+      expect(registered.bridge).toMatchObject({
+        bridgeId: 'BRIDGE-HTTP-IM',
+        kind: 'im',
+        status: 'registered',
+      })
+      expect(registered.bridge.tokenHash).not.toContain('bridge-secret')
+      expect(registered.event.type).toBe('bridge.registered')
+
+      const heartbeat = await json<{
+        bridge: { bridgeId: string; status: string; lastHeartbeatAt: string }
+        event: { type: string; metadata: { bridgeId: string } }
+      }>(await app.request('/api/v1/bridges/BRIDGE-HTTP-IM/heartbeat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer bridge-secret',
+        },
+        body: JSON.stringify({}),
+      }))
+      expect(heartbeat.bridge).toMatchObject({
+        bridgeId: 'BRIDGE-HTTP-IM',
+        status: 'online',
+      })
+      expect(heartbeat.event).toMatchObject({
+        type: 'bridge.heartbeat',
+        metadata: { bridgeId: 'BRIDGE-HTTP-IM' },
+      })
+
+      const bridges = await json<{ bridges: Array<{ bridgeId: string; status: string }> }>(await app.request('/api/v1/bridges'))
+      expect(bridges.bridges).toEqual([expect.objectContaining({ bridgeId: 'BRIDGE-HTTP-IM', status: 'online' })])
+
+      const events = await json<{ total: number; events: Array<{ type: string; metadata: { bridgeId: string } }> }>(
+        await app.request('/api/v1/events?type=bridge.heartbeat'),
+      )
+      expect(events.total).toBe(1)
+      expect(events.events).toEqual([expect.objectContaining({
+        type: 'bridge.heartbeat',
+        metadata: expect.objectContaining({ bridgeId: 'BRIDGE-HTTP-IM' }),
+      })])
+
+      const stream = await app.request('/api/v1/events/stream?limit=5')
+      expect(stream.status).toBe(200)
+      const streamText = await stream.text()
+      expect(streamText).toContain('event: snapshot')
+      expect(streamText).toContain('event: bridge.registered')
+      expect(streamText).toContain('event: bridge.heartbeat')
+    } finally {
+      if (originalToken === undefined) delete process.env.SCALE_AGENT_OS_API_TOKEN
+      else process.env.SCALE_AGENT_OS_API_TOKEN = originalToken
+    }
   })
 
   it('explains dashboard data sources, missing ledgers, and partial runtime wiring', async () => {

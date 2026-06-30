@@ -3,11 +3,12 @@ import { execa } from 'execa'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
+import { safeRmSync } from '../helpers/fs.js'
 
 let dirs: string[] = []
 
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs) safeRmSync(dir)
   dirs = []
 })
 
@@ -24,6 +25,8 @@ async function runScale(args: string[], scaleDir: string, projectDir: string) {
       SCALE_DIR: scaleDir,
       SCALE_PROJECT_DIR: projectDir,
       SCALE_LOG_LEVEL: undefined,
+      GBRAIN_HOME: join(projectDir, '.gbrain-test-home'),
+      GBRAIN_AUDIT_DIR: join(projectDir, '.gbrain-test-home', 'audit'),
     },
     reject: false,
   })

@@ -6,6 +6,7 @@
 
 | Command | Description |
 |---------|-------------|
+| `scale install` | Customer-first one-command workflow installation with standardized prompts, progress, dependency planning, and verification summary |
 | `scale init` | Initialize SCALE governance in a project |
 | `scale setup` | Interactive setup wizard |
 | `scale doctor` | Diagnose SCALE installation and configuration |
@@ -148,6 +149,36 @@ Evidence-driven continuous evolution with instinct extraction.
 | `scale agent-control search --query "<keyword>" --session <session-id> --json` | Search project-scoped agent conversation history |
 | `scale agent-control summary --session <session-id> --json` | Generate and persist `.scale/agents/summaries/<session-id>.json` |
 
+## Agent OS Kernel
+
+| Command | Description |
+|---------|-------------|
+| `scale task create` | Create a durable Agent OS task manifest |
+| `scale task start` | Start a durable task run |
+| `scale task checkpoint` | Save a resumable task checkpoint |
+| `scale task resume` | Resume from the latest or named checkpoint |
+| `scale task complete` | Record explicit task completion and final-report evidence |
+| `scale task status` | Show task, run, checkpoint, and completion state |
+| `scale capability list` | List Agent OS capability descriptors |
+| `scale capability doctor` | Check capability health, policy, evidence, and fallback readiness |
+| `scale capability map` | Map capabilities to a task intent |
+| `scale capability register` | Register a project-scoped Agent OS capability descriptor |
+| `scale capability trust` | Change capability trust level |
+| `scale capability disable` | Disable a project capability with an explicit reason |
+| `scale bridge register` | Register a dashboard, TUI, desktop, IM, remote-agent, or connector bridge |
+| `scale bridge heartbeat` | Record bridge liveness and scope evidence |
+| `scale bridge list` | List registered Agent OS bridges |
+| `scale shell plan` | Classify a shell command before execution |
+| `scale shell run` | Run a governed shell command and record command evidence |
+| `scale shell list` | List governed shell execution history |
+| `scale delegation delegate` | Generate an AI OS collaboration plan and persist Agent OS assignments |
+| `scale delegation review` | Record role or review-gate acceptance/rejection |
+| `scale delegation list` | List multi-agent delegation records |
+| `scale cortex-promotion propose` | Propose a Cortex shadow rule candidate |
+| `scale cortex-promotion hit` | Record a shadow-rule hit or false positive |
+| `scale cortex-promotion approve` | Approve an eligible shadow rule for blocking enforcement |
+| `scale cortex-promotion list` | List Cortex promotion proposals and readiness |
+
 ## Skills
 
 | Command | Description |
@@ -238,8 +269,14 @@ Evidence-driven continuous evolution with instinct extraction.
 ## Examples
 
 ```bash
-# Initialize project
-scale init
+# Install workflow in a customer project
+scale install --dir .
+
+# Non-interactive install for CI or team templates
+scale install --agent codex --profile standard --governance-pack frontend-app --pack core --dir . --json
+
+# Advanced maintenance: initialize only
+scale init --agent codex --dir .
 
 # Run setup wizard
 scale setup --interactive

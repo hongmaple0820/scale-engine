@@ -43,7 +43,7 @@ npm run smoke:graphify -- --large-project /path/to/large-project
 node scripts/workflow/provider-rehearsal.mjs --skip-gbrain --require-graphify --large-project /path/to/large-project
 ```
 
-The rehearsal executes `graphify update <project> --no-cluster` by default so graph generation stays AST/Python based and does not call a model. It locates the generated `graph.json`, parses graph stats, and runs `graphify query`. Use `--semantic-extract` only when semantic LLM extraction is explicitly allowed. Do not commit generated `graphify-out/` artifacts by default; commit only reviewed knowledge summaries, docs, or rules derived from the graph.
+The rehearsal rebuilds `graphify-out/graph.json` through Graphify's local Python watcher by default so graph generation stays AST/Python based and does not call a model. It locates the generated `graph.json`, parses graph stats, and runs `graphify query`. Use `--semantic-extract` only when semantic LLM extraction is explicitly allowed and the installed Graphify release supports it. Do not commit generated `graphify-out/` artifacts by default; commit only reviewed knowledge summaries, docs, or rules derived from the graph.
 
 For GitNexus, keep it as an explicit optional provider because the npm package is licensed under PolyForm-Noncommercial-1.0.0 and may run install/build scripts for native grammar support:
 

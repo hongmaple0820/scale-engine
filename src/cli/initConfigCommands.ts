@@ -118,6 +118,47 @@ function renderSetupVerifyReport(report: Awaited<ReturnType<typeof verifySetup>>
   }
 }
 
+function renderSetupWizardSummary(report: Awaited<ReturnType<typeof runSetupWizard>>, lang: 'zh' | 'en'): void {
+  if (lang === 'zh') {
+    console.log('\nSCALE 交互式安装')
+    console.log(`  项目: ${report.projectDir}`)
+    console.log(`  执行安装: ${report.applied ? '是' : '否'}`)
+    console.log(`  计划项目: ${report.plan.summary.total}`)
+    console.log(`  可安装: ${report.plan.summary.ready}`)
+    console.log(`  已安装/刚安装: ${report.final.summary.installed + report.final.summary.installedNow}`)
+    console.log(`  失败: ${report.final.summary.failed}`)
+    if (report.memoryProviderSwitch) {
+      const switched = report.memoryProviderSwitch
+      console.log('  记忆供应商:')
+      console.log(`    provider=${switched.provider}; mode=${switched.mode}; config=${switched.path}`)
+      console.log(`    order=${switched.previousOrder.join(' -> ')} => ${switched.nextOrder.join(' -> ')}`)
+      if (switched.providerStatus) {
+        console.log(`    status=${switched.providerStatus.available ? 'available' : 'not-ready'}; reason=${switched.providerStatus.reason}`)
+      }
+      for (const warning of switched.warnings) console.log(`    [警告] ${warning}`)
+    }
+    return
+  }
+
+  console.log('\nSCALE Interactive Setup')
+  console.log(`  Project: ${report.projectDir}`)
+  console.log(`  Applied: ${report.applied}`)
+  console.log(`  Planned items: ${report.plan.summary.total}`)
+  console.log(`  Ready: ${report.plan.summary.ready}`)
+  console.log(`  Installed/installed now: ${report.final.summary.installed + report.final.summary.installedNow}`)
+  console.log(`  Failed: ${report.final.summary.failed}`)
+  if (report.memoryProviderSwitch) {
+    const switched = report.memoryProviderSwitch
+    console.log('  Memory provider:')
+    console.log(`    provider=${switched.provider}; mode=${switched.mode}; config=${switched.path}`)
+    console.log(`    order=${switched.previousOrder.join(' -> ')} => ${switched.nextOrder.join(' -> ')}`)
+    if (switched.providerStatus) {
+      console.log(`    status=${switched.providerStatus.available ? 'available' : 'not-ready'}; reason=${switched.providerStatus.reason}`)
+    }
+    for (const warning of switched.warnings) console.log(`    [WARN] ${warning}`)
+  }
+}
+
 // ============================================================================
 // init command
 // ============================================================================
@@ -513,6 +554,12 @@ export const setupCommand = defineCommand({
       allowExternalWrite: isTruthyFlag(args['allow-external-write']) ? true : undefined,
       promptLanguage: isTruthyFlag(args.interactive) && !args.lang,
     })
+    if (!args.json) {
+      renderSetupWizardSummary(report, lang)
+      console.log(renderDependencyBootstrapReport(report.final, lang))
+      if (!report.ok) process.exitCode = 1
+      return
+    }
     if (!args.json) {
       console.log(lang === 'zh' ? '\nSCALE 交互式安装' : '\nSCALE Interactive Setup')
       console.log(lang === 'zh'

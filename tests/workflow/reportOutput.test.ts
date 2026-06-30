@@ -64,8 +64,8 @@ describe('report output helpers', () => {
 
   it('summarizeCommandRecord drops raw stdout and stderr payloads', () => {
     const summarized = summarizeCommandRecord({
-      name: 'graphify-update',
-      command: 'graphify update repo --no-cluster',
+      name: 'graphify-rebuild',
+      command: 'python -c "from graphify.watch import _rebuild_code; _rebuild_code(Path(\'.\'))"',
       exitCode: 0,
       stdout: '[graphify watch] Rebuilt (no clustering): 10 nodes, 20 edges\n[graphify watch] graph.json updated in repo\\graphify-out',
       stderr: '',

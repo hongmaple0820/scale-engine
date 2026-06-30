@@ -117,11 +117,31 @@ describe('ScaleMCPServer', () => {
     expect((res.result as any).serverInfo.name).toBe('scale-engine')
   })
 
-  it('tools/list returns 10 tools', async () => {
+  it('tools/list returns workflow and Agent OS tools', async () => {
     const res = await server.handleRequest({
       jsonrpc: '2.0', id: 2, method: 'tools/list',
     })
-    expect((res.result as any).tools.length).toBe(10)
+    const tools = (res.result as any).tools as Array<{ name: string }>
+    expect(tools.length).toBeGreaterThanOrEqual(18)
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining([
+      'scale_create',
+      'task_create',
+      'task_start',
+      'task_checkpoint',
+      'task_resume',
+      'complete_task',
+      'capability_list',
+      'capability_map',
+      'bridge_register',
+      'bridge_heartbeat',
+      'shell_plan',
+      'shell_run',
+      'delegation_delegate',
+      'delegation_review',
+      'cortex_promotion_propose',
+      'cortex_promotion_hit',
+      'cortex_promotion_approve',
+    ]))
   })
 
   it('scale_create creates artifact', async () => {
@@ -207,6 +227,229 @@ describe('ScaleMCPServer', () => {
     const stats = JSON.parse((res.result as any).content[0].text)
     expect(stats.artifactCount).toBe(1)
   })
+
+  it('Agent OS MCP tools create resumable tasks and explicit completion evidence', async () => {
+    const created = await server.handleToolCall('task_create', {
+      taskId: 'TASK-MCP-OS',
+      name: 'MCP Agent OS task',
+      level: 'L',
+      files: ['src/api/mcp.ts'],
+    }) as { task: { taskId: string; status: string; level: string } }
+    expect(created.task).toMatchObject({ taskId: 'TASK-MCP-OS', status: 'created', level: 'L' })
+
+    const started = await server.handleToolCall('task_start', {
+      taskId: 'TASK-MCP-OS',
+      runId: 'RUN-MCP-OS',
+      agent: 'mcp-client',
+    }) as { run: { runId: string; status: string }; task: { status: string } }
+    expect(started).toMatchObject({
+      run: { runId: 'RUN-MCP-OS', status: 'running' },
+      task: { status: 'running' },
+    })
+
+    const checkpoint = await server.handleToolCall('task_checkpoint', {
+      taskId: 'TASK-MCP-OS',
+      summary: 'MCP bridge checkpointed',
+      completedSteps: ['tool-schema'],
+      remainingSteps: ['completion'],
+    }) as { checkpoint: { checkpointId: string; resumePrompt: string } }
+    expect(checkpoint.checkpoint.checkpointId).toMatch(/^CKP-/)
+    expect(checkpoint.checkpoint.resumePrompt).toContain('TASK-MCP-OS')
+
+    const resumed = await server.handleToolCall('task_resume', { taskId: 'TASK-MCP-OS' }) as {
+      checkpoint: { checkpointId: string }
+      task: { status: string }
+    }
+    expect(resumed).toMatchObject({
+      checkpoint: { checkpointId: checkpoint.checkpoint.checkpointId },
+      task: { status: 'running' },
+    })
+
+    const completed = await server.handleToolCall('complete_task', {
+      taskId: 'TASK-MCP-OS',
+      runId: 'RUN-MCP-OS',
+      summary: 'MCP completion recorded',
+      changedFiles: ['src/api/mcp.ts'],
+      validation: ['npm run typecheck'],
+    }) as {
+      ok: boolean
+      completion: { outcome: string; evidenceIds: string[] }
+      task: { status: string }
+      evidence: { id: string; kind: string; status: string; metadata: { source: string } }
+    }
+    expect(completed.ok).toBe(true)
+    expect(completed.task.status).toBe('completed')
+    expect(completed.completion.outcome).toBe('complete')
+    expect(completed.completion.evidenceIds).toContain(completed.evidence.id)
+    expect(completed.evidence).toMatchObject({
+      kind: 'final-report',
+      status: 'passed',
+      metadata: { source: 'mcp-tool' },
+    })
+
+    const capabilities = await server.handleToolCall('capability_list', {
+      capabilityIds: ['cua'],
+    }) as { descriptors: Array<{ id: string; kind: string; trust: string }> }
+    expect(capabilities.descriptors).toContainEqual(expect.objectContaining({
+      id: 'desktop-cua',
+      kind: 'desktop',
+      trust: 'blocked',
+    }))
+  })
+
+  it('Agent OS MCP bridge tools register connector surfaces and record heartbeats', async () => {
+    const registered = await server.handleToolCall('bridge_register', {
+      bridgeId: 'BRIDGE-MCP-IM',
+      name: 'MCP IM Bridge',
+      kind: 'im',
+      endpoint: 'https://example.test/mcp-bridge',
+      token: 'mcp-secret',
+      capabilityIds: ['im-bridge'],
+      scopes: ['tasks:read', 'events:read'],
+      metadata: { projectRef: 'cc-connect' },
+    }) as {
+      bridge: { bridgeId: string; kind: string; status: string; tokenHash: string; capabilityIds: string[] }
+      token: string
+      event: { type: string }
+    }
+
+    expect(registered.token).toBe('mcp-secret')
+    expect(registered.bridge).toMatchObject({
+      bridgeId: 'BRIDGE-MCP-IM',
+      kind: 'im',
+      status: 'registered',
+      capabilityIds: ['im-bridge'],
+    })
+    expect(registered.bridge.tokenHash).not.toContain('mcp-secret')
+    expect(registered.event.type).toBe('bridge.registered')
+
+    const heartbeat = await server.handleToolCall('bridge_heartbeat', {
+      bridgeId: 'BRIDGE-MCP-IM',
+      token: 'mcp-secret',
+    }) as {
+      bridge: { bridgeId: string; status: string; lastHeartbeatAt: string }
+      event: { type: string }
+    }
+    expect(heartbeat.bridge).toEqual(expect.objectContaining({
+      bridgeId: 'BRIDGE-MCP-IM',
+      status: 'online',
+      lastHeartbeatAt: expect.any(String),
+    }))
+    expect(heartbeat.event.type).toBe('bridge.heartbeat')
+
+    const ledger = readFileSync(join(TMP, '.scale', 'ledger', 'events.jsonl'), 'utf-8')
+    expect(ledger).toContain('"bridge.registered"')
+    expect(ledger).toContain('"bridge.heartbeat"')
+  })
+
+  it('Agent OS MCP shell tools plan blocked commands and record command evidence for safe commands', async () => {
+    const plan = await server.handleToolCall('shell_plan', {
+      command: 'git reset --hard HEAD',
+      taskId: 'TASK-MCP-SHELL',
+    }) as { risk: string; blocked: boolean; requiresApproval: boolean }
+    expect(plan).toMatchObject({
+      risk: 'destructive',
+      blocked: true,
+      requiresApproval: true,
+    })
+
+    const execution = await server.handleToolCall('shell_run', {
+      command: 'node -e "process.stdout.write(\'ok\')"',
+      taskId: 'TASK-MCP-SHELL',
+      sessionId: 'RUN-MCP-SHELL',
+      profile: 'mcp',
+      timeoutMs: 10_000,
+    }) as {
+      status: string
+      result: { exitCode: number; stdout: string }
+      evidence: { id: string; taskId: string; source: string; status: string }
+    }
+    expect(execution).toMatchObject({
+      status: 'passed',
+      result: { exitCode: 0, stdout: 'ok' },
+      evidence: {
+        taskId: 'TASK-MCP-SHELL',
+        source: 'agent-os-smart-shell',
+        status: 'passed',
+      },
+    })
+
+    const ledger = readFileSync(join(TMP, '.scale', 'ledger', 'events.jsonl'), 'utf-8')
+    expect(ledger).toContain('"shell.planned"')
+    expect(ledger).toContain('"shell.executed"')
+  })
+
+  it('Agent OS MCP V2 tools delegate multi-agent work and run Cortex promotion lifecycle', async () => {
+    const delegated = await server.handleToolCall('delegation_delegate', {
+      taskId: 'TASK-MCP-V2',
+      task: 'Implement dashboard API security tests and release verification',
+      level: 'L',
+      files: ['src/dashboard/DashboardServer.ts', 'tests/dashboard/dashboardServer.test.ts'],
+      services: ['dashboard', 'api'],
+      budget: 4000,
+    }) as {
+      delegation: {
+        delegationId: string
+        status: string
+        assignments: Array<{ profileId: string }>
+        reviews: unknown[]
+      }
+      event: { type: string }
+    }
+    expect(delegated.delegation.status).toBe('delegated')
+    expect(delegated.delegation.assignments.length).toBeGreaterThan(0)
+    expect(delegated.delegation.reviews.length).toBeGreaterThan(0)
+    expect(delegated.event.type).toBe('agent.delegated')
+
+    const reviewed = await server.handleToolCall('delegation_review', {
+      delegationId: delegated.delegation.delegationId,
+      profileId: delegated.delegation.assignments[0]!.profileId,
+      status: 'accepted',
+      reason: 'role output verified',
+      reviewer: 'mcp-reviewer',
+    }) as { delegation: { status: string }; event: { type: string } }
+    expect(reviewed.delegation.status).toBe('accepted')
+    expect(reviewed.event.type).toBe('agent.reviewed')
+
+    const proposed = await server.handleToolCall('cortex_promotion_propose', {
+      title: 'Require validation before completion',
+      description: 'Completion claims must include command or review evidence.',
+      source: 'failure-learning',
+      sourceEvidenceIds: ['RTE-FAILED-VALIDATION'],
+      pattern: 'complete without validation',
+      enforcement: 'hook',
+      rollback: 'Disable hook and keep prompt reminder',
+      taskId: 'TASK-MCP-V2',
+    }) as { proposal: { id: string; maturity: { stage: string } }; report: { summary: { shadowRules: number } } }
+    expect(proposed.proposal.maturity.stage).toBe('shadow')
+    expect(proposed.report.summary.shadowRules).toBe(1)
+
+    let proposalId = proposed.proposal.id
+    for (let index = 0; index < 10; index += 1) {
+      const hit = await server.handleToolCall('cortex_promotion_hit', {
+        proposalId,
+        evidenceId: `RTE-MCP-SHADOW-${index}`,
+        taskId: 'TASK-MCP-V2',
+      }) as { proposal: { id: string; maturity: { shadowHits: number } } }
+      proposalId = hit.proposal.id
+    }
+
+    const approved = await server.handleToolCall('cortex_promotion_approve', {
+      proposalId,
+      approvedBy: 'mcp-reviewer',
+      taskId: 'TASK-MCP-V2',
+    }) as { proposal: { maturity: { stage: string; approvedBy: string } }; report: { summary: { approvedBlocking: number } } }
+    expect(approved.proposal.maturity).toEqual(expect.objectContaining({
+      stage: 'approved-blocking',
+      approvedBy: 'mcp-reviewer',
+    }))
+    expect(approved.report.summary.approvedBlocking).toBe(1)
+
+    const ledger = readFileSync(join(TMP, '.scale', 'ledger', 'events.jsonl'), 'utf-8')
+    expect(ledger).toContain('"agent.delegated"')
+    expect(ledger).toContain('"agent.reviewed"')
+    expect(ledger).toContain('"cortex.promotion"')
+  }, 120_000)
 
   it('scale_context builds context', async () => {
     const res = await server.handleRequest({

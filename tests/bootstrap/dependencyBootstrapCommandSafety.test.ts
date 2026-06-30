@@ -134,7 +134,7 @@ describe('dependency bootstrap command safety', () => {
     expect(execaMock.mock.calls.some(call => typeof call[0] === 'string' && call[0].includes(projectDir))).toBe(false)
   })
 
-  it('runs graphify update with argv arguments even when the project path contains shell metacharacters', async () => {
+  it('runs graphify graph rebuild with argv and cwd even when the project path contains shell metacharacters', async () => {
     const { projectDir, scaleDir } = makeProjectDir('project-$(graphify-update)')
 
     await bootstrapDependencies({
@@ -145,10 +145,13 @@ describe('dependency bootstrap command safety', () => {
       apply: true,
     })
 
-    expect(wrapCliCommandWithRtkMock).toHaveBeenCalledWith('graphify', ['update', projectDir, '--no-cluster'])
+    expect(wrapCliCommandWithRtkMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^python3?$/),
+      ['-c', expect.stringContaining('graphify.watch')],
+    )
     expect(execaMock).toHaveBeenCalledWith(
-      'graphify',
-      ['update', projectDir, '--no-cluster'],
+      expect.stringMatching(/^python3?$/),
+      ['-c', expect.stringContaining('_rebuild_code')],
       expect.objectContaining({ reject: false, timeout: 300_000, all: false, cwd: projectDir }),
     )
     expect(execaMock.mock.calls.some(call => typeof call[0] === 'string' && call[0].includes(projectDir))).toBe(false)

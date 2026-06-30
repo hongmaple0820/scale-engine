@@ -30,7 +30,8 @@ import { mapDomains } from '../topology/DomainMapper.js'
 import { generateTour } from '../topology/TourGenerator.js'
 import { aggregateGovernanceMetrics } from './MetricsAggregator.js'
 import { logger } from '../core/logger.js'
-import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
+import { ExecutionLedger, type ExecutionEventType } from '../runtime/ExecutionLedger.js'
+import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord, type RuntimeEvidenceStatus } from '../runtime/RuntimeEvidenceLedger.js'
 import {
   optimizeCodingPrompt,
   type PromptOptimizationLanguageInput,
@@ -63,6 +64,8 @@ import {
   startDashboardService,
   type DashboardServiceStatus,
 } from './DashboardServiceSupervisor.js'
+import { AgentOsBridgeRegistry, AgentOsTaskStore, AgentOsWorkbench, buildAgentOsCapabilityReport, type AgentOsBridgeKind, type AgentOsCompletionOutcome, type AgentOsTaskLevel, type AgentOsTaskStatus } from '../os/index.js'
+import { evaluateSkillRadar } from '../skills/SkillRadar.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MEMORY_REVIEW_ACTIONS = ['approve', 'reject', 'stale', 'restore'] as const
@@ -1025,6 +1028,8 @@ export class DashboardServer {
       }
     }
 
+    const topology = await read('topology', () => this.getTopology(), null)
+
     return {
       generatedAt: Date.now(),
       endpoints: {
@@ -1032,6 +1037,19 @@ export class DashboardServer {
         '/api/dashboard/service': await read('dashboardService', () => this.getDashboardServiceStatus(), null),
         '/api/integrations': await read('integrations', () => this.getIntegrationsReport(), null),
         '/api/agent-control': await read('agentControl', () => this.getAgentControlReport(), null),
+        '/api/dashboard/capabilities': await read('capabilities', () => this.getDashboardCapabilityReport(), null),
+        '/api/capabilities': await read('capabilities-alias', () => this.getDashboardCapabilityReport(), null),
+        '/api/v1/workbench': await read('agent-os-workbench', () => this.agentOsWorkbench().snapshot({ limit: 25 }), null),
+        '/api/metrics': await read('metrics', () => aggregateGovernanceMetrics({
+          projectDir: this.projectDir,
+          scaleDir: this.scaleDir,
+          sinceDays: 7,
+        }), null),
+        '/api/state': await read('state', () => this.getDashboardState(), null),
+        '/api/topology': topology,
+        '/api/topology/domains': topology ? await read('domains', () => mapDomains(topology), null) : null,
+        '/api/documents': await read('documents', () => this.listDocuments(), []),
+        '/api/knowledge-base': await read('knowledge-base', () => this.getKnowledgeBaseReport(), null),
       },
       failures,
     }
@@ -1064,6 +1082,61 @@ export class DashboardServer {
     } satisfies DashboardAgentPlanReport
   }
 
+  private agentOsTaskStore(): AgentOsTaskStore {
+    return new AgentOsTaskStore({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+    })
+  }
+
+  private agentOsBridgeRegistry(): AgentOsBridgeRegistry {
+    return new AgentOsBridgeRegistry({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+    })
+  }
+
+  private agentOsWorkbench(): AgentOsWorkbench {
+    return new AgentOsWorkbench({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+      projectName: this.currentProject.name,
+    })
+  }
+
+  private agentOsExecutionLedger(): ExecutionLedger {
+    return new ExecutionLedger({
+      projectDir: this.projectDir,
+      scaleDir: this.scaleDir,
+    })
+  }
+
+  private recordAgentOsCompletionEvidence(input: {
+    taskId: string
+    runId?: string
+    outcome: AgentOsCompletionOutcome
+    summary: string
+    changedFiles: string[]
+    validation: string[]
+    residualRisk?: string
+  }): RuntimeEvidenceRecord {
+    return new RuntimeEvidenceLedger({ projectDir: this.projectDir, scaleDir: this.scaleDir }).record({
+      taskId: input.taskId,
+      sessionId: input.runId,
+      kind: 'final-report',
+      title: 'Agent OS completion signal',
+      status: runtimeEvidenceStatusForAgentOsOutcome(input.outcome),
+      summary: input.summary,
+      artifacts: input.changedFiles,
+      metadata: {
+        outcome: input.outcome,
+        residualRisk: input.residualRisk,
+        validation: input.validation,
+        source: 'dashboard-api',
+      },
+    })
+  }
+
   private setupAPI(): void {
     this.app.get('/api/health', (c) => c.json({
       status: 'ok',
@@ -1088,6 +1161,318 @@ export class DashboardServer {
         return c.json(this.runDashboardServiceAction(c.req.param('action')))
       } catch (error) {
         return c.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 400)
+      }
+    })
+
+    this.app.get('/api/v1/tasks', (c) => {
+      try {
+        const tasks = this.agentOsTaskStore().list({
+          status: normalizeAgentOsTaskStatuses(c.req.query('status')),
+          level: normalizeAgentOsTaskLevels(c.req.query('level')),
+          agent: c.req.query('agent'),
+          surface: c.req.query('surface'),
+          service: c.req.query('service'),
+          file: c.req.query('file'),
+          updatedSince: c.req.query('updatedSince') ?? c.req.query('updated-since'),
+          limit: parsePositiveInt(c.req.query('limit'), 0) || undefined,
+        })
+        return c.json({
+          project: this.currentProject,
+          total: tasks.length,
+          tasks,
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+      }
+    })
+
+    this.app.post('/api/v1/tasks', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const name = String(body.name ?? body.title ?? '').trim()
+      if (!name) return c.json({ error: 'Task name is required.' }, 400)
+      try {
+        const result = this.agentOsTaskStore().create({
+          taskId: typeof body.taskId === 'string' && body.taskId.trim() ? body.taskId.trim() : undefined,
+          name,
+          objective: typeof body.objective === 'string' ? body.objective : undefined,
+          description: typeof body.description === 'string' ? body.description : undefined,
+          level: normalizeAgentOsTaskLevel(body.level),
+          files: toStringArray(body.files),
+          services: toStringArray(body.services ?? body.service),
+          surfaces: toStringArray(body.surfaces ?? body.surface),
+          metadata: asRecord(body.metadata),
+        })
+        return c.json({ project: this.currentProject, task: result.task }, 201)
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+      }
+    })
+
+    this.app.get('/api/v1/workbench', (c) => {
+      try {
+        return c.json(this.agentOsWorkbench().snapshot({
+          taskId: c.req.query('taskId'),
+          limit: parsePositiveInt(c.req.query('limit'), 25),
+        }))
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.get('/api/v1/tasks/:taskId', (c) => {
+      try {
+        return c.json({
+          project: this.currentProject,
+          ...this.agentOsTaskStore().snapshot(c.req.param('taskId')),
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.get('/api/v1/tasks/:taskId/workbench', (c) => {
+      try {
+        return c.json(this.agentOsWorkbench().snapshot({
+          taskId: c.req.param('taskId'),
+          limit: parsePositiveInt(c.req.query('limit'), 25),
+        }))
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.post('/api/v1/tasks/:taskId/start', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      try {
+        const result = this.agentOsTaskStore().start({
+          taskId: c.req.param('taskId'),
+          runId: typeof body.runId === 'string' && body.runId.trim() ? body.runId.trim() : undefined,
+          agent: typeof body.agent === 'string' ? body.agent : undefined,
+          provider: typeof body.provider === 'string' ? body.provider : undefined,
+          model: typeof body.model === 'string' ? body.model : undefined,
+          contextPackId: typeof body.contextPackId === 'string' ? body.contextPackId : undefined,
+          metadata: asRecord(body.metadata),
+        })
+        return c.json({ project: this.currentProject, run: result.record, task: result.task })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.post('/api/v1/tasks/:taskId/checkpoints', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const summary = String(body.summary ?? '').trim()
+      if (!summary) return c.json({ error: 'Checkpoint summary is required.' }, 400)
+      try {
+        const result = this.agentOsTaskStore().checkpoint({
+          taskId: c.req.param('taskId'),
+          runId: typeof body.runId === 'string' && body.runId.trim() ? body.runId.trim() : undefined,
+          summary,
+          completedSteps: toStringArray(body.completedSteps ?? body.completed),
+          remainingSteps: toStringArray(body.remainingSteps ?? body.remaining),
+          openApprovals: toStringArray(body.openApprovals ?? body.approvals),
+          evidenceIds: toStringArray(body.evidenceIds ?? body.evidence),
+          contextPackId: typeof body.contextPackId === 'string' ? body.contextPackId : undefined,
+          resumePrompt: typeof body.resumePrompt === 'string' ? body.resumePrompt : undefined,
+          metadata: asRecord(body.metadata),
+        })
+        return c.json({ project: this.currentProject, checkpoint: result.record, task: result.task }, 201)
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.post('/api/v1/tasks/:taskId/resume', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      try {
+        const result = this.agentOsTaskStore().resume({
+          taskId: c.req.param('taskId'),
+          checkpointId: typeof body.checkpointId === 'string' && body.checkpointId.trim() ? body.checkpointId.trim() : undefined,
+        })
+        return c.json({
+          project: this.currentProject,
+          checkpoint: result.record,
+          task: result.task,
+          resumePrompt: result.record.resumePrompt,
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.post('/api/v1/tasks/:taskId/complete', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const taskId = c.req.param('taskId')
+      let outcome: AgentOsCompletionOutcome
+      try {
+        outcome = normalizeAgentOsCompletionOutcome(body.outcome)
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+      }
+      const summary = String(body.summary ?? '').trim()
+      if (!summary) return c.json({ error: 'Completion summary is required.' }, 400)
+      const changedFiles = toStringArray(body.changedFiles ?? body.changed)
+      const validation = toStringArray(body.validation)
+      const runId = typeof body.runId === 'string' && body.runId.trim() ? body.runId.trim() : undefined
+      const residualRisk = typeof body.residualRisk === 'string' ? body.residualRisk : undefined
+      try {
+        const evidence = this.recordAgentOsCompletionEvidence({
+          taskId,
+          runId,
+          outcome,
+          summary,
+          changedFiles,
+          validation,
+          residualRisk,
+        })
+        const result = this.agentOsTaskStore().complete({
+          taskId,
+          runId,
+          outcome,
+          summary,
+          evidenceIds: [...toStringArray(body.evidenceIds ?? body.evidence), evidence.id],
+          changedFiles,
+          validation,
+          residualRisk,
+          nextActions: toStringArray(body.nextActions),
+          metadata: asRecord(body.metadata),
+        })
+        return c.json({
+          project: this.currentProject,
+          ok: outcome === 'complete' || outcome === 'partial',
+          completion: result.record,
+          task: result.task,
+          evidence,
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.get('/api/v1/capabilities', (c) => {
+      try {
+        const report = buildAgentOsCapabilityReport({
+          projectDir: this.projectDir,
+          scaleDir: this.scaleDir,
+          capabilityIds: toStringArray(c.req.query('capabilities') ?? c.req.query('ids')),
+        })
+        return c.json({ project: this.currentProject, doctor: c.req.query('doctor') === 'true', ...report })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+      }
+    })
+
+    this.app.get('/api/v1/events', (c) => {
+      try {
+        const events = this.agentOsExecutionLedger().query({
+          taskId: c.req.query('taskId'),
+          type: normalizeExecutionEventType(c.req.query('type')),
+          since: c.req.query('since'),
+          limit: parsePositiveInt(c.req.query('limit'), 100),
+        })
+        return c.json({ project: this.currentProject, total: events.length, events })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+      }
+    })
+
+    this.app.get('/api/v1/events/stream', (c) => {
+      return streamSSE(c, async (stream) => {
+        const events = this.agentOsExecutionLedger().query({
+          taskId: c.req.query('taskId'),
+          since: c.req.query('since'),
+          limit: parsePositiveInt(c.req.query('limit'), 100),
+        })
+        await stream.writeSSE({
+          data: JSON.stringify({ project: this.currentProject, total: events.length }),
+          event: 'snapshot',
+        })
+        for (const event of events) {
+          await stream.writeSSE({
+            id: event.id,
+            event: event.type,
+            data: JSON.stringify(event),
+          })
+        }
+      })
+    })
+
+    this.app.get('/api/v1/bridges', (c) => {
+      try {
+        return c.json({
+          project: this.currentProject,
+          bridges: this.agentOsBridgeRegistry().list(),
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+      }
+    })
+
+    this.app.post('/api/v1/bridges/register', async (c) => {
+      const unauthorized = requireAgentOsLocalToken(c)
+      if (unauthorized) return unauthorized
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const name = String(body.name ?? '').trim()
+      if (!name) return c.json({ error: 'Bridge name is required.' }, 400)
+      try {
+        const result = this.agentOsBridgeRegistry().register({
+          bridgeId: typeof body.bridgeId === 'string' && body.bridgeId.trim() ? body.bridgeId.trim() : undefined,
+          name,
+          kind: normalizeAgentOsBridgeKind(body.kind),
+          endpoint: typeof body.endpoint === 'string' ? body.endpoint : undefined,
+          token: typeof body.token === 'string' ? body.token : undefined,
+          scopes: toStringArray(body.scopes),
+          capabilityIds: toStringArray(body.capabilityIds ?? body.capabilities),
+          metadata: asRecord(body.metadata),
+        })
+        return c.json({ project: this.currentProject, bridge: result.bridge, token: result.token, event: result.event }, 201)
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+      }
+    })
+
+    this.app.post('/api/v1/bridges/:bridgeId/heartbeat', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const token = bridgeTokenFromRequest(c, body)
+      try {
+        const result = this.agentOsBridgeRegistry().heartbeat(c.req.param('bridgeId'), token)
+        return c.json({ project: this.currentProject, bridge: result.bridge, event: result.event })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, statusForAgentOsError(e))
+      }
+    })
+
+    this.app.post('/api/v1/capabilities/map', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const task = String(body.task ?? body.scenario ?? '').trim()
+      if (!task) return c.json({ error: 'Task is required.' }, 400)
+      try {
+        const radar = evaluateSkillRadar({
+          projectDir: this.projectDir,
+          scaleDir: this.scaleDir,
+          task,
+          phase: typeof body.phase === 'string' ? body.phase : undefined,
+          level: String(body.level ?? 'M'),
+          files: toStringArray(body.files),
+          services: toStringArray(body.services ?? body.service),
+        })
+        const ids = radar.recommendations.map(item => item.id)
+        const capabilities = buildAgentOsCapabilityReport({
+          projectDir: this.projectDir,
+          scaleDir: this.scaleDir,
+          capabilityIds: ids.length > 0 ? ids : undefined,
+        })
+        return c.json({
+          project: this.currentProject,
+          task,
+          ok: radar.ok && capabilities.ok,
+          detectedDomains: radar.detectedDomains,
+          recommendations: radar.recommendations,
+          capabilities,
+          fallbacks: radar.fallbacks,
+        })
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
       }
     })
 
@@ -5601,6 +5986,105 @@ function normalizeDashboardTaskLevel(value: unknown): SkillTaskLevel {
   const normalized = String(value ?? 'M').trim().toUpperCase()
   if (normalized === 'S' || normalized === 'M' || normalized === 'L' || normalized === 'CRITICAL') return normalized
   return 'M'
+}
+
+function normalizeAgentOsTaskLevel(value: unknown): AgentOsTaskLevel {
+  const normalized = String(value ?? 'M').trim().toUpperCase()
+  if (normalized === 'S' || normalized === 'M' || normalized === 'L' || normalized === 'CRITICAL') return normalized
+  return 'M'
+}
+
+function normalizeAgentOsTaskLevels(value: unknown): AgentOsTaskLevel[] {
+  return toStringArray(value).map(normalizeAgentOsTaskLevel)
+}
+
+function normalizeAgentOsTaskStatus(value: unknown): AgentOsTaskStatus | null {
+  const normalized = String(value ?? '').trim()
+  const statuses: AgentOsTaskStatus[] = ['created', 'planned', 'running', 'waiting_for_approval', 'waiting_for_external_input', 'verifying', 'completed', 'partially_completed', 'blocked', 'cancelled']
+  return statuses.includes(normalized as AgentOsTaskStatus) ? normalized as AgentOsTaskStatus : null
+}
+
+function normalizeAgentOsTaskStatuses(value: unknown): AgentOsTaskStatus[] {
+  return toStringArray(value).map(normalizeAgentOsTaskStatus).filter((status): status is AgentOsTaskStatus => Boolean(status))
+}
+
+function normalizeAgentOsCompletionOutcome(value: unknown): AgentOsCompletionOutcome {
+  const normalized = String(value ?? 'complete').trim()
+  if (normalized === 'complete' || normalized === 'partial' || normalized === 'blocked' || normalized === 'cancelled') return normalized
+  throw new Error(`Invalid completion outcome "${String(value)}"; expected complete, partial, blocked, or cancelled.`)
+}
+
+function normalizeAgentOsBridgeKind(value: unknown): AgentOsBridgeKind {
+  const normalized = String(value ?? 'connector')
+  const kinds: AgentOsBridgeKind[] = ['dashboard', 'tui', 'desktop', 'im', 'remote-agent', 'connector']
+  return kinds.includes(normalized as AgentOsBridgeKind) ? normalized as AgentOsBridgeKind : 'connector'
+}
+
+function normalizeExecutionEventType(value: string | undefined): ExecutionEventType | undefined {
+  if (!value) return undefined
+  const types: ExecutionEventType[] = [
+    'agent.started',
+    'agent.ended',
+    'task.created',
+    'task.started',
+    'task.checkpointed',
+    'task.resumed',
+    'task.completed',
+    'task.blocked',
+    'task.cancelled',
+    'approval.requested',
+    'approval.resolved',
+    'bridge.registered',
+    'bridge.heartbeat',
+    'shell.planned',
+    'shell.executed',
+    'agent.delegated',
+    'agent.reviewed',
+    'cortex.promotion',
+    'tool.invoked',
+    'gate.checked',
+    'evidence.recorded',
+    'policy.violation',
+    'mcp.health-check',
+  ]
+  return types.includes(value as ExecutionEventType) ? value as ExecutionEventType : undefined
+}
+
+function requireAgentOsLocalToken(c: Context): Response | null {
+  const expected = process.env.SCALE_AGENT_OS_API_TOKEN?.trim()
+  if (!expected) return null
+  const provided = localTokenFromRequest(c)
+  if (provided === expected) return null
+  return c.json({ error: 'Agent OS local API token is required.' }, 401)
+}
+
+function localTokenFromRequest(c: Context): string | undefined {
+  const explicit = c.req.header('x-scale-token')?.trim()
+  if (explicit) return explicit
+  const authorization = c.req.header('authorization')?.trim()
+  if (!authorization) return undefined
+  const match = /^Bearer\s+(.+)$/i.exec(authorization)
+  return match?.[1]?.trim()
+}
+
+function bridgeTokenFromRequest(c: Context, body: Record<string, unknown>): string | undefined {
+  return typeof body.token === 'string' && body.token.trim()
+    ? body.token.trim()
+    : localTokenFromRequest(c)
+}
+
+function runtimeEvidenceStatusForAgentOsOutcome(outcome: AgentOsCompletionOutcome): RuntimeEvidenceStatus {
+  if (outcome === 'complete' || outcome === 'partial') return 'passed'
+  if (outcome === 'blocked') return 'failed'
+  return 'skipped'
+}
+
+function statusForAgentOsError(error: unknown): 400 | 404 | 409 | 500 {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/not found/i.test(message)) return 404
+  if (/already exists|already completed|cannot/i.test(message)) return 409
+  if (/required|invalid/i.test(message)) return 400
+  return 500
 }
 
 function escapeJsonForHtml(value: unknown): string {

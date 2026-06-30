@@ -51,7 +51,7 @@ function commandSpecificSummary(name, stream, value) {
       /^When you outgrow local:/i,
     ])
   }
-  if (name === 'graphify-update' || name === 'graphify-extract') {
+  if (name === 'graphify-rebuild' || name === 'graphify-update' || name === 'graphify-extract') {
     return collectMatchingLines(value, [
       /Rebuilt/i,
       /graph\.json updated/i,

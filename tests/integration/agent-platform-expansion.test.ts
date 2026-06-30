@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Doctor } from '../../src/api/doctor.js'
@@ -16,8 +17,9 @@ import {
 } from '../../src/adapters/index.js'
 import { SkillDiscovery } from '../../src/skills/SkillDiscovery.js'
 import type { AgentPlatform } from '../../src/artifact/types.js'
+import { safeRmSync } from '../helpers/fs.js'
 
-const TMP = './tmp/test-agent-platform-expansion'
+let TMP: string
 
 interface PlatformCase {
   platform: AgentPlatform
@@ -39,12 +41,11 @@ const cases: PlatformCase[] = [
 
 describe('expanded agent platform adapters', () => {
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
-    mkdirSync(TMP, { recursive: true })
+    TMP = mkdtempSync(join(tmpdir(), 'scale-agent-platform-expansion-'))
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
   })
 
   it.each(cases)('initializes $platform with settings, knowledge, skills, doctor, and discovery support', async ({ platform, create, settingsSuffix, knowledgeSuffix, knowledgeNeedle }) => {

@@ -10,29 +10,15 @@ function renderChinese(report: DependencyBootstrapReport): string {
     '',
     'SCALE 依赖安装计划',
     `  项目: ${report.projectDir}`,
-    `  依赖包: ${report.packIds.join(', ')}`,
+    `  能力包: ${report.packIds.join(', ') || 'core'}`,
     `  执行安装: ${report.apply ? '是' : '否'}`,
-    `  已完整就绪: ${report.complete ? '是' : '否'}`,
+    `  完整可用: ${report.complete ? '是' : '否'}`,
+    `  汇总: installed=${report.summary.installed}, ready=${report.summary.ready}, manual=${report.summary.manualReview}, needs-init=${report.summary.needsInit}, failed=${report.summary.failed}`,
   ]
   appendRuntimeChecks(lines, report.runtimeChecks, 'zh')
-  for (const item of report.items) {
-    lines.push(`  [${formatStatus(item.status, 'zh')}] ${item.id} (${item.kind})`)
-    lines.push(`    来源: ${item.source}`)
-    lines.push(`    检测: ${item.detectedBy}`)
-    if (item.health) lines.push(`    健康: ${item.health.reason}`)
-    if (!item.installed && item.installCommand) lines.push(`    安装: ${item.installCommand}`)
-    if (!item.installed && item.manualReason) lines.push(`    原因: ${item.manualReason}`)
-    if (!item.installed && item.prerequisites.length > 0) {
-      lines.push(`    前置依赖: ${item.prerequisites.map(req => `${req.command}=${req.present ? 'ok' : 'missing'}`).join(', ')}`)
-    }
-    for (const command of item.health?.nextCommands ?? []) lines.push(`    下一步: ${command}`)
-    if (item.error) lines.push(`    错误: ${item.error}`)
-  }
-  for (const action of report.postActions) lines.push(`  [后置] ${action}`)
+  appendItems(lines, report, 'zh')
   appendPostChecks(lines, report, 'zh')
-  for (const command of report.postCheckCommands) lines.push(`  [检查] ${command}`)
-  for (const hint of report.rollbackHints) lines.push(`  [回滚] ${hint}`)
-  for (const recommendation of report.recommendations) lines.push(`  [建议] ${recommendation}`)
+  appendTail(lines, report, 'zh')
   return lines.join('\n')
 }
 
@@ -41,30 +27,38 @@ function renderEnglish(report: DependencyBootstrapReport): string {
     '',
     'SCALE Dependency Bootstrap',
     `  Project: ${report.projectDir}`,
-    `  Packs: ${report.packIds.join(', ')}`,
+    `  Packs: ${report.packIds.join(', ') || 'core'}`,
     `  Apply: ${report.apply}`,
     `  Complete: ${report.complete}`,
+    `  Summary: installed=${report.summary.installed}, ready=${report.summary.ready}, manual=${report.summary.manualReview}, needs-init=${report.summary.needsInit}, failed=${report.summary.failed}`,
   ]
   appendRuntimeChecks(lines, report.runtimeChecks, 'en')
-  for (const item of report.items) {
-    lines.push(`  [${item.status.toUpperCase()}] ${item.id} (${item.kind})`)
-    lines.push(`    source: ${item.source}`)
-    lines.push(`    detected: ${item.detectedBy}`)
-    if (item.health) lines.push(`    health: ${item.health.reason}`)
-    if (!item.installed && item.installCommand) lines.push(`    install: ${item.installCommand}`)
-    if (!item.installed && item.manualReason) lines.push(`    reason: ${item.manualReason}`)
-    if (!item.installed && item.prerequisites.length > 0) {
-      lines.push(`    prereqs: ${item.prerequisites.map(req => `${req.command}=${req.present ? 'ok' : 'missing'}`).join(', ')}`)
-    }
-    for (const command of item.health?.nextCommands ?? []) lines.push(`    next: ${command}`)
-    if (item.error) lines.push(`    error: ${item.error}`)
-  }
-  for (const action of report.postActions) lines.push(`  [POST] ${action}`)
+  appendItems(lines, report, 'en')
   appendPostChecks(lines, report, 'en')
-  for (const command of report.postCheckCommands) lines.push(`  [CHECK] ${command}`)
-  for (const hint of report.rollbackHints) lines.push(`  [ROLLBACK] ${hint}`)
-  for (const recommendation of report.recommendations) lines.push(`  [NEXT] ${recommendation}`)
+  appendTail(lines, report, 'en')
   return lines.join('\n')
+}
+
+function appendItems(lines: string[], report: DependencyBootstrapReport, lang: ScaleLanguage): void {
+  if (report.items.length === 0) {
+    lines.push(lang === 'zh' ? '  无第三方依赖需要处理。' : '  No third-party dependencies selected.')
+    return
+  }
+  lines.push(lang === 'zh' ? '  依赖项目:' : '  Items:')
+  for (const item of report.items) {
+    lines.push(`  [${formatStatus(item.status, lang)}] ${item.id} (${item.kind})`)
+    lines.push(lang === 'zh' ? `    来源: ${item.source}` : `    source: ${item.source}`)
+    lines.push(lang === 'zh' ? `    检测: ${item.detectedBy}` : `    detected: ${item.detectedBy}`)
+    if (item.health) lines.push(lang === 'zh' ? `    健康: ${item.health.reason}` : `    health: ${item.health.reason}`)
+    if (!item.installed && item.installCommand) lines.push(lang === 'zh' ? `    安装命令: ${item.installCommand}` : `    install: ${item.installCommand}`)
+    if (!item.installed && item.manualReason) lines.push(lang === 'zh' ? `    原因: ${item.manualReason}` : `    reason: ${item.manualReason}`)
+    if (!item.installed && item.prerequisites.length > 0) {
+      const prereqs = item.prerequisites.map(req => `${req.command}=${req.present ? 'ok' : 'missing'}`).join(', ')
+      lines.push(lang === 'zh' ? `    前置依赖: ${prereqs}` : `    prereqs: ${prereqs}`)
+    }
+    for (const command of item.health?.nextCommands ?? []) lines.push(lang === 'zh' ? `    下一步: ${command}` : `    next: ${command}`)
+    if (item.error) lines.push(lang === 'zh' ? `    错误: ${item.error}` : `    error: ${item.error}`)
+  }
 }
 
 function appendRuntimeChecks(lines: string[], checks: DependencyBootstrapRuntimeCheck[], lang: ScaleLanguage): void {
@@ -97,6 +91,16 @@ function appendPostChecks(lines: string[], report: DependencyBootstrapReport, la
       : `  [POSTCHECK ${check.status.toUpperCase()}] ${check.label}: ${check.summary}`)
     lines.push(lang === 'zh' ? `    命令: ${check.command}` : `    command: ${check.command}`)
   }
+}
+
+function appendTail(lines: string[], report: DependencyBootstrapReport, lang: ScaleLanguage): void {
+  const labels = lang === 'zh'
+    ? { post: '后置', check: '检查', rollback: '回滚', next: '建议' }
+    : { post: 'POST', check: 'CHECK', rollback: 'ROLLBACK', next: 'NEXT' }
+  for (const action of report.postActions) lines.push(`  [${labels.post}] ${action}`)
+  for (const command of report.postCheckCommands) lines.push(`  [${labels.check}] ${command}`)
+  for (const hint of report.rollbackHints) lines.push(`  [${labels.rollback}] ${hint}`)
+  for (const recommendation of report.recommendations) lines.push(`  [${labels.next}] ${recommendation}`)
 }
 
 function formatStatus(status: string, lang: ScaleLanguage): string {

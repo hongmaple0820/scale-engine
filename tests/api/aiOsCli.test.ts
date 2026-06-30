@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { SCALE_ENGINE_VERSION } from '../../src/version.js'
 import { defaultMemoryProvidersConfig } from '../../src/memory/MemoryProviders.js'
+import { safeRmSync } from '../helpers/fs.js'
 
 let dirs: string[] = []
 
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs) safeRmSync(dir)
   dirs = []
 })
 
@@ -37,6 +38,7 @@ function writeTestMemoryProviderConfig(scaleDir: string): void {
   config.providers = config.providers.map(provider => ({
     ...provider,
     enabled: provider.kind === 'gbrain',
+    homeDir: join(scaleDir, 'test-gbrain-home'),
   }))
   writeFileSync(join(scaleDir, 'memory-providers.json'), JSON.stringify(config, null, 2), 'utf-8')
 }
