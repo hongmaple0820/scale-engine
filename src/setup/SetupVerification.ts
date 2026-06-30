@@ -66,7 +66,9 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
   const codeIntelligence = includesKnowledge
     ? inspectCodeIntelligence({ projectDir, scaleDir })
     : skippedCodeIntelligenceReport(projectDir, dependencyBootstrap.scaleDir)
-  const toolIds = dependencyBootstrap.items.map(item => item.id)
+  const toolIds = dependencyBootstrap.items
+    .map(item => item.id)
+    .filter(id => !isBuiltInVerificationCapability(id))
   const toolCapabilities = inspectToolCapabilities({
     projectDir,
     homeDir: homedir(),
@@ -238,6 +240,10 @@ function resolveNonBlockingDependencyIds(
 ): Set<string> {
   const nonBlocking = new Set<string>()
   return nonBlocking
+}
+
+function isBuiltInVerificationCapability(id: string): boolean {
+  return id === 'hrain'
 }
 
 function shouldBlockMemoryProviderUnavailability(dependencyBootstrap: DependencyBootstrapReport): boolean {

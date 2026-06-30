@@ -2,6 +2,16 @@
 
 ---
 
+## 0.54.4 - 2026-06-30
+
+### Installer
+- Treat built-in `hrain` as a local memory provider during setup verification instead of probing it as an external skill, so published `scale install --pack memory-knowledge --memory-provider hrain --memory-mode local-only` can pass customer project validation without requiring an `hrain/SKILL.md`.
+
+### Verification
+- Add setup verification regression coverage for the built-in `hrain` customer install path discovered in `E:\project\qwen-project\blog`.
+
+---
+
 ## 0.54.3 - 2026-06-30
 
 ### Local Memory
