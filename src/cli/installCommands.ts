@@ -26,7 +26,7 @@ export const installCommand = defineCommand({
     'no-deps': { type: 'boolean', default: false, description: 'Install core workflow only, without dependency planning' },
     'skip-verify': { type: 'boolean', default: false, description: 'Skip setup verification' },
     lang: { type: 'string', description: 'Output language zh/en' },
-    'memory-provider': { type: 'string', description: 'Memory provider to configure during install. Supported default: gbrain' },
+    'memory-provider': { type: 'string', description: 'Memory provider to configure during install. Supported defaults: hrain, gbrain' },
     'memory-mode': { type: 'string', description: 'Memory routing mode: auto, local-only, external-first' },
     'memory-endpoint': { type: 'string', description: 'Optional memory provider endpoint' },
     'memory-write-mode': { type: 'string', description: 'Memory write mode: disabled, candidate-only, enabled' },

@@ -57,7 +57,7 @@ export class Gateway implements IGateway {
 
   async postTool(input: ToolResultInput): Promise<void> {
     if (input.exitCode === 0) {
-      this.eventBus.emit('tool.completed', { tool: input.tool, args: input.args, output: input.output }, { sessionId: input.sessionId })
+      this.eventBus.emit('tool.completed', { tool: input.tool, args: input.args, exitCode: input.exitCode, output: input.output }, { sessionId: input.sessionId })
     } else {
       this.eventBus.emit('tool.failed', { tool: input.tool, args: input.args, exitCode: input.exitCode, output: input.output }, { sessionId: input.sessionId })
     }

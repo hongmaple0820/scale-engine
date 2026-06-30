@@ -71,7 +71,7 @@ function runSetupSmoke() {
     '--json',
   ], baseEnv)
   assert(init.ok === true, 'scale init should succeed in a fresh project')
-  assert(init.dependencyBootstrapCommand === 'scale setup --pack external-cli --memory-provider gbrain --memory-mode external-first --json', 'scale init should direct users to governed setup with gbrain')
+  assert(init.dependencyBootstrapCommand === 'scale setup --pack external-cli --memory-provider hrain --memory-mode local-only --json', 'scale init should direct users to local-only hrain setup by default')
   assertArrayContains(init.workflowCapabilities, ['browser', 'search', 'computer'], 'scale init should record workflow capability defaults')
 
   const zh = runCommand('bootstrap-ui-zh', ['bootstrap', 'deps', '--dir', projectDir, '--pack', 'ui', '--lang', 'zh'], baseEnv)
@@ -93,8 +93,8 @@ function runSetupSmoke() {
     'external-cli,memory,knowledge',
     '--json',
   ], baseEnv)
-  assertArrayContains(deps.runtimeChecks?.map(check => check.id), ['node', 'npm', 'cargo', 'bun', 'python', 'python-installer'], 'dependency plan should report all runtime dependency checks')
-  assertArrayContains(deps.items?.map(item => item.id), ['rtk', 'gbrain', 'graphify', 'codegraph', 'lark-cli', 'lark-skills'], 'dependency plan should include governed third-party and Feishu/Lark capabilities')
+  assertArrayContains(deps.runtimeChecks?.map(check => check.id), ['node', 'npm', 'cargo', 'python', 'python-installer'], 'dependency plan should report all default runtime dependency checks')
+  assertArrayContains(deps.items?.map(item => item.id), ['rtk', 'hrain', 'graphify', 'codegraph', 'lark-cli', 'lark-skills'], 'dependency plan should include governed third-party, local memory, and Feishu/Lark capabilities')
   assertIncludes(deps.postCheckCommands?.join('\n') ?? '', 'lark-cli,lark-skills', 'default dependency plan should surface Feishu/Lark doctor commands')
   assert(deps.apply === false, 'bootstrap smoke must not run installers')
 
@@ -103,12 +103,33 @@ function runSetupSmoke() {
   assertArrayContains(envDoctor.checks?.map(check => check.id), ['git', 'npm', 'npx', 'rtk', 'gbrain', 'graphify', 'codegraph'], 'environment doctor should report core and third-party commands')
   assert(envDoctor.checks?.find(check => check.id === 'gbrain')?.status === 'ok', 'environment doctor should validate gbrain when an isolated brain is initialized')
 
+  const localMemory = runJson('setup-memory-hrain-json', [
+    'setup',
+    '--dir',
+    projectDir,
+    '--pack',
+    'memory',
+    '--memory-provider',
+    'hrain',
+    '--memory-mode',
+    'local-only',
+    '--json',
+  ], baseEnv)
+  assert(localMemory.memoryProviderSwitch?.provider === 'hrain', 'setup should switch to hrain provider by default')
+  assert(localMemory.memoryProviderSwitch?.mode === 'local-only', 'hrain provider should support local-only mode')
+  assert(localMemory.memoryProviderSwitch?.nextOrder?.[0] === 'hrain', 'hrain should become the first provider')
+  assert(localMemory.memoryProviderSwitch?.nextOrder?.includes('gbrain'), 'gbrain should remain available as an optional fallback provider')
+  assert(existsSync(localMemory.memoryProviderSwitch?.path ?? ''), 'setup should write memory provider config')
+  assert(localMemory.final?.items?.some(item => item.id === 'hrain'), 'memory setup should include built-in hrain')
+
   const gbrainMemory = runJson('setup-memory-gbrain-json', [
     'setup',
     '--dir',
     projectDir,
     '--pack',
     'memory',
+    '--include',
+    'gbrain',
     '--memory-provider',
     'gbrain',
     '--memory-mode',
@@ -118,8 +139,8 @@ function runSetupSmoke() {
   assert(gbrainMemory.memoryProviderSwitch?.provider === 'gbrain', 'setup should switch to gbrain provider')
   assert(gbrainMemory.memoryProviderSwitch?.mode === 'external-first', 'gbrain provider should support external-first mode')
   assert(gbrainMemory.memoryProviderSwitch?.nextOrder?.[0] === 'gbrain', 'gbrain should become the first provider')
-  assert(gbrainMemory.memoryProviderSwitch?.previousOrder?.every(provider => provider === 'gbrain'), 'setup memory routing should not include legacy memory providers')
-  assert(gbrainMemory.memoryProviderSwitch?.nextOrder?.every(provider => provider === 'gbrain'), 'setup memory routing should remain gbrain-only')
+  assert(gbrainMemory.memoryProviderSwitch?.previousOrder?.[0] === 'hrain', 'gbrain setup should start from local-first routing')
+  assert(gbrainMemory.memoryProviderSwitch?.nextOrder?.includes('hrain'), 'gbrain setup should keep hrain as fallback')
   assert(existsSync(gbrainMemory.memoryProviderSwitch?.path ?? ''), 'setup should write memory provider config')
   assert(gbrainMemory.final?.runtimeChecks?.some(check => check.id === 'bun'), 'memory setup should expose Bun runtime check for gbrain')
 
@@ -129,6 +150,8 @@ function runSetupSmoke() {
     projectDir,
     '--pack',
     'external-cli,memory,knowledge',
+    '--include',
+    'gbrain',
     '--only',
     headlessSetupIds,
     '--apply',
@@ -141,7 +164,7 @@ function runSetupSmoke() {
   assert(apply.final?.ok === true, 'setup apply should succeed for external-cli, memory, and knowledge packs')
   assert(apply.final?.complete === true, 'setup apply should leave the selected packs fully installed')
   assert(apply.final?.summary?.needsInit === 0, 'setup apply should not leave RTK, GBrain, Graphify, or CodeGraph uninitialized')
-  assert(apply.memoryProviderSwitch?.provider === 'gbrain', 'setup apply should keep gbrain as the selected provider')
+  assert(apply.memoryProviderSwitch?.provider === 'gbrain', 'setup apply should keep explicitly selected gbrain provider')
   assert(existsSync(join(projectDir, '.codegraph')), 'setup apply should initialize a CodeGraph index in the target project')
   assert(existsSync(join(projectDir, 'graphify-out', 'graph.json')), 'setup apply should generate a Graphify graph artifact without LLM usage')
   assert(existsSync(join(projectDir, '.git', 'hooks', 'post-commit')), 'setup apply should install the Graphify post-commit hook')
@@ -163,6 +186,8 @@ function runSetupSmoke() {
     projectDir,
     '--pack',
     'external-cli,memory,knowledge',
+    '--include',
+    'gbrain',
     '--only',
     headlessSetupIds,
     '--json',

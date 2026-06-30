@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { externalCommandExists } from '../core/ExternalCommand.js'
 import { runGbrainCommandSync } from '../core/GbrainRuntime.js'
+import { MemoryBrain, type MemoryNode } from './MemoryBrain.js'
 
-export type MemoryProviderKind = 'gbrain'
+export type MemoryProviderKind = 'gbrain' | 'hrain'
 export type MemoryProviderCapability = 'semantic-recall' | 'graph-recall' | 'session-memory' | 'mcp' | 'write-memory'
 export type MemoryProviderSafetyLevel = 'review-required' | 'blocked'
 export type MemoryProviderWriteMode = 'disabled' | 'candidate-only' | 'enabled'
@@ -134,13 +135,27 @@ export function defaultMemoryProvidersConfig(): MemoryProvidersConfig {
   return {
     version: '1.0',
     routing: {
-      mode: 'external-first',
-      defaultOrder: ['gbrain'],
+      mode: 'local-only',
+      defaultOrder: ['hrain', 'gbrain'],
       allowExternalWrite: false,
       requireEvidence: true,
       maxResultsPerProvider: 5,
     },
     providers: [
+      {
+        id: 'hrain',
+        kind: 'hrain',
+        enabled: true,
+        priority: 60,
+        capabilities: ['semantic-recall', 'session-memory', 'write-memory'],
+        safetyLevel: 'review-required',
+        writeMode: 'candidate-only',
+        attribution: {
+          license: 'MIT',
+          sourceUrl: 'https://github.com/hongmaple0820/scale-engine',
+          notice: 'Local SCALE memory brain. Uses project-scoped evidence-backed memory without external embedding services.',
+        },
+      },
       {
         id: 'gbrain',
         kind: 'gbrain',
@@ -233,9 +248,15 @@ export function inspectMemoryProviders(options: {
 } = {}): MemoryProviderStatusReport {
   const projectDir = resolve(options.projectDir ?? process.cwd())
   const loaded = loadMemoryProvidersConfig(projectDir, options.scaleDir)
+  const order = loaded.config.routing.defaultOrder
   const statuses = loaded.config.providers
-    .map(provider => providerStatus(provider, loaded.config.routing, projectDir))
-    .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
+    .map(provider => providerStatus(provider, loaded.config.routing, projectDir, options.scaleDir))
+    .sort((a, b) => {
+      const ai = order.indexOf(a.id)
+      const bi = order.indexOf(b.id)
+      const orderRank = (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      return orderRank || b.priority - a.priority || a.id.localeCompare(b.id)
+    })
   return {
     projectDir,
     scaleDir: resolveScaleRoot(projectDir, options.scaleDir),
@@ -267,7 +288,14 @@ export function useMemoryProvider(options: {
     },
     providers: loaded.config.providers.map(item => ({ ...item })),
   }
-  const target = config.providers.find(item => item.id === provider)
+  let target = config.providers.find(item => item.id === provider)
+  if (!target) {
+    const defaultProvider = defaultMemoryProvidersConfig().providers.find(item => item.id === provider)
+    if (defaultProvider) {
+      target = { ...defaultProvider }
+      config.providers.push(target)
+    }
+  }
   if (!target) {
     return {
       ok: false,
@@ -291,8 +319,8 @@ export function useMemoryProvider(options: {
   const nextOrder = [provider, ...config.routing.defaultOrder.filter(item => item !== provider)]
   config.routing.defaultOrder = nextOrder
   if (typeof options.allowExternalWrite === 'boolean') config.routing.allowExternalWrite = options.allowExternalWrite
-  if (options.mode) config.routing.mode = normalizeRoutingMode(options.mode, config.routing.mode)
-  else if (config.routing.mode === 'local-only') config.routing.mode = 'external-first'
+  const mode = options.mode ?? defaultModeForProvider(target, config.routing.mode)
+  config.routing.mode = normalizeRoutingMode(mode, config.routing.mode)
 
   const path = saveMemoryProvidersConfig(projectDir, options.scaleDir, config)
   const status = inspectMemoryProviders({ projectDir, scaleDir: options.scaleDir })
@@ -332,10 +360,12 @@ export async function recallMemoryProviders(options: {
       continue
     }
     try {
-      const recalled = await recallExternal(provider, options, limit, projectDir)
+      const recalled = await recallExternal(provider, options, limit, projectDir, options.scaleDir)
       if (recalled.length > 0) {
+        if (!options.provider && provider.id !== providers[0]?.id) fallbackUsed = true
         selectedProviders.push(provider.id)
         items.push(...recalled)
+        if (!options.provider && loaded.config.routing.mode === 'local-only') break
       }
     } catch (error) {
       warnings.push(`${provider.id} recall failed: ${(error as Error).message}`)
@@ -343,7 +373,7 @@ export async function recallMemoryProviders(options: {
     if (items.length >= limit && !options.provider) break
   }
 
-  // With gbrain-only routing, local MemoryBrain is not used as an implicit recall fallback.
+  // Provider routing is explicit: local hrain participates only when configured or selected by defaults.
   const naiveContextTokens = 0
   const recalledTokens = estimateTokens(items.map(item => `${item.title}\n${item.summary}`).join('\n'))
   const reduction = naiveContextTokens > 0 && recalledTokens > 0
@@ -368,8 +398,10 @@ export async function recallMemoryProviders(options: {
 }
 
 function orderedProviders(config: MemoryProvidersConfig, providerId?: string): MemoryProviderConfig[] {
-  const candidates = config.providers
-  const selected = providerId ? candidates.filter(provider => provider.id === providerId) : candidates
+  const candidates = config.providers.filter(provider => provider.enabled)
+  const selected = providerId
+    ? candidates.filter(provider => provider.id === providerId)
+    : candidates.filter(provider => config.routing.mode !== 'local-only' || isLocalProvider(provider))
   const order = config.routing.defaultOrder
   return selected.sort((a, b) => {
     const ai = order.indexOf(a.id)
@@ -379,12 +411,25 @@ function orderedProviders(config: MemoryProvidersConfig, providerId?: string): M
   })
 }
 
+function defaultModeForProvider(
+  provider: MemoryProviderConfig,
+  fallback: MemoryProviderRoutingConfig['mode'],
+): MemoryProviderRoutingConfig['mode'] {
+  if (provider.kind === 'hrain') return 'local-only'
+  if (provider.kind === 'gbrain') return 'external-first'
+  return fallback
+}
+
 async function recallExternal(
   provider: MemoryProviderConfig,
   input: MemoryProviderRecallInput,
   limit: number,
   projectDir: string,
+  scaleDir?: string,
 ): Promise<MemoryProviderRecallItem[]> {
+  if (provider.kind === 'hrain') {
+    return recallHrain(provider, input, limit, projectDir, scaleDir)
+  }
   if (provider.kind === 'gbrain' && commandExists('gbrain')) {
     return recallGbrainCli(provider, input, limit, projectDir)
   }
@@ -437,12 +482,19 @@ function externalToRecall(provider: string, item: Record<string, unknown>, index
   }
 }
 
-function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderRoutingConfig, projectDir: string): MemoryProviderStatus {
+function providerStatus(provider: MemoryProviderConfig, routing: MemoryProviderRoutingConfig, projectDir: string, scaleDir?: string): MemoryProviderStatus {
   if (!provider.enabled) {
     return {
       ...providerStatusBase(provider, routing),
       available: false,
       reason: 'disabled by memory provider policy',
+    }
+  }
+  if (provider.kind === 'hrain') {
+    return {
+      ...providerStatusBase(provider, routing),
+      available: true,
+      reason: `hrain local memory is available at ${normalizeProjectPath(projectDir, hrainDbPath(provider, projectDir, scaleDir))}; no external embedding service required`,
     }
   }
   if (provider.kind === 'gbrain' && commandExists('gbrain')) {
@@ -513,14 +565,19 @@ export function inspectGbrainCliHealth(options: { projectDir?: string; env?: Nod
     available: false,
     degraded: false,
     reason: noBrainConfigured
-      ? 'gbrain CLI is installed but no brain is configured; run `gbrain init --pglite` before autonomous recall'
+      ? 'gbrain CLI is installed but no brain is configured; use local hrain or initialize a local embedding-backed gbrain before autonomous recall'
       : `gbrain CLI is installed but doctor failed: ${firstLine(output)}`,
     issues: noBrainConfigured ? ['no-brain-configured'] : ['doctor-failed'],
     recoveryHint: noBrainConfigured
-      ? 'Initialize a local PGLite brain or configure a Postgres-backed gbrain before relying on cross-session recall.'
+      ? 'Use `scale memory provider use hrain --mode local-only` for a dependency-free local memory path, or initialize gbrain with a local embedding provider such as Ollama.'
       : 'Run gbrain doctor --json and repair the reported database or provider issue before relying on cross-session recall.',
     nextCommands: noBrainConfigured
-      ? ['gbrain init --pglite --no-embedding', 'gbrain doctor --json', 'scale memory provider status --json']
+      ? [
+        'scale memory provider use hrain --mode local-only --json',
+        'gbrain init --pglite --embedding-model ollama:nomic-embed-text --embedding-dimensions 768',
+        'gbrain doctor --json',
+        'scale memory provider status --json',
+      ]
       : ['gbrain doctor --json', 'scale memory provider status --json'],
   }
 }
@@ -709,6 +766,52 @@ function providerWarnings(statuses: MemoryProviderStatus[], config: MemoryProvid
   return warnings
 }
 
+function recallHrain(
+  provider: MemoryProviderConfig,
+  input: MemoryProviderRecallInput,
+  limit: number,
+  projectDir: string,
+  scaleDir?: string,
+): MemoryProviderRecallItem[] {
+  const dbPath = hrainDbPath(provider, projectDir, scaleDir)
+  if (!existsSync(dbPath)) return []
+  const brain = new MemoryBrain({
+    projectDir,
+    dbPath,
+  })
+  try {
+    const query = [input.query, input.task, ...(input.files ?? [])].filter(Boolean).join('\n')
+    const active = brain.query(query, { limit, status: 'active' }).nodes
+    const candidates = input.includeCandidates && active.length < limit
+      ? brain.query(query, { limit: limit - active.length, status: 'candidate' }).nodes
+      : []
+    return [...active, ...candidates]
+      .slice(0, limit)
+      .map(node => hrainNodeToRecallItem(provider, node, projectDir, scaleDir))
+  } finally {
+    brain.close()
+  }
+}
+
+function hrainNodeToRecallItem(provider: MemoryProviderConfig, node: MemoryNode, projectDir: string, scaleDir?: string): MemoryProviderRecallItem {
+  return {
+    provider: 'hrain',
+    id: node.id,
+    title: truncate(node.title, 140),
+    summary: truncate(node.summary, 500),
+    confidence: node.confidence,
+    score: node.confidence,
+    evidencePaths: node.evidencePaths,
+    metadata: {
+      type: node.type,
+      layer: node.layer,
+      scope: node.scope,
+      status: node.status,
+      localPath: normalizeProjectPath(projectDir, hrainDbPath(provider, projectDir, scaleDir)),
+    },
+  }
+}
+
 function recallGbrainCli(
   provider: MemoryProviderConfig,
   input: MemoryProviderRecallInput,
@@ -825,6 +928,10 @@ function commandExists(command: string): boolean {
   return externalCommandExists(command)
 }
 
+function isLocalProvider(provider: MemoryProviderConfig): boolean {
+  return provider.kind === 'hrain' || (provider.kind === 'gbrain' && !provider.endpoint)
+}
+
 function normalizeProviders(input: unknown, defaults: MemoryProviderConfig[]): MemoryProviderConfig[] {
   if (!Array.isArray(input)) return defaults
   const byId = new Map(defaults.map(provider => [provider.id, provider]))
@@ -862,8 +969,7 @@ function normalizeProviderOrder(input: string[], providerIds: Set<string>, fallb
 }
 
 function normalizeRoutingMode(value: unknown, fallback: MemoryProviderRoutingConfig['mode']): MemoryProviderRoutingConfig['mode'] {
-  if (value === 'auto' || value === 'external-first') return value
-  if (value === 'local-only') return 'external-first'
+  if (value === 'auto' || value === 'external-first' || value === 'local-only') return value
   return fallback
 }
 
@@ -883,7 +989,7 @@ function resolveProviderPath(value: string, projectDir: string): string {
 }
 
 function normalizeKind(value: unknown, fallback: MemoryProviderKind = 'gbrain'): MemoryProviderKind {
-  return value === 'gbrain' ? 'gbrain' : fallback
+  return value === 'gbrain' || value === 'hrain' ? value : fallback
 }
 
 function normalizeSafety(value: unknown, fallback: MemoryProviderSafetyLevel = 'review-required'): MemoryProviderSafetyLevel {
@@ -905,6 +1011,20 @@ function positiveInt(value: unknown, fallback: number): number {
 
 function resolveScaleRoot(projectDir: string, scaleDir?: string): string {
   return isAbsolute(scaleDir ?? '') ? scaleDir as string : join(projectDir, scaleDir ?? '.scale')
+}
+
+function hrainDbPath(provider: MemoryProviderConfig, projectDir: string, scaleDir?: string): string {
+  const homeDir = provider.homeDir?.trim()
+    ? resolveProviderPath(provider.homeDir, projectDir)
+    : join(resolveScaleRoot(projectDir, scaleDir), 'memory')
+  return join(homeDir, 'brain.sqlite')
+}
+
+function normalizeProjectPath(projectDir: string, targetPath: string): string {
+  const relativePath = targetPath.startsWith(projectDir)
+    ? targetPath.slice(projectDir.length).replace(/^[/\\]/, '')
+    : targetPath
+  return relativePath.replace(/\\/g, '/')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -160,6 +160,8 @@ describe('bootstrap CLI', () => {
       projectDir,
       '--pack',
       'memory',
+      '--include',
+      'gbrain',
       '--memory-provider',
       'gbrain',
       '--json',
@@ -181,8 +183,8 @@ describe('bootstrap CLI', () => {
       provider: 'gbrain',
       mode: 'external-first',
     })
-    expect(report.memoryProviderSwitch.previousOrder).toEqual(['gbrain'])
-    expect(report.memoryProviderSwitch.nextOrder).toEqual(['gbrain'])
+    expect(report.memoryProviderSwitch.previousOrder).toEqual(['hrain', 'gbrain'])
+    expect(report.memoryProviderSwitch.nextOrder).toEqual(['gbrain', 'hrain'])
     expect(report.final.packIds).toEqual(['memory'])
     expect(report.final.runtimeChecks.map(check => check.id)).toContain('bun')
   }, CLI_TEST_TIMEOUT_MS)
@@ -198,6 +200,8 @@ describe('bootstrap CLI', () => {
       projectDir,
       '--pack',
       'external-cli,memory,knowledge',
+      '--include',
+      'gbrain',
       '--only',
       'rtk,gbrain',
       '--json',
@@ -262,7 +266,7 @@ describe('bootstrap CLI', () => {
     expect(report.ok).toBe(true)
     expect(report.workflowCapabilities).toEqual(['browser', 'search', 'computer'])
     expect(report.capabilitiesEnabled).toEqual(report.workflowCapabilities)
-    expect(report.dependencyBootstrapCommand).toBe('scale setup --pack external-cli --memory-provider gbrain --memory-mode external-first --json')
+    expect(report.dependencyBootstrapCommand).toBe('scale setup --pack external-cli --memory-provider hrain --memory-mode local-only --json')
   }, CLI_TEST_TIMEOUT_MS)
 
   it('derives bootstrap packs from profile and governance pack hints', async () => {
@@ -286,7 +290,7 @@ describe('bootstrap CLI', () => {
     expect(report.packIds).toEqual(['external-cli', 'memory', 'knowledge', 'ui'])
     expect(report.items.map(item => item.id)).toEqual(expect.arrayContaining([
       'rtk',
-      'gbrain',
+      'hrain',
       'codegraph',
       'graphify',
       'gitnexus',
@@ -339,8 +343,8 @@ describe('bootstrap CLI', () => {
     expect(report.ok).toBe(true)
     expect(report.profile).toBe('advanced')
     expect(report.bootstrapPacks).toEqual(['external-cli', 'memory', 'knowledge', 'ui'])
-    expect(report.dependencyBootstrapCommand).toBe('scale setup --pack external-cli,memory,knowledge,ui --memory-provider gbrain --memory-mode external-first --json')
-    expect(report.dependencyBootstrapApplyCommand).toBe('scale setup --pack external-cli,memory,knowledge,ui --memory-provider gbrain --memory-mode external-first --apply --yes')
+    expect(report.dependencyBootstrapCommand).toBe('scale setup --pack external-cli,memory,knowledge,ui --memory-provider hrain --memory-mode local-only --json')
+    expect(report.dependencyBootstrapApplyCommand).toBe('scale setup --pack external-cli,memory,knowledge,ui --memory-provider hrain --memory-mode local-only --apply --yes')
     expect(report.configPath.replaceAll('\\', '/')).toBe('.scale/config.yaml')
   }, CLI_TEST_TIMEOUT_MS)
 })

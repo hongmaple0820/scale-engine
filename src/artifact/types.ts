@@ -442,6 +442,7 @@ export type EventType =
   | 'gate.failed'
   | 'gate.executed'
   | 'gate.blocked'
+  | 'verification.recorded'
   // Workflow
   | 'consensus.round'
   | 'ralph.iteration'

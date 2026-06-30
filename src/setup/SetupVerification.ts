@@ -254,8 +254,8 @@ function skippedMemoryProvidersReport(projectDir: string, scaleDir: string): Mem
     configPath,
     configExists: existsSync(configPath),
     routing: {
-      mode: 'external-first',
-      defaultOrder: ['gbrain'],
+      mode: 'local-only',
+      defaultOrder: ['hrain', 'gbrain'],
       allowExternalWrite: false,
       requireEvidence: true,
       maxResultsPerProvider: 5,

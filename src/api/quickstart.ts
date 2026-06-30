@@ -189,8 +189,8 @@ export function governanceNextSteps(options: {
     steps.push('scale init --agent <platform>  # optional: add agent-specific hooks later')
   }
   if (options.includeDependencyBootstrap !== false) {
-    steps.push(`scale setup --pack ${setupPackArg} --memory-provider gbrain --memory-mode external-first --json  # inspect third-party skills, CLIs, memory, and knowledge providers`)
-    steps.push(`scale setup --pack ${setupPackArg} --memory-provider gbrain --memory-mode external-first --apply --yes  # install and initialize governed third-party capabilities`)
+    steps.push(`scale setup --pack ${setupPackArg} --memory-provider hrain --memory-mode local-only --json  # inspect third-party skills, CLIs, memory, and knowledge providers`)
+    steps.push(`scale setup --pack ${setupPackArg} --memory-provider hrain --memory-mode local-only --apply --yes  # install and initialize governed third-party capabilities`)
     steps.push(`scale setup --verify --pack ${setupPackArg} --json  # prove setup is usable before relying on the workflow`)
   }
   steps.push(
@@ -215,7 +215,7 @@ export async function quickStart(projectDir: string = '.', options?: {
     constraintsApplied: 0,
     workflowCapabilities: ['browser', 'search', 'computer'],
     capabilitiesEnabled: ['browser', 'search', 'computer'],
-    dependencyBootstrapCommand: `scale setup --pack ${setupPackArg} --memory-provider gbrain --memory-mode external-first --json`,
+    dependencyBootstrapCommand: `scale setup --pack ${setupPackArg} --memory-provider hrain --memory-mode local-only --json`,
     nextSteps: [],
   }
   const detection = detectPlatform(projectDir)

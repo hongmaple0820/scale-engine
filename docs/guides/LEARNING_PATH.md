@@ -92,7 +92,7 @@ scale config profile standard
 # 添加自定义 services 和 commands
 
 # 4. 设置第三方能力
-npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider hrain --memory-mode local-only --dir . --json
 
 # 5. 运行 doctor 检查配置健康
 npx -y @hongmaple0820/scale-engine@latest doctor --dir .

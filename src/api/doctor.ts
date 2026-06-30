@@ -40,6 +40,7 @@ export interface DoctorReport {
   memoryProviders?: {
     available: boolean
     gbrainAvailable: boolean
+    hrainAvailable: boolean
     defaultOrder: string[]
     mode: string
   }
@@ -171,6 +172,7 @@ export class Doctor {
       memoryProviders: {
         available: memoryProviders.availableProviderCount > 0,
         gbrainAvailable: Boolean(memoryProviders.providers.find(provider => provider.id === 'gbrain')?.available),
+        hrainAvailable: Boolean(memoryProviders.providers.find(provider => provider.id === 'hrain')?.available),
         defaultOrder: [...memoryProviders.routing.defaultOrder],
         mode: memoryProviders.routing.mode,
       },
@@ -755,19 +757,19 @@ export class Doctor {
   }
 
   private checkMemoryProviders(memoryProviders: MemoryProviderStatusReport, bootstrapPlan: ProfileBootstrapPlan): DiagnosticResult {
-    const gbrain = memoryProviders.providers.find(provider => provider.id === 'gbrain')
-    if (gbrain?.available) {
+    const availableProviders = memoryProviders.providers.filter(provider => provider.available)
+    if (availableProviders.length > 0) {
       return {
         name: 'Memory provider routing',
         status: memoryProviders.warnings.length > 0 ? 'warn' : 'ok',
-        message: `mode=${memoryProviders.routing.mode}; order=${memoryProviders.routing.defaultOrder.join(' -> ')}; gbrain=available`,
+        message: `mode=${memoryProviders.routing.mode}; order=${memoryProviders.routing.defaultOrder.join(' -> ')}; available=${availableProviders.map(provider => provider.id).join(', ')}`,
         fix: memoryProviders.warnings.length > 0 ? 'Run: scale memory provider status --json' : undefined,
       }
     }
     return {
       name: 'Memory provider routing',
       status: 'warn',
-      message: `mode=${memoryProviders.routing.mode}; order=${memoryProviders.routing.defaultOrder.join(' -> ')}; gbrain=unavailable`,
+      message: `mode=${memoryProviders.routing.mode}; order=${memoryProviders.routing.defaultOrder.join(' -> ')}; no available provider`,
       fix: `Run: ${this.memoryBootstrapApplyCommand(bootstrapPlan)}`,
     }
   }
@@ -942,7 +944,7 @@ export class Doctor {
   private memoryBootstrapApplyCommand(bootstrapPlan: ProfileBootstrapPlan): string {
     return bootstrapPlan.packs.includes('memory')
       ? bootstrapPlan.applyCommand
-      : 'scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes'
+      : 'scale setup --pack memory --memory-provider hrain --memory-mode local-only --apply --yes'
   }
 
   formatReport(report: DoctorReport): string {
@@ -1084,8 +1086,8 @@ export class Doctor {
       lines.push(divider)
     }
 
-    if (report.memoryProviders && !report.memoryProviders.gbrainAvailable) {
-      lines.push(`  -> Memory bootstrap: ${report.bootstrapPlan?.packs.includes('memory') ? report.bootstrapPlan.applyCommand : 'scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes'}`)
+    if (report.memoryProviders && !report.memoryProviders.available) {
+      lines.push(`  -> Memory bootstrap: ${report.bootstrapPlan?.packs.includes('memory') ? report.bootstrapPlan.applyCommand : 'scale setup --pack memory --memory-provider hrain --memory-mode local-only --apply --yes'}`)
       lines.push(divider)
     }
 

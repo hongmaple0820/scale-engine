@@ -182,6 +182,36 @@ describe('Gateway + Detectors', () => {
       const r = await gw.beforeStop({ sessionId: 'test-session' })
       expect(r.allow).toBe(true)
     })
+
+    it('allows stop when a verification.recorded event exists after edit', async () => {
+      gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'a.ts' } }, { sessionId: 'test-session' })
+      await new Promise((r) => setTimeout(r, 10))
+      bus.emit('verification.recorded', {
+        command: 'npm run build',
+        status: 'passed',
+        exitCode: 0,
+      }, { sessionId: 'test-session' })
+      await new Promise((r) => setTimeout(r, 20))
+      const r = await gw.beforeStop({ sessionId: 'test-session' })
+      expect(r.allow).toBe(true)
+    })
+
+    it('blocks stop when the latest build verification failed', async () => {
+      gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'a.ts' } }, { sessionId: 'test-session' })
+      await new Promise((r) => setTimeout(r, 10))
+      bus.emit('tool.failed', {
+        tool: 'Bash',
+        args: { command: 'npm run build' },
+        exitCode: 1,
+        output: 'build failed',
+      }, { sessionId: 'test-session' })
+      await new Promise((r) => setTimeout(r, 20))
+      const r = await gw.beforeStop({ sessionId: 'test-session' })
+      expect(r.allow).toBe(false)
+      expect(r.reason).toContain('编译失败')
+    })
   })
 
   // ===== Gateway postTool =====
@@ -277,4 +307,3 @@ describe('Gateway + Detectors', () => {
     })
   })
 })
-

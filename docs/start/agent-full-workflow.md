@@ -35,7 +35,7 @@
 - 失败后的回滚方式。
 
 用户确认后，优先运行：
-`npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes --dir .`
+`npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes --dir .`
 
 安装后必须再运行：
 `npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json`
@@ -58,7 +58,7 @@
 | SCALE CLI | 必须可运行 | `npx -y @hongmaple0820/scale-engine@latest --version` |
 | full setup pack | 必须检查 | `scale setup --verify --pack full --json` |
 | rtk | 推荐默认启用 | `rtk gain` 或安装器 runtime check |
-| gbrain | 默认记忆供应商 | `scale memory provider status --json` |
+| hrain | 默认本地记忆供应商 | `scale memory provider status --json` |
 | CodeGraph | 默认代码结构索引 | `scale codegraph status --json` |
 | Graphify | 默认知识图谱产物供应商 | `scale setup --verify --pack knowledge --json` |
 | 浏览器/E2E | UI/web 任务必须检查 | 项目测试命令或 Playwright smoke |

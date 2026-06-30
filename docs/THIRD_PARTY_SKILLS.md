@@ -80,25 +80,25 @@ Default language is Chinese. Running `scale setup` without `--json` starts the i
 
 `setup` exposes report-level `runtimeChecks` before any install command runs. Missing `python`, `bun`, `cargo`, `uv/pipx`, or `node/npm/npx` is shown with a targeted install hint, so users can fix the environment before `--yes`/`--apply`.
 
-Memory provider routing is intentionally gbrain-only in the current workflow policy:
+Memory provider routing is local-first by default. Use `hrain` for dependency-free local memory; opt into `gbrain` only when the project has a local or remote graph memory backend ready:
 
 ```bash
-scale setup --pack memory --memory-provider gbrain --memory-mode external-first --json
-scale setup --pack memory --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --pack memory --memory-provider hrain --memory-mode local-only --json
+scale setup --pack memory --memory-provider hrain --memory-mode local-only --apply --yes
 scale setup --verify --pack memory --json
 ```
 
 Feishu/Lark is included through the default `external-cli`, `knowledge`, and `full` packs:
 
 ```bash
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes
 lark-cli config init --new --lang zh
 lark-cli auth login --recommend --no-wait
 lark-cli doctor
 scale setup --verify --pack full --json
 ```
 
-The CLI and skills are governed capabilities, but Feishu is not the long-term memory backend. Keep GBrain as the default memory provider; import reviewed Feishu conversation summaries or Wiki/Doc evidence into memory/knowledge only after privacy and retention review.
+The CLI and skills are governed capabilities, but Feishu is not the long-term memory backend. Keep `hrain` as the default local memory provider; import reviewed Feishu conversation summaries or Wiki/Doc evidence into memory/knowledge only after privacy and retention review. Use `gbrain` as an explicit graph-memory enhancement when its local embedding/database setup is healthy.
 
 Repository maintainers should run the setup smoke before release or after changing installer behavior:
 

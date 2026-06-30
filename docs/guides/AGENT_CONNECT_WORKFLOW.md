@@ -16,7 +16,7 @@ The visual panel is the primary configuration surface. Use `http://127.0.0.1:321
 ## Dashboard Setup
 
 ```bash
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes
 scale setup --verify --pack full --json
 scale dashboard daemon ensure --dir . --port 3210 --json
 ```

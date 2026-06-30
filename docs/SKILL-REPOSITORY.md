@@ -35,7 +35,7 @@
 | ID | 类别 | 信任 | 主要用途 | 组合建议 |
 | --- | --- | --- | --- | --- |
 | `planning-with-files` | planning | community | Use persistent planning files, progress logs, findings, active-plan selection, and plan attestation for long-running agent work. | memory-brain, web-access, code-reviewer |
-| `gbrain` | memory | community | Use as the default graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance. | memory-brain, codegraph |
+| `gbrain` | memory | community | Use as an optional graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance when a healthy local or remote brain is configured. | memory-brain, codegraph |
 | `impeccable` | ui | ecosystem | Run as the required UI quality gate for deterministic anti-pattern detection before visual acceptance. | taste-skill, awesome-design-md, ui-ux-pro-max, webapp-testing |
 | `taste-skill` | ui | ecosystem | Choose the product visual direction and taste parameters before UI implementation starts. | impeccable, frontend-design, awesome-design-md |
 | `frontend-design` | ui | official | 在 DESIGN.md 和 UX 验收之后补齐前端实现约束、组件状态和落地方式。 | awesome-design-md, ui-ux-pro-max, webapp-testing |

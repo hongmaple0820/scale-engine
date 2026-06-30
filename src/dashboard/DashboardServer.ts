@@ -2753,7 +2753,7 @@ export class DashboardServer {
         status: knowledgeReady ? 'ready' : defaultRequiredSkills > 0 ? 'partial' : 'missing',
         score: knowledgeReady ? 100 : defaultRequiredSkills > 0 ? 45 : 0,
         tab: 'knowledge',
-        primaryAction: knowledgeReady ? 'Run provider recall verification before automatic import.' : 'Configure Tencent ima or keep gbrain-only memory as the default.',
+        primaryAction: knowledgeReady ? 'Run provider recall verification before automatic import.' : 'Configure Tencent ima or keep local-first hrain memory as the default.',
         evidence: [
           `requiredSkills=${defaultRequiredSkills}/${Math.max(requiredSkills.length, 1)}`,
           `ima=${knowledgeReady ? 'configured' : 'pending'}`,
@@ -3695,7 +3695,7 @@ export class DashboardServer {
       ],
       commands: {
         configure: [
-          'scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes',
+          'scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes',
           'lark-cli config init --new --lang zh',
           'lark-cli auth login --recommend --no-wait',
           'Open Dashboard > Integrations > Agent Connect and save Bridge/Management settings.',
@@ -3848,7 +3848,7 @@ export class DashboardServer {
     const routeConfigs = this.getFeishuRouteSummaries()
     const routeConfig = this.buildFeishuRouteSummary(this.selectFeishuRouteConfig(routes), platformTargets)
     const setupCommands = [
-      'scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes',
+      'scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes',
       'lark-cli config init --new --lang zh',
       'lark-cli auth login --recommend --no-wait',
     ]

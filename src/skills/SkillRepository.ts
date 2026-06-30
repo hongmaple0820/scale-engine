@@ -117,7 +117,7 @@ export const SKILL_REPOSITORY: SkillRepositoryEntry[] = [
     sourceUrl: 'https://github.com/garrytan/gbrain',
     installCommand: 'Install and configure GBrain from https://github.com/garrytan/gbrain, then let SCALE route memory recall through the provider contract; do not vendor upstream source.',
     trust: 'community',
-    primaryUse: 'Use as the default graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance.',
+    primaryUse: 'Use as an optional graph-backed memory provider for long-running project knowledge, entity relationships, and background memory maintenance when a healthy local or remote brain is configured.',
     combineWith: ['memory-brain', 'codegraph'],
     evidence: ['memory-provider-health', 'graph-recall-result', 'privacy-boundary', 'data-retention-policy'],
     attribution: {

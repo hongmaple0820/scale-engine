@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execSync } from 'node:child_process'
+import { safeRmSync } from '../helpers/fs.js'
 
 function makeTempDir(): string {
   return mkdtempSync(join(tmpdir(), 'commit-discipline-'))
@@ -41,7 +42,7 @@ describe('CommitDiscipline', () => {
   })
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true })
+    safeRmSync(dir)
   })
 
   describe('check', () => {
@@ -96,7 +97,7 @@ describe('CommitDiscipline', () => {
         expect(timeViolation).toBeDefined()
         expect(timeViolation?.severity).toBe('warn')
       } finally {
-        rmSync(backDir, { recursive: true, force: true })
+        safeRmSync(backDir)
       }
     })
 
@@ -111,7 +112,7 @@ describe('CommitDiscipline', () => {
         const timeViolation = status.violations.find(v => v.type === 'too-long-since-commit')
         expect(timeViolation?.severity).toBe('block')
       } finally {
-        rmSync(backDir, { recursive: true, force: true })
+        safeRmSync(backDir)
       }
     })
 
@@ -331,7 +332,7 @@ describe('CommitDiscipline', () => {
         expect(status.uncommittedFiles).toBe(0)
         expect(status.violations).toHaveLength(0)
       } finally {
-        rmSync(nonGitDir, { recursive: true, force: true })
+        safeRmSync(nonGitDir)
       }
     })
   })

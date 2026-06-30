@@ -33,7 +33,7 @@ npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
 mkdir scale-demo
 cd scale-demo
 npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
-npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider hrain --memory-mode local-only --dir . --json
 npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 npx -y @hongmaple0820/scale-engine@latest status --dir .
 ```
@@ -114,7 +114,7 @@ scale preflight --preflight-profile quick
 ```bash
 scale init --agent codex --dir .
 scale init --agent cursor --dir .
-npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider gbrain --memory-mode external-first --dir . --json
+npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider hrain --memory-mode local-only --dir . --json
 ```
 
 结果：Codex 读取 `AGENTS.md` 和 `.codex/hooks.json`；Cursor 读取 `.cursor/settings.json` 和 `.cursorrules`；两者共享 `.scale/` 证据、知识库、token 和 gate 配置。
@@ -249,7 +249,7 @@ node "$scaleRoot/dist/api/http.js"
 
 1. 选一个主 Agent：`scale init --agent AGENT-ID`。
 2. 跑 `scale doctor --json` 和 `scale preflight --preflight-profile quick`。
-3. 接入 gbrain：`scale setup --pack memory --memory-provider gbrain --memory-mode external-first --json`。
+3. 接入本地 hrain：`scale setup --pack memory --memory-provider hrain --memory-mode local-only --json`。
 4. 接入知识库：把产品文档、技术方案、规范文档放入 `docs/` 或 `.scale/knowledge/imports/`。
 5. 接入 token：让真实模型调用后用 `scale token record` 写入用量，再用 `scale token report` 看成本。
 6. 打开面板：确认 Overview、Workflow、Documents、Knowledge、Prompts、Token/Cost 都有明确数据来源或空态原因。

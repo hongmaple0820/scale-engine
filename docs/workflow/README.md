@@ -78,6 +78,8 @@ Storage and disk-cleanup requests route through the bundled `storage-analyzer` s
 
 Hook-sensitive CLI commands must stay safe in agent hook contexts. `scale gate before-stop` defaults to a hook-safe fast path that does not initialize the artifact engine; use `scale gate before-stop --enforce` only in explicit verification flows such as preflight or manual release checks.
 
+Adapter hook pipelines must preserve enough Bash metadata for verification evidence. `scale gate post-tool` records recognized lint, test, build, preflight, typecheck, and verify commands as runtime evidence and emits `verification.recorded`; `before-stop` relies on that event or the runtime evidence ledger to avoid false "claimed complete without verification" loops after edits.
+
 `G8` runs the full docs-health gate and writes `.agent/logs/docs-health/g8-docs-health-report.json`. `G17` runs the link-health subset and writes `.agent/logs/docs-health/g17-link-health-report.json`. `npm run release:check` runs `npm run learning:health` and `npm run docs:health` before typecheck, lint, tests, smoke checks, build, package smoke, audit, diff hygiene, and package dry-run.
 
 `npm run smoke:package` verifies that npm pack includes critical `dist/cli/*` command modules and that hook-sensitive commands such as `scale gate before-stop` and `scale meta-governance` start from the built package without creating `scale.db`.
@@ -102,7 +104,7 @@ The performance baseline workflow uses typed `workflow_dispatch` inputs, emits w
 
 Dependabot opens weekly non-major npm dependency updates and monthly GitHub Actions updates so dependency maintenance stays visible without automatically taking major-version risk.
 
-The npm publish workflow runs on Node.js 22, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`.
+The npm publish workflow runs on Node.js 22, uses npm cache, publishes with `NODE_AUTH_TOKEN`, and keeps npm provenance enabled with `npm publish --provenance`. Releases are tag-triggered by pushing a `vX.Y.Z` tag; the package version, changelog entry, release checks, commit, tag, and remote push are the local release evidence before GitHub Actions publishes.
 
 Gitee release metadata sync is intentionally local-only. The tag workflow does not require or read a GitHub Actions `GITEE_TOKEN`; maintainers who need the Gitee release page mirrored run `npm run release:sync-gitee` locally with a process-scoped Gitee API token after npm and GitHub Release publication.
 

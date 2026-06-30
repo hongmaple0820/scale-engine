@@ -378,16 +378,16 @@ describe('Doctor', () => {
 
     const report = await doc.diagnose()
     expect(report.bootstrapPlan?.packs).toEqual(['external-cli', 'memory', 'knowledge'])
-    expect(report.checks.find((c) => c.name === 'CodeGraph CLI')?.fix).toBe('Run: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --apply --yes')
-    expect(report.checks.find((c) => c.name === 'Graphify CLI')?.fix).toBe('Run: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --apply --yes')
+    expect(report.checks.find((c) => c.name === 'CodeGraph CLI')?.fix).toBe('Run: scale setup --pack external-cli,memory,knowledge --memory-provider hrain --memory-mode local-only --apply --yes')
+    expect(report.checks.find((c) => c.name === 'Graphify CLI')?.fix).toBe('Run: scale setup --pack external-cli,memory,knowledge --memory-provider hrain --memory-mode local-only --apply --yes')
     expect(report.checks.find((c) => c.name === 'Memory provider routing')).toMatchObject({
       optional: true,
       category: 'memory',
-      fix: 'Run: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --apply --yes',
+      fix: 'Run: scale setup --pack external-cli,memory,knowledge --memory-provider hrain --memory-mode local-only --apply --yes',
     })
     const formatted = doc.formatReport(report)
     expect(formatted).toContain('Memory Providers (Optional):')
-    expect(formatted).toContain('Bootstrap inspect: scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --json')
+    expect(formatted).toContain('Bootstrap inspect: scale setup --pack external-cli,memory,knowledge --memory-provider hrain --memory-mode local-only --json')
   })
 
   it('flags legacy qdrant config drift and recommends graphify migration', async () => {
@@ -406,7 +406,7 @@ describe('Doctor', () => {
     expect(configHealth?.status).toBe('warn')
     expect(configHealth?.message).toContain('Legacy Qdrant backend configured')
     expect(configHealth?.fix).toContain('graphify-backed knowledge')
-    expect(configHealth?.fix).toContain('scale setup --pack external-cli,memory,knowledge --memory-provider gbrain --memory-mode external-first --json')
+    expect(configHealth?.fix).toContain('scale setup --pack external-cli,memory,knowledge --memory-provider hrain --memory-mode local-only --json')
   })
 
   it('accepts .scale/evals as a valid evolution directory', async () => {
