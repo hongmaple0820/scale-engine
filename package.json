@@ -85,13 +85,13 @@
     "naive-ui": "^2.44.1",
     "pino": "^9.3.0",
     "pino-pretty": "^11.2.0",
-    "type-is": "2.0.1",
+    "type-is": "2.1.0",
     "vue": "^3.5.38",
     "zod": "^3.23.0"
   },
   "overrides": {
     "content-type": "1.0.5",
-    "type-is": "2.0.1",
+    "type-is": "2.1.0",
     "qs": "6.15.2"
   },
   "optionalDependencies": {
