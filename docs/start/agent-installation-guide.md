@@ -46,6 +46,8 @@ npx -y @hongmaple0820/scale-engine@latest status --dir .
 - `setup --verify --pack full --json` 是第三方能力可用性检查；如果需要安装，再让 Agent 输出计划并在确认后运行 `setup --pack full --apply --yes`。
 - 真正交付前至少跑 `scale preflight --preflight-profile quick` 或项目自己的 build/lint/test。
 
+`0.54.4` 补丁约定：`hrain` 是 SCALE 内置的本地记忆 provider。安装验收通过 `scale memory provider status --json` 检查它，不要求项目或用户目录里额外存在 `hrain/SKILL.md`。
+
 ## 2. 已有项目接入
 
 已有项目不要盲目覆盖历史规则，先检查再应用：
