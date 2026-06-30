@@ -347,7 +347,7 @@ const DEPENDENCY_BOOTSTRAP_DEFINITIONS: DependencyBootstrapDefinition[] = [
     initializeCommands: ctx => [
       GRAPHIFY_CODEX_INSTALL,
       GRAPHIFY_HOOK_INSTALL,
-      graphifyUpdateCommand(ctx.projectDir),
+      graphifyBuildCommand(ctx),
     ],
     healthCheck: checkGraphifyHealth,
   },
@@ -1112,11 +1112,17 @@ function detectCuaPackage(context: BootstrapInstallContext): string {
   return imported.ok ? `PYTHON:${python}:cua` : 'missing'
 }
 
-function graphifyUpdateCommand(projectDir: string): BootstrapCliCommand {
+function graphifyBuildCommand(context: BootstrapInstallContext): BootstrapCliCommand {
+  const python = context.commandExists('python') ? 'python' : 'python3'
+  const script = [
+    'from pathlib import Path',
+    'from graphify.watch import _rebuild_code',
+    "_rebuild_code(Path('.'))",
+  ].join('; ')
   return {
-    command: 'graphify',
-    args: ['update', projectDir, '--no-cluster'],
-    display: `graphify update ${quotePath(projectDir)} --no-cluster`,
+    command: python,
+    args: ['-c', script],
+    display: `${python} -c "from graphify.watch import _rebuild_code; _rebuild_code(Path('.'))"`,
   }
 }
 
@@ -1350,7 +1356,7 @@ async function reconcileDependencyBootstrapItems(
 
 function checkGraphifyHealth(context: BootstrapInstallContext): DependencyBootstrapHealth {
   const graphPath = join(context.projectDir, 'graphify-out', 'graph.json')
-  const version = runHealthCommand('graphify', ['--version'], 5_000, context.projectDir)
+  const version = runHealthCommand('graphify', ['--help'], 5_000, context.projectDir)
   const hook = runHealthCommand('graphify', ['hook', 'status'], 10_000, context.projectDir)
   const output = `${version.stdout}\n${version.stderr}\n${hook.stdout}\n${hook.stderr}`
   if (/skill.*version|package.*version|drift|outdated/i.test(output)) {
@@ -1374,7 +1380,7 @@ function checkGraphifyHealth(context: BootstrapInstallContext): DependencyBootst
       status: 'warn',
       bootstrapStatus: 'needs-init',
       reason: 'graphify CLI is installed but graphify-out/graph.json is not present yet.',
-      nextCommands: [`graphify update ${quotePath(context.projectDir)} --no-cluster`, 'scale codegraph status --json'],
+      nextCommands: ['graphify hook install', 'python -c "from pathlib import Path; from graphify.watch import _rebuild_code; _rebuild_code(Path(\'.\'))"', 'scale codegraph status --json'],
     }
   }
   return { status: 'ok', reason: 'graphify CLI, hooks, and graph artifact are available.' }
@@ -1870,6 +1876,7 @@ function buildRollbackHints(items: DependencyBootstrapItemReport[]): string[] {
 }
 
 function normalizePackIds(input: string[] | undefined): DependencyBootstrapPackId[] {
+  if (input && input.length === 0) return []
   const requested = unique((input ?? ['full']).map(value => value.trim()).filter(Boolean))
   const packIds = requested
     .flatMap(value => value.split(','))
@@ -1877,7 +1884,7 @@ function normalizePackIds(input: string[] | undefined): DependencyBootstrapPackI
     .filter(Boolean)
     .map(value => normalizePackId(value))
     .filter((value): value is DependencyBootstrapPackId => value !== null)
-  return packIds.length > 0 ? unique(packIds) : ['full']
+  return packIds.length > 0 ? unique(packIds) : (input ? [] : ['full'])
 }
 
 function normalizePackId(value: string): DependencyBootstrapPackId | null {

@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createAiOsAdoption, createAiOsBenchmark, createAiOsDashboard, createAiOsDoctor, createAiOsMigration, createAiOsPlan, createAiOsRun, createAiOsStatus } from '../../src/runtime/AiOsRuntime.js'
 import { MemoryBrain } from '../../src/memory/MemoryBrain.js'
 import { SCALE_ENGINE_VERSION } from '../../src/version.js'
 import { InstinctStore } from '../../src/cortex/InstinctStore.js'
+import { defaultMemoryProvidersConfig } from '../../src/memory/MemoryProviders.js'
+import { safeRmSync } from '../helpers/fs.js'
 
 let dirs: string[] = []
 
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs) safeRmSync(dir)
   dirs = []
 })
 
@@ -20,10 +22,27 @@ function makeDir(prefix: string): string {
   return dir
 }
 
+function makeScaleDir(prefix: string): string {
+  const dir = makeDir(prefix)
+  writeIsolatedMemoryProviderConfig(dir)
+  return dir
+}
+
+function writeIsolatedMemoryProviderConfig(scaleDir: string): void {
+  mkdirSync(scaleDir, { recursive: true })
+  const config = defaultMemoryProvidersConfig()
+  config.providers = config.providers.map(provider => ({
+    ...provider,
+    enabled: provider.kind === 'gbrain',
+    homeDir: join(scaleDir, 'test-gbrain-home'),
+  }))
+  writeFileSync(join(scaleDir, 'memory-providers.json'), JSON.stringify(config, null, 2), 'utf-8')
+}
+
 describe('AI OS runtime planner', () => {
   it('builds one explainable plan across governance, context, memory, skills, and ROI', async () => {
     const projectDir = makeDir('scale-ai-os-project-')
-    const scaleDir = makeDir('scale-ai-os-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-scale-')
     const brain = new MemoryBrain({ projectDir, scaleDir })
     try {
       brain.addNode({
@@ -130,7 +149,7 @@ describe('AI OS runtime planner', () => {
 
   it('creates a dry-run execution report from the unified plan', async () => {
     const projectDir = makeDir('scale-ai-os-run-project-')
-    const scaleDir = makeDir('scale-ai-os-run-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-run-scale-')
 
     const report = await createAiOsRun({
       projectDir,
@@ -194,7 +213,7 @@ describe('AI OS runtime planner', () => {
 
   it('runs guarded verification commands into runtime evidence', async () => {
     const projectDir = makeDir('scale-ai-os-guarded-project-')
-    const scaleDir = makeDir('scale-ai-os-guarded-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-guarded-scale-')
 
     const report = await createAiOsRun({
       projectDir,
@@ -241,7 +260,7 @@ describe('AI OS runtime planner', () => {
 
   it('blocks guarded runs and creates a failure learning candidate when verification fails', async () => {
     const projectDir = makeDir('scale-ai-os-guarded-fail-project-')
-    const scaleDir = makeDir('scale-ai-os-guarded-fail-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-guarded-fail-scale-')
 
     const report = await createAiOsRun({
       projectDir,
@@ -280,7 +299,7 @@ describe('AI OS runtime planner', () => {
 
   it('summarizes persisted AI OS run reports for dashboard views', async () => {
     const projectDir = makeDir('scale-ai-os-dashboard-project-')
-    const scaleDir = makeDir('scale-ai-os-dashboard-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-dashboard-scale-')
 
     await createAiOsRun({
       projectDir,
@@ -325,7 +344,7 @@ describe('AI OS runtime planner', () => {
 
   it('benchmarks fixed AI OS scenarios with context, memory, skill, and dashboard metrics', async () => {
     const projectDir = makeDir('scale-ai-os-benchmark-project-')
-    const scaleDir = makeDir('scale-ai-os-benchmark-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-benchmark-scale-')
 
     await createAiOsRun({
       projectDir,
@@ -378,7 +397,7 @@ describe('AI OS runtime planner', () => {
 
   it('creates an idempotent AI OS migration report for runtime state directories', () => {
     const projectDir = makeDir('scale-ai-os-migrate-project-')
-    const scaleDir = makeDir('scale-ai-os-migrate-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-migrate-scale-')
 
     const first = createAiOsMigration({ projectDir, scaleDir })
     const second = createAiOsMigration({ projectDir, scaleDir })
@@ -397,7 +416,7 @@ describe('AI OS runtime planner', () => {
 
   it('doctors AI OS runtime readiness from migration, runs, dashboard, and benchmark evidence', async () => {
     const projectDir = makeDir('scale-ai-os-doctor-project-')
-    const scaleDir = makeDir('scale-ai-os-doctor-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-doctor-scale-')
 
     const beforeMigration = createAiOsDoctor({ projectDir, scaleDir })
 
@@ -443,7 +462,7 @@ describe('AI OS runtime planner', () => {
 
   it('adopts AI OS runtime through migrate, first dry-run, benchmark, and doctor phases', async () => {
     const projectDir = makeDir('scale-ai-os-adopt-project-')
-    const scaleDir = makeDir('scale-ai-os-adopt-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-adopt-scale-')
 
     const report = await createAiOsAdoption({
       projectDir,
@@ -477,7 +496,7 @@ describe('AI OS runtime planner', () => {
 
   it('reports AI OS closed-loop status and missing evidence', async () => {
     const projectDir = makeDir('scale-ai-os-status-project-')
-    const scaleDir = makeDir('scale-ai-os-status-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-status-scale-')
 
     const empty = createAiOsStatus({ projectDir, scaleDir, lang: 'en' })
 
@@ -539,7 +558,7 @@ describe('AI OS runtime planner', () => {
 
   it('surfaces memory, context, skill, and benchmark intelligence in AI OS status', async () => {
     const projectDir = makeDir('scale-ai-os-status-intel-project-')
-    const scaleDir = makeDir('scale-ai-os-status-intel-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-status-intel-scale-')
     const brain = new MemoryBrain({ projectDir, scaleDir })
     try {
       brain.addNode({
@@ -668,7 +687,7 @@ describe('AI OS runtime planner', () => {
 
   it('derives evaluator and tool strategy intelligence for older run reports without new fields', async () => {
     const projectDir = makeDir('scale-ai-os-legacy-evaluator-project-')
-    const scaleDir = makeDir('scale-ai-os-legacy-evaluator-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-legacy-evaluator-scale-')
 
     const run = await createAiOsRun({
       projectDir,
@@ -720,7 +739,7 @@ describe('AI OS runtime planner', () => {
 
   it('warns when context compilation omits evidence-bearing sections', async () => {
     const projectDir = makeDir('scale-ai-os-context-risk-project-')
-    const scaleDir = makeDir('scale-ai-os-context-risk-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-context-risk-scale-')
     mkdirSync(join(projectDir, 'docs', 'worklog', 'tasks'), { recursive: true })
     writeFileSync(
       join(projectDir, 'docs', 'worklog', 'tasks', 'oauth-evidence.md'),
@@ -764,7 +783,7 @@ describe('AI OS runtime planner', () => {
 
   it('recommends concrete guarded verification commands from the verification matrix', async () => {
     const projectDir = makeDir('scale-ai-os-status-verify-project-')
-    const scaleDir = makeDir('scale-ai-os-status-verify-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-status-verify-scale-')
     writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
       version: 1,
       defaultProfile: 'default',
@@ -815,7 +834,7 @@ describe('AI OS runtime planner', () => {
 
   it('routes low-risk docs task to light profile', async () => {
     const projectDir = makeDir('scale-ai-os-light-profile-project-')
-    const scaleDir = makeDir('scale-ai-os-light-profile-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-light-profile-scale-')
 
     const plan = await createAiOsPlan({
       projectDir,
@@ -833,7 +852,7 @@ describe('AI OS runtime planner', () => {
 
   it('routes standard code change to standard profile', async () => {
     const projectDir = makeDir('scale-ai-os-standard-profile-project-')
-    const scaleDir = makeDir('scale-ai-os-standard-profile-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-standard-profile-scale-')
 
     const plan = await createAiOsPlan({
       projectDir,
@@ -851,7 +870,7 @@ describe('AI OS runtime planner', () => {
 
   it('escalates to critical profile for auth/security task with high uncertainty', async () => {
     const projectDir = makeDir('scale-ai-os-critical-profile-project-')
-    const scaleDir = makeDir('scale-ai-os-critical-profile-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-critical-profile-scale-')
 
     const plan = await createAiOsPlan({
       projectDir,
@@ -870,7 +889,7 @@ describe('AI OS runtime planner', () => {
 
   it('includes adaptive-workflow signal in intelligence report', async () => {
     const projectDir = makeDir('scale-ai-os-aw-signal-project-')
-    const scaleDir = makeDir('scale-ai-os-aw-signal-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-aw-signal-scale-')
 
     const run = await createAiOsRun({
       projectDir,
@@ -892,7 +911,7 @@ describe('AI OS runtime planner', () => {
 
   it('includes workflowProfile in benchmark scenario metrics', async () => {
     const projectDir = makeDir('scale-ai-os-aw-bench-project-')
-    const scaleDir = makeDir('scale-ai-os-aw-bench-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-aw-bench-scale-')
 
     await createAiOsRun({
       projectDir,
@@ -912,7 +931,7 @@ describe('AI OS runtime planner', () => {
 
   it('generates evolution shadow proposals from high-risk governance signals', async () => {
     const projectDir = makeDir('scale-ai-os-evo-shadow-project-')
-    const scaleDir = makeDir('scale-ai-os-evo-shadow-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-evo-shadow-scale-')
 
     const plan = await createAiOsPlan({
       projectDir,
@@ -934,7 +953,7 @@ describe('AI OS runtime planner', () => {
 
   it('produces no evolution shadow proposals for low-risk tasks', async () => {
     const projectDir = makeDir('scale-ai-os-evo-none-project-')
-    const scaleDir = makeDir('scale-ai-os-evo-none-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-evo-none-scale-')
 
     const plan = await createAiOsPlan({
       projectDir,
@@ -952,7 +971,7 @@ describe('AI OS runtime planner', () => {
 
   it('includes evolution-shadow signal in intelligence report', async () => {
     const projectDir = makeDir('scale-ai-os-evo-signal-project-')
-    const scaleDir = makeDir('scale-ai-os-evo-signal-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-evo-signal-scale-')
 
     await createAiOsRun({
       projectDir,
@@ -976,7 +995,7 @@ describe('AI OS runtime planner', () => {
 
   it('includes evolution proposals in benchmark summary', async () => {
     const projectDir = makeDir('scale-ai-os-evo-bench-project-')
-    const scaleDir = makeDir('scale-ai-os-evo-bench-scale-')
+    const scaleDir = makeScaleDir('scale-ai-os-evo-bench-scale-')
 
     await createAiOsRun({
       projectDir,

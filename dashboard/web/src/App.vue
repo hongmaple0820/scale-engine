@@ -44,13 +44,13 @@ import {
 echarts.use([GraphChart, LegendComponent, TooltipComponent, CanvasRenderer])
 
 type Lang = 'zh' | 'en'
-type PageKey = 'overview' | 'workflow' | 'topology' | 'monitoring' | 'costs' | 'knowledge' | 'agents' | 'integrations' | 'documents' | 'prompts'
+type PageKey = 'overview' | 'workflow' | 'agentos' | 'topology' | 'monitoring' | 'costs' | 'knowledge' | 'agents' | 'integrations' | 'documents' | 'prompts'
 type SourceStatus = 'ready' | 'partial' | 'missing' | 'error'
 type RefreshMode = 'sse' | 'polling' | 'manual' | 'snapshot'
 type MonitorTab = 'overview' | 'detectors' | 'defects' | 'commands'
 type KnowledgeTab = 'base' | 'memory' | 'graph'
 type GraphKey = 'graphify' | 'memory'
-type LoadKey = 'projects' | 'capabilities' | 'dashboardService' | 'metrics' | 'state' | 'topology' | 'domains' | 'documents' | 'knowledge' | 'knowledgeBase' | 'integrations' | 'agentControl' | 'prompts'
+type LoadKey = 'projects' | 'capabilities' | 'dashboardService' | 'metrics' | 'state' | 'topology' | 'domains' | 'documents' | 'knowledge' | 'knowledgeBase' | 'integrations' | 'agentControl' | 'prompts' | 'agentWorkbench'
 type CommandCenterArea = 'agent' | 'channel' | 'knowledge' | 'loop' | 'cost'
 type IntegrationTab = 'overview' | 'messages' | 'agent-connect' | 'knowledge' | 'automation' | 'diagnostics'
 
@@ -891,6 +891,70 @@ interface AgentPlanReport {
   error?: string
 }
 
+interface AgentOsTask {
+  taskId: string
+  name: string
+  objective?: string
+  status: string
+  level: string
+  files?: string[]
+  services?: string[]
+  surfaces?: string[]
+  updatedAt?: string
+}
+
+interface AgentOsTimelineEntry {
+  id: string
+  kind: string
+  type: string
+  at: string
+  summary: string
+  status?: string
+}
+
+interface AgentOsBridge {
+  bridgeId: string
+  name: string
+  kind: string
+  status: string
+  scopes?: string[]
+  capabilityIds?: string[]
+  lastHeartbeatAt?: string
+}
+
+interface AgentOsWorkbenchPanel {
+  id: string
+  title: string
+  status: 'ready' | 'attention' | 'empty'
+  count: number
+  action?: string
+}
+
+interface AgentOsWorkbenchReport {
+  generatedAt?: string
+  summary?: {
+    tasks?: Record<string, number>
+    capabilities?: { total: number; available: number; blocked: number; approvalRequired: number }
+    bridges?: { total: number; online: number }
+    evidence?: { total: number; passed: number; failed: number; skipped: number; ok: boolean }
+    memory?: { active: number; candidate: number; contradictions: number }
+    git?: { changedFiles: number }
+  }
+  tasks?: {
+    total: number
+    items: AgentOsTask[]
+    focused?: { task: AgentOsTask }
+  }
+  timeline?: AgentOsTimelineEntry[]
+  bridges?: { total: number; online: number; items: AgentOsBridge[] }
+  approvals?: { open: Array<{ id: string; summary: string; source: string; createdAt: string }> }
+  evidence?: { records: Array<{ id: string; title: string; status: string; summary: string; createdAt: string; command?: string }> }
+  memory?: { candidates: KnowledgeNode[]; summary?: { contradictions: number } }
+  contextPacks?: Array<{ id: string; source: string; taskId: string; runId?: string; checkpointId?: string }>
+  git?: { ok: boolean; changedFiles: Array<{ path: string; indexStatus: string; worktreeStatus: string; raw: string }>; warnings: string[] }
+  panels?: AgentOsWorkbenchPanel[]
+}
+
 interface DashboardBootstrap {
   generatedAt?: number
   endpoints?: Record<string, unknown>
@@ -966,6 +1030,7 @@ const loadingResources = ref<Record<LoadKey, boolean>>({
   integrations: false,
   agentControl: false,
   prompts: false,
+  agentWorkbench: false,
 })
 const resourceErrors = ref<Partial<Record<LoadKey, string>>>({})
 const sseStatus = ref<'live' | 'polling' | 'reconnecting'>('polling')
@@ -1007,6 +1072,7 @@ const imaApiKeyInput = ref('')
 const imaConfigDirty = ref(false)
 const imaConfigSaveLoading = ref(false)
 const prompts = ref<PromptReport | null>(bootstrapEndpoint<PromptReport | null>('/api/prompts', null))
+const agentWorkbench = ref<AgentOsWorkbenchReport | null>(bootstrapEndpoint<AgentOsWorkbenchReport | null>('/api/v1/workbench', null))
 const stream = ref<EventSource | null>(null)
 
 const workflowStatusFilter = ref('all')
@@ -1506,6 +1572,7 @@ watch(activePage, page => {
 const menuOptions = computed(() => [
   { label: t('nav.overview'), key: 'overview' },
   { label: t('nav.workflow'), key: 'workflow' },
+  { label: t('nav.agentos'), key: 'agentos' },
   { label: t('nav.topology'), key: 'topology' },
   { label: t('nav.monitoring'), key: 'monitoring' },
   { label: t('nav.costs'), key: 'costs' },
@@ -1826,6 +1893,14 @@ const knowledgeGraphChartOption = computed(() => buildKnowledgeGraphChartOption(
 const knowledgeNodes = computed(() => knowledge.value?.local?.nodes || [])
 const knowledgeReviewQueue = computed(() => knowledgeNodes.value.filter(node => ['candidate', 'stale'].includes(String(node.status || ''))))
 const knowledgeStatusRows = computed(() => Object.entries(knowledge.value?.local?.byStatus || {}).map(([status, count]) => ({ status, count })))
+const agentOsPanels = computed(() => agentWorkbench.value?.panels || [])
+const agentOsTasks = computed(() => agentWorkbench.value?.tasks?.items || [])
+const agentOsTimeline = computed(() => agentWorkbench.value?.timeline || [])
+const agentOsBridges = computed(() => agentWorkbench.value?.bridges?.items || [])
+const agentOsApprovals = computed(() => agentWorkbench.value?.approvals?.open || [])
+const agentOsEvidence = computed(() => agentWorkbench.value?.evidence?.records || [])
+const agentOsGitFiles = computed(() => agentWorkbench.value?.git?.changedFiles || [])
+const agentOsContextPacks = computed(() => agentWorkbench.value?.contextPacks || [])
 
 function setResourceLoading(key: LoadKey, value: boolean) {
   loadingResources.value = { ...loadingResources.value, [key]: value }
@@ -1862,7 +1937,7 @@ async function loadDashboardResource<T>(
 function dashboardResourceTimeout(key: LoadKey): number {
   if (key === 'capabilities' || key === 'knowledgeBase') return 25000
   if (key === 'documents' || key === 'topology' || key === 'domains') return 18000
-  if (key === 'integrations' || key === 'agentControl') return 16000
+  if (key === 'integrations' || key === 'agentControl' || key === 'agentWorkbench') return 16000
   if (key === 'state' || key === 'prompts' || key === 'metrics') return 22000
   if (key === 'knowledge') return 20000
   return 12000
@@ -1891,6 +1966,7 @@ async function refreshAll() {
       () => load('documents', 'documents', '/api/documents', value => { documents.value = value }),
       () => load('integrations', 'integrations', '/api/integrations', value => { integrations.value = value }),
       () => load('agentControl', 'agent-control', '/api/agent-control', value => { agentControl.value = value }),
+      () => load('agentWorkbench', 'agent-os-workbench', '/api/v1/workbench', value => { agentWorkbench.value = value }),
     ],
     [
       () => load('knowledgeBase', 'knowledge-base', '/api/knowledge-base', value => { knowledgeBase.value = value }),
@@ -1947,6 +2023,8 @@ async function refreshActivePage(page: PageKey = activePage.value) {
     ])
   } else if (page === 'agents') {
     await load('agentControl', 'agent-control', '/api/agent-control', value => { agentControl.value = value })
+  } else if (page === 'agentos') {
+    await load('agentWorkbench', 'agent-os-workbench', '/api/v1/workbench', value => { agentWorkbench.value = value })
   } else if (page === 'knowledge') {
     await load('knowledgeBase', 'knowledge-base', '/api/knowledge-base', value => { knowledgeBase.value = value })
     await loadKnowledge(false).catch(error => failures.push(`knowledge-recall: ${errorMessage(error)}`))
@@ -3441,6 +3519,16 @@ function agentMessageStatusTag(status: AgentControlMessageStatus): 'success' | '
   return 'default'
 }
 
+function agentOsPanelTag(status: AgentOsWorkbenchPanel['status']): 'success' | 'warning' | 'default' {
+  if (status === 'ready') return 'success'
+  if (status === 'attention') return 'warning'
+  return 'default'
+}
+
+function agentOsPanelLabel(status: AgentOsWorkbenchPanel['status']): string {
+  return t(`agentos.panel.${status}`)
+}
+
 function statusTone(status: string): 'success' | 'warning' | 'error' | 'default' {
   const normalized = status.toLowerCase()
   if (['done', 'passed', 'approved', 'active', 'closed', 'resolved', 'ready'].some(item => normalized.includes(item))) return 'success'
@@ -3480,6 +3568,13 @@ function formatCurrency(value?: number): string {
 function formatTime(value?: number | null): string {
   if (!value) return '-'
   return new Date(value).toLocaleString(lang.value === 'zh' ? 'zh-CN' : 'en-US')
+}
+
+function formatDateTime(value?: string | number | null): string {
+  if (!value) return '-'
+  const date = typeof value === 'number' ? new Date(value) : new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString(lang.value === 'zh' ? 'zh-CN' : 'en-US')
 }
 
 function formatSize(bytes: number): string {
@@ -3855,7 +3950,7 @@ function bootstrapEndpoint<T>(endpoint: string, fallback: T): T {
 }
 
 function isPageKey(value: string): value is PageKey {
-  return ['overview', 'workflow', 'topology', 'monitoring', 'costs', 'knowledge', 'agents', 'integrations', 'documents', 'prompts'].includes(value)
+  return ['overview', 'workflow', 'agentos', 'topology', 'monitoring', 'costs', 'knowledge', 'agents', 'integrations', 'documents', 'prompts'].includes(value)
 }
 
 function errorMessage(error: unknown): string {
@@ -3917,6 +4012,7 @@ const translations: Record<Lang, Record<string, string>> = {
   zh: {
     'nav.overview': '总览',
     'nav.workflow': '工作流',
+    'nav.agentos': 'Agent OS',
     'nav.topology': '拓扑',
     'nav.monitoring': '监控',
     'nav.costs': 'Token 与成本',
@@ -4036,6 +4132,22 @@ const translations: Record<Lang, Record<string, string>> = {
     'workflow.transitionRecorded': '状态迁移已写入',
     'workflow.noActions': '当前 Artifact 无可执行动作或运行时未注入 FSM。',
     'workflow.failedRequired': '失败必需门禁',
+    'agentos.tasks': '任务',
+    'agentos.timeline': '时间线',
+    'agentos.bridges': '桥接',
+    'agentos.approvals': '审批',
+    'agentos.evidence': '证据',
+    'agentos.memory': '记忆',
+    'agentos.contextPacks': '上下文包',
+    'agentos.git': 'Git 工作区',
+    'agentos.capabilities': '能力',
+    'agentos.onlineBridges': '在线桥接',
+    'agentos.openApprovals': '待审批',
+    'agentos.changedFiles': '变更文件',
+    'agentos.panel.ready': '就绪',
+    'agentos.panel.attention': '需关注',
+    'agentos.panel.empty': '空',
+    'agentos.noWorkbench': 'Agent OS 工作台数据暂不可用。',
     'topology.nodes': '节点',
     'topology.edges': '边',
     'topology.layers': '层级',
@@ -4429,6 +4541,7 @@ const translations: Record<Lang, Record<string, string>> = {
   en: {
     'nav.overview': 'Overview',
     'nav.workflow': 'Workflow',
+    'nav.agentos': 'Agent OS',
     'nav.topology': 'Topology',
     'nav.monitoring': 'Monitoring',
     'nav.costs': 'Tokens & Cost',
@@ -4548,6 +4661,22 @@ const translations: Record<Lang, Record<string, string>> = {
     'workflow.transitionRecorded': 'Transition recorded',
     'workflow.noActions': 'No available actions or FSM is not injected.',
     'workflow.failedRequired': 'Failed required gates',
+    'agentos.tasks': 'Tasks',
+    'agentos.timeline': 'Timeline',
+    'agentos.bridges': 'Bridges',
+    'agentos.approvals': 'Approvals',
+    'agentos.evidence': 'Evidence',
+    'agentos.memory': 'Memory',
+    'agentos.contextPacks': 'Context Packs',
+    'agentos.git': 'Git Workspace',
+    'agentos.capabilities': 'Capabilities',
+    'agentos.onlineBridges': 'Online bridges',
+    'agentos.openApprovals': 'Open approvals',
+    'agentos.changedFiles': 'Changed files',
+    'agentos.panel.ready': 'Ready',
+    'agentos.panel.attention': 'Attention',
+    'agentos.panel.empty': 'Empty',
+    'agentos.noWorkbench': 'Agent OS workbench data is not available yet.',
     'topology.nodes': 'Nodes',
     'topology.edges': 'Edges',
     'topology.layers': 'Layers',
@@ -5170,6 +5299,156 @@ const translations: Record<Lang, Record<string, string>> = {
                 </div>
               </n-card>
             </div>
+          </section>
+
+          <section v-else-if="activePage === 'agentos'" class="page">
+            <n-alert v-if="!agentWorkbench" type="warning">
+              {{ t('agentos.noWorkbench') }}
+            </n-alert>
+            <template v-else>
+              <div class="metric-grid">
+                <n-card><n-statistic :label="t('agentos.tasks')" :value="agentWorkbench.summary?.tasks?.total || agentWorkbench.tasks?.total || 0" /></n-card>
+                <n-card><n-statistic :label="t('agentos.capabilities')" :value="agentWorkbench.summary?.capabilities?.available || 0" /></n-card>
+                <n-card><n-statistic :label="t('agentos.onlineBridges')" :value="agentWorkbench.summary?.bridges?.online || 0" /></n-card>
+                <n-card><n-statistic :label="t('agentos.openApprovals')" :value="agentOsApprovals.length" /></n-card>
+                <n-card><n-statistic :label="t('agentos.evidence')" :value="agentWorkbench.summary?.evidence?.total || 0" /></n-card>
+                <n-card><n-statistic :label="t('agentos.changedFiles')" :value="agentWorkbench.summary?.git?.changedFiles || 0" /></n-card>
+              </div>
+
+              <div class="toolbar">
+                <n-space>
+                  <n-tag v-for="panel in agentOsPanels" :key="panel.id" :type="agentOsPanelTag(panel.status)" size="small">
+                    {{ panel.title }}: {{ panel.count }} / {{ agentOsPanelLabel(panel.status) }}
+                  </n-tag>
+                </n-space>
+                <n-space>
+                  <n-button @click="downloadJson('agent-os-workbench.json', agentWorkbench)">{{ t('common.exportJson') }}</n-button>
+                  <n-button @click="copyText(JSON.stringify(agentWorkbench, null, 2))">{{ t('common.copy') }}</n-button>
+                </n-space>
+              </div>
+
+              <div class="two-col wide-left">
+                <n-card :title="t('agentos.tasks')">
+                  <n-empty v-if="agentOsTasks.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="task in agentOsTasks" :key="task.taskId">
+                      <n-thing :title="task.name" :description="task.objective || task.taskId">
+                        <template #header-extra>
+                          <n-space>
+                            <n-tag size="small" :type="statusTone(task.status)">{{ task.status }}</n-tag>
+                            <n-tag size="small">{{ task.level }}</n-tag>
+                          </n-space>
+                        </template>
+                        <div class="prompt-chip-row">
+                          <n-tag v-for="file in (task.files || []).slice(0, 4)" :key="file" size="small">{{ file }}</n-tag>
+                        </div>
+                        <n-text depth="3">{{ formatDateTime(task.updatedAt) }}</n-text>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+
+                <n-card :title="t('agentos.timeline')">
+                  <n-empty v-if="agentOsTimeline.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="entry in agentOsTimeline.slice(0, 12)" :key="entry.id">
+                      <n-thing :title="entry.type" :description="formatDateTime(entry.at)">
+                        <n-space vertical size="small">
+                          <n-text>{{ entry.summary }}</n-text>
+                          <n-space>
+                            <n-tag size="small">{{ entry.kind }}</n-tag>
+                            <n-tag v-if="entry.status" size="small" :type="statusTone(entry.status)">{{ entry.status }}</n-tag>
+                          </n-space>
+                        </n-space>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+              </div>
+
+              <div class="panel-grid">
+                <n-card :title="t('agentos.bridges')">
+                  <n-empty v-if="agentOsBridges.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="bridge in agentOsBridges" :key="bridge.bridgeId">
+                      <n-thing :title="bridge.name" :description="bridge.bridgeId">
+                        <template #header-extra>
+                          <n-tag size="small" :type="statusTone(bridge.status)">{{ bridge.status }}</n-tag>
+                        </template>
+                        <n-space vertical size="small">
+                          <n-text depth="3">{{ bridge.kind }} / {{ (bridge.scopes || []).join(', ') || '-' }}</n-text>
+                          <n-text depth="3">{{ formatDateTime(bridge.lastHeartbeatAt) }}</n-text>
+                        </n-space>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+
+                <n-card :title="t('agentos.approvals')">
+                  <n-empty v-if="agentOsApprovals.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="approval in agentOsApprovals" :key="approval.id">
+                      <n-thing :title="approval.summary" :description="approval.source">
+                        <n-text depth="3">{{ formatDateTime(approval.createdAt) }}</n-text>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+
+                <n-card :title="t('agentos.evidence')">
+                  <n-empty v-if="agentOsEvidence.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="record in agentOsEvidence.slice(0, 8)" :key="record.id">
+                      <n-thing :title="record.title" :description="record.summary">
+                        <template #header-extra>
+                          <n-tag size="small" :type="statusTone(record.status)">{{ record.status }}</n-tag>
+                        </template>
+                        <n-text depth="3">{{ record.command || record.id }}</n-text>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+
+                <n-card :title="t('agentos.memory')">
+                  <n-empty v-if="!(agentWorkbench.memory?.candidates || []).length" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="node in agentWorkbench.memory?.candidates || []" :key="node.id">
+                      <n-thing :title="node.title || node.id" :description="node.summary">
+                        <n-space>
+                          <n-tag size="small">{{ node.layer || '-' }}</n-tag>
+                          <n-tag size="small" :type="statusTone(node.status || '')">{{ node.status || '-' }}</n-tag>
+                        </n-space>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+
+                <n-card :title="t('agentos.contextPacks')">
+                  <n-empty v-if="agentOsContextPacks.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="pack in agentOsContextPacks" :key="`${pack.id}-${pack.source}-${pack.checkpointId || ''}`">
+                      <n-thing :title="pack.id" :description="pack.source">
+                        <n-text depth="3">{{ pack.runId || pack.taskId }}</n-text>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+
+                <n-card :title="t('agentos.git')">
+                  <n-empty v-if="agentOsGitFiles.length === 0" :description="t('common.empty')" />
+                  <n-list v-else>
+                    <n-list-item v-for="file in agentOsGitFiles.slice(0, 12)" :key="file.raw">
+                      <n-thing :title="file.path" :description="file.raw">
+                        <n-space>
+                          <n-tag size="small">{{ file.indexStatus || '-' }}</n-tag>
+                          <n-tag size="small">{{ file.worktreeStatus || '-' }}</n-tag>
+                        </n-space>
+                      </n-thing>
+                    </n-list-item>
+                  </n-list>
+                </n-card>
+              </div>
+            </template>
           </section>
 
           <section v-else-if="activePage === 'topology'" class="page">

@@ -213,7 +213,7 @@ const CHECK_DEFINITIONS: Array<{
     label: 'Graphify',
     category: 'third-party',
     required: false,
-    candidates: [{ command: 'graphify', args: ['--version'], display: 'graphify' }],
+    candidates: [{ command: 'graphify', args: ['--help'], display: 'graphify' }],
     requiredFor: ['knowledge graph provider'],
     installHint: 'Install with `uv tool install graphify && graphify install --platform codex`.',
   },

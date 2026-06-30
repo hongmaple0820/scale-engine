@@ -41,9 +41,9 @@ describe('setup wizard', () => {
     })
     expect(report.applied).toBe(false)
     expect(report.prompts).toEqual(expect.arrayContaining([
-      expect.stringContaining('memory provider'),
+      expect.stringContaining('Memory provider'),
       expect.stringContaining('gbrain routing mode'),
-      expect.stringContaining('Ready to install'),
+      expect.stringContaining('Run installation'),
     ]))
     expect(prompts.join('')).toContain('gbrain')
   })

@@ -121,6 +121,28 @@ describe('ToolCapabilityRegistry', () => {
     })
   })
 
+  it('detects graphify with the help probe because current releases do not expose --version', () => {
+    const report = inspectToolCapabilities({
+      projectDir: makeDir('scale-tools-project-'),
+      homeDir: makeDir('scale-tools-home-'),
+      toolIds: ['graphify'],
+      commandExists: command => command === 'graphify',
+      runVersion: (_command, args) => ({
+        ok: args[0] === '--help',
+        stdout: 'Usage: graphify [OPTIONS] COMMAND [ARGS]...',
+        stderr: args[0] === '--help' ? '' : "No such option: --version",
+      }),
+    })
+
+    expect(report.ok).toBe(true)
+    expect(report.tools[0]).toMatchObject({
+      id: 'graphify',
+      installed: true,
+      status: 'installed',
+      versionArgs: ['--help'],
+    })
+  })
+
   it('detects memory and knowledge CLIs through the shared tool doctor catalog', () => {
     const report = inspectToolCapabilities({
       projectDir: makeDir('scale-tools-project-'),

@@ -1,95 +1,63 @@
 # SCALE Engine 入门路径
 
-这个目录面向新用户。目标是先跑通一条最小路径，再理解完整体系，不要求一开始掌握所有命令。
+这个目录面向新用户。推荐先跑通一条最小路径，再理解完整体系。
 
 ## 推荐阅读顺序
 
-1. [Agent 满血工作流一键接入](agent-full-workflow.md)
-   如果用户不想学命令，先把这份提示词发给 Agent，让 Agent 自己检查并接入 full setup、gbrain、CodeGraph、Graphify、rtk、浏览器/E2E 和飞书消息通道。
+1. [npx 与交互式安装指南](npx-interactive-install.md)
+   不全局安装也能用 `npx` 跑 `scale install`。
+2. [3 分钟快速开始](quickstart.md)
+   从客户项目里安装 SCALE 工作流，并完成基础验收。
+3. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
+   查看 Codex、Claude Code、Cursor、Qoder、Cline、Windsurf 等 adapter 的细节。
+4. [Artifact 生命周期](artifact-lifecycle.md)
+   理解 Need、Spec、Plan、Task、Change、Evidence、Release 的状态流转。
+5. [官方 Demo Walkthrough](agent-governance-demo.md)
+   看一条真实任务如何走完诊断、TDD、证据和治理闭环。
+6. [工作流能力与横向对比](../workflow/competitive-comparison.md)
+   理解 SCALE 与 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC 的定位差异。
 
-2. [npx 与交互式安装指南](npx-interactive-install.md)
-   先用 `npx` 临时执行 SCALE，不全局安装也能跑 `onboard`、`init --interactive` 和 `setup`。
+如果你要开发 `scale-engine` 仓库本身，而不是把 SCALE 接入别的项目，请看：
 
-3. [3 分钟快速开始](quickstart.md)
-   从空目录初始化治理工作流，看到 `.scale`、模板、验证 profile 和状态输出。
-
-4. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
-   按 Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 学会初始化、验证、常驻面板、Agent Control、飞书消息通道和多 Agent 使用。
-
-5. [Artifact 生命周期](artifact-lifecycle.md)
-   完整走一遍 Need → Spec → Plan → Task → Change → Evidence → Release，理解 FSM 和 Guard 如何用物理约束替代提示词建议。
-
-6. [官方 Demo Walkthrough](agent-governance-demo.md)
-   用一个 OAuth state 加固任务演示：上下文对齐、诊断计划、TDD 切片、HTML artifact、资源治理和工程规范扫描。
-
-7. [工作流能力与横向对比](../workflow/competitive-comparison.md)
-   对比 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC、GitHub Agentic Workflows，理解 SCALE 的定位、优势和短板。
-
-8. 回到根目录 [README](../../README.md)
-   理解 SCALE Engine 的核心能力和 governance pack 选择。
-
-9. [工作流升级指南](workflow-upgrade.md)
-   理解工作流更新、第三方 skills/MCP/CLI 更新时如何先检查、生成计划、自动刷新干净受管文件，并避免覆盖本地改动。
-
-10. 查看 [文档地图](../README.md)
-   区分哪些文档是用户指南、哪些是参考资料、哪些是历史规划和过程记录。
-
-如果你要开发的是 `scale-engine` 仓库本身，而不是把 SCALE 接入别的项目，改看：
-
-- [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md)
-- [../guides/DEVELOPMENT_WORKFLOW.md](../guides/DEVELOPMENT_WORKFLOW.md)
-- [../workflow/README.md](../workflow/README.md)
+- [开发者 Getting Started](../guides/GETTING_STARTED.md)
+- [开发工作流](../guides/DEVELOPMENT_WORKFLOW.md)
+- [工作流模板说明](../workflow/README.md)
 
 ## 15 分钟学习路径
 
 ```bash
-mkdir scale-demo && cd scale-demo
-npx -y @hongmaple0820/scale-engine@latest quickstart --dir . --profile standard
-npx -y @hongmaple0820/scale-engine@latest setup --dir .
-npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
+mkdir scale-demo
+cd scale-demo
+npx -y @hongmaple0820/scale-engine@latest install --dir .
+scale doctor --dir .
+scale status --dir .
+scale preflight --preflight-profile quick --dir .
 ```
 
-跑完后先回答三个问题：
+跑完后先确认：
 
-- `.scale/verification.json` 里定义了哪些验证 profile？
-- `docs/workflow/templates/` 里有哪些任务产物模板？
-- `scale status` 建议下一步做什么？
+- `.scale/config.yaml` 是否存在。
+- `AGENTS.md` 或对应 Agent 规则文件是否存在。
+- `scale status --dir .` 是否能给出下一步建议。
+- `scale preflight --preflight-profile quick --dir .` 是否能执行。
 
-如果这三个问题答不上来，先不要继续看高级命令。
-
-## 你应该先看到什么
-
-跑完 quickstart 后，至少应该能看到：
-
-- `preflight --preflight-profile quick` 可以执行。
-- `status` 能告诉你当前项目下一步该做什么。
-- `.scale/verification.json` 存在，并描述本地验证 profile。
-- `docs/workflow/templates/` 存在，并包含 Mini-PRD、plan、verification、review、summary 等模板。
-- `scale artifact render` 可以把任务 Markdown 证据渲染成 HTML。
-
-如果其中任何一步失败，先看命令输出，不要假设是环境问题。SCALE 的原则是：没有真实命令结果，就不声称通过。
+如果这些问题答不上来，先不要继续看高级命令。SCALE 的原则是：没有真实命令结果，就不要声称通过。
 
 ## 场景选择
 
-下表的 `scale ...` 是全局安装后的简写；未全局安装时，用 `npx -y @hongmaple0820/scale-engine@latest ...` 替换 `scale ...`。
+未全局安装时，用 `npx -y @hongmaple0820/scale-engine@latest ...` 替换下面的 `scale ...`。
 
 | 场景 | 推荐入口 |
 | --- | --- |
-| 用户不想学命令，只想让 Agent 接管 | [Agent 满血工作流一键接入](agent-full-workflow.md) |
-| 不想全局安装，先试用 | [npx 与交互式安装指南](npx-interactive-install.md) |
-| 第一次试用 | [3 分钟快速开始](quickstart.md) |
-| 不知道自己的 Agent 怎么接入 | [22 种 Agent 安装与使用教程](agent-installation-guide.md) |
-| 想看 Agent 治理闭环 | [官方 Demo Walkthrough](agent-governance-demo.md) |
-| 想知道 SCALE 和其他工作流差异 | [工作流能力与横向对比](../workflow/competitive-comparison.md) |
-| 前端项目 | `scale init --governance-pack frontend-app` |
-| Node/TypeScript 包 | `scale init --governance-pack node-library` |
-| Go 多服务后端 | `scale init --governance-pack go-service-matrix` |
-| 多仓库/MOE 工作区 | `scale init --governance-pack moe-workspace` |
-| 文档、报告、截图、脚本混乱 | `scale init --governance-pack resource-governance` |
-| 工作流或第三方能力要升级 | `scale upgrade --lang zh` |
-| 已有项目接入 AI OS runtime | `scale ai-os adopt --task "接入 AI OS runtime" --lang zh` |
+| 第一次试用 | `scale install --dir .` |
+| 只安装工作流本体 | `scale install --pack core --dir .` |
+| Codex 项目 | `scale install --agent codex --dir .` |
+| 前端项目 | `scale install --governance-pack frontend-app --dir .` |
+| Node/TypeScript 包 | `scale install --governance-pack node-library --dir .` |
+| Go 多服务后端 | `scale install --governance-pack go-service-matrix --dir .` |
+| 多仓库/MOE 工作区 | `scale install --governance-pack moe-workspace --dir .` |
+| 安装推荐第三方能力 | `scale install --pack recommended --apply --yes --dir .` |
+| 维护已有底层步骤 | `scale init`, `scale setup`, `scale setup --verify` |
+| 工作流或第三方能力升级 | `scale upgrade --lang zh` |
 
-
-## 工作流升级短路径
-
-已有项目先看 [SCALE 工作流升级指南](workflow-upgrade.md)。它说明 `scale init --interactive`、`scale upgrade` 默认向导、`scale upgrade check/plan/apply/rollback` 高级入口、`scale ai-os adopt`、`--lang zh/en` 双语输出、仓库本地 `make workflow-upgrade-*` / `make workflow-aios-adopt` 入口，以及生成文件更新和项目级验证之间的边界。
+已有项目先看 [SCALE 工作流升级指南](workflow-upgrade.md)，再决定使用 `scale install`、`scale upgrade` 还是底层命令拆分执行。

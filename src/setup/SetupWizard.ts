@@ -1,5 +1,3 @@
-import { stdin as defaultInput, stdout as defaultOutput } from 'node:process'
-import { createInterface, type Interface } from 'node:readline'
 import { resolve } from 'node:path'
 import {
   bootstrapDependencies,
@@ -13,6 +11,13 @@ import {
   type MemoryProviderUseReport,
   type MemoryProviderWriteMode,
 } from '../memory/MemoryProviders.js'
+import {
+  askCliMultiSelect,
+  askCliSelect,
+  createCliPromptSession,
+  type CliChoice,
+  type CliPromptSession,
+} from '../cli/CliUx.js'
 
 export interface SetupWizardOptions {
   projectDir?: string
@@ -45,12 +50,6 @@ export interface SetupWizardInteractiveChoices {
   installIds?: string[]
 }
 
-interface PromptSession {
-  rl: Interface
-  output: NodeJS.WritableStream
-  iterator: AsyncIterator<string>
-}
-
 export interface SetupWizardReport {
   ok: boolean
   lang: ScaleLanguage
@@ -79,56 +78,96 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
   let planOptions: DependencyBootstrapOptions
   let plan: DependencyBootstrapReport
 
-  let promptSession: PromptSession | undefined
+  let promptSession: CliPromptSession | undefined
   try {
-    if (interactive) promptSession = createPromptSession(options.input ?? defaultInput, options.output ?? defaultOutput)
+    if (interactive) promptSession = createCliPromptSession(options.input, options.output)
 
     if (promptSession && options.promptLanguage) {
-      const question = languageQuestion(lang)
-      prompts.push(question.trim())
-      lang = normalizeLanguageChoice(await askLine(promptSession, question), lang)
+      lang = await askCliSelect(promptSession, {
+        title: lang === 'zh' ? '安装语言' : 'Setup language',
+        message: lang === 'zh' ? '选择安装过程的显示语言。' : 'Choose the display language for setup.',
+        lang,
+        defaultValue: lang,
+        choices: [
+          { value: 'zh', label: '中文' },
+          { value: 'en', label: 'English' },
+        ],
+      })
       interactiveChoices.lang = lang
     }
 
     if (promptSession && options.promptPacks) {
-      const question = packQuestion(lang)
-      prompts.push(question.trim())
-      packIds = normalizePackChoice(await askLine(promptSession, question))
+      const packChoice = await askCliSelect(promptSession, {
+        title: lang === 'zh' ? '安装能力包' : 'Capability pack',
+        message: lang === 'zh'
+          ? '工作流本体已可独立使用，第三方能力可以现在安装，也可以之后再装。'
+          : 'The core workflow works without optional third-party capabilities.',
+        lang,
+        defaultValue: 'standard',
+        choices: packChoices(lang),
+      })
+      packIds = normalizePackChoice(packChoice)
       interactiveChoices.packIds = packIds
     }
-  planOptions = {
-    projectDir,
-    scaleDir: options.scaleDir,
-    packIds,
-    includeIds: options.includeIds,
-    onlyIds: options.onlyIds,
-    apply: false,
-  }
-  plan = await bootstrap(planOptions)
+    planOptions = {
+      projectDir,
+      scaleDir: options.scaleDir,
+      packIds,
+      includeIds: options.includeIds,
+      onlyIds: options.onlyIds,
+      apply: false,
+    }
+    plan = await bootstrap(planOptions)
 
     if (promptSession && !memoryProvider && shouldPromptMemoryProvider(plan)) {
-      const question = memoryProviderQuestion(lang)
-      prompts.push(question.trim())
-      memoryProvider = normalizeMemoryProviderChoice(await askLine(promptSession, question))
+      memoryProvider = await askCliSelect(promptSession, {
+        title: lang === 'zh' ? '记忆供应商' : 'Memory provider',
+        message: lang === 'zh'
+          ? 'gbrain 是默认推荐；也可以跳过，稍后再配置。'
+          : 'gbrain is recommended by default; you can skip and configure it later.',
+        lang,
+        defaultValue: 'gbrain',
+        choices: [
+          { value: 'gbrain', label: 'gbrain', hint: lang === 'zh' ? '图记忆 CLI 模式，推荐。' : 'Graph memory CLI mode, recommended.' },
+          { value: 'skip', label: lang === 'zh' ? '跳过' : 'Skip', hint: lang === 'zh' ? '不修改记忆路由。' : 'Do not change memory routing.' },
+        ],
+      })
       interactiveChoices.memoryProvider = memoryProvider
     }
 
     if (promptSession && memoryProvider && memoryProvider !== 'skip' && !memoryMode) {
-      const question = memoryModeQuestion(lang)
-      prompts.push(question.trim())
-      memoryMode = normalizeMemoryModeChoice(await askLine(promptSession, question))
+      memoryMode = await askCliSelect<MemoryProviderRoutingConfig['mode']>(promptSession, {
+        title: lang === 'zh' ? 'gbrain 路由模式' : 'gbrain routing mode',
+        message: lang === 'zh'
+          ? 'external-first 优先使用外部记忆，失败时再回落。'
+          : 'external-first uses external memory first, then falls back when needed.',
+        lang,
+        defaultValue: 'external-first',
+        choices: [
+          { value: 'external-first', label: 'external-first' },
+          { value: 'auto', label: 'auto' },
+        ],
+      })
       interactiveChoices.memoryMode = memoryMode
     }
 
     const readyIds = plan.items.filter(item => item.status === 'ready').map(item => item.id)
     if (!shouldApply && promptSession && readyIds.length > 0) {
-      const question = installQuestion(lang, readyIds)
-      prompts.push(question.trim())
-      const installChoice = normalizeInstallChoice(await askLine(promptSession, question), readyIds)
-      shouldApply = installChoice.apply
-      if (installChoice.ids.length > 0) interactiveChoices.installIds = installChoice.ids
+      const installChoice = await askCliMultiSelect(promptSession, {
+        title: lang === 'zh' ? '执行安装' : 'Run installation',
+        message: lang === 'zh'
+          ? '只会安装状态为 ready 的项目；缺少前置依赖的项目会留在修复建议里。'
+          : 'Only ready items will be installed; blocked items remain in the fix suggestions.',
+        lang,
+        allowAll: true,
+        allowNone: true,
+        choices: readyIds.map(id => ({ value: id, label: id })),
+      })
+      shouldApply = installChoice.all || installChoice.values.length > 0
+      if (installChoice.values.length > 0) interactiveChoices.installIds = installChoice.values
     }
   } finally {
+    if (promptSession) prompts.push(...promptSession.prompts.map(prompt => prompt.trim()))
     promptSession?.rl.close()
   }
 
@@ -166,48 +205,23 @@ function shouldPromptMemoryProvider(plan: DependencyBootstrapReport): boolean {
   return plan.packIds.includes('memory') || plan.items.some(item => item.id === 'gbrain')
 }
 
-function languageQuestion(lang: ScaleLanguage): string {
-  return lang === 'zh'
-    ? '选择安装语言 zh/en，默认 zh: '
-    : 'Choose setup language zh/en, default en: '
-}
-
-function packQuestion(lang: ScaleLanguage): string {
-  return lang === 'zh'
-    ? '选择安装包 1=推荐标准(external-cli,memory,knowledge,ui) 2=最小(external-cli) 3=全部 4=只安装UI 5=只安装记忆 6=只安装知识，默认 1: '
-    : 'Choose packs 1=standard(external-cli,memory,knowledge,ui) 2=minimal(external-cli) 3=full 4=ui 5=memory 6=knowledge, default 1: '
-}
-
-function memoryProviderQuestion(lang: ScaleLanguage): string {
-  return lang === 'zh'
-    ? `选择记忆供应商:
-  1=gbrain (图记忆，CLI模式，推荐)
-  2=skip (跳过)
-  默认 1: `
-    : `Choose memory provider:
-  1=gbrain (graph memory, CLI mode, recommended)
-  2=skip
-  Default 1: `
-}
-
-function memoryModeQuestion(lang: ScaleLanguage): string {
-  return lang === 'zh'
-    ? '选择 gbrain 路由模式 external-first/auto，默认 external-first: '
-    : 'Choose gbrain routing mode external-first/auto, default external-first: '
-}
-
-function installQuestion(lang: ScaleLanguage, readyIds: string[]): string {
-  const list = readyIds.map((id, index) => `${index + 1}=${id}`).join(', ')
-  return lang === 'zh'
-    ? `发现可安装项：${list}。输入 all 安装全部，输入编号/ID 逗号分隔只安装部分，直接回车跳过: `
-    : `Ready to install: ${list}. Type all for all, comma-separated numbers/IDs for selected items, or press Enter to skip: `
-}
-
-function normalizeLanguageChoice(value: string, fallback: ScaleLanguage): ScaleLanguage {
-  const normalized = value.trim().toLowerCase()
-  if (normalized === 'en' || normalized === 'english') return 'en'
-  if (normalized === 'zh' || normalized === 'cn' || normalized === 'chinese' || normalized === '中文') return 'zh'
-  return fallback
+function packChoices(lang: ScaleLanguage): Array<CliChoice<string>> {
+  return [
+    {
+      value: 'standard',
+      label: lang === 'zh' ? '标准能力包' : 'Standard pack',
+      hint: lang === 'zh' ? 'external-cli, memory, knowledge, ui。' : 'external-cli, memory, knowledge, ui.',
+    },
+    {
+      value: 'minimal',
+      label: lang === 'zh' ? '最小能力包' : 'Minimal pack',
+      hint: lang === 'zh' ? '只规划 external-cli。' : 'Plans external-cli only.',
+    },
+    { value: 'full', label: lang === 'zh' ? '完整能力包' : 'Full pack' },
+    { value: 'ui', label: lang === 'zh' ? '只安装 UI skills' : 'UI skills only' },
+    { value: 'memory', label: lang === 'zh' ? '只安装记忆能力' : 'Memory only' },
+    { value: 'knowledge', label: lang === 'zh' ? '只安装知识图谱能力' : 'Knowledge only' },
+  ]
 }
 
 function normalizePackChoice(value: string): string[] {
@@ -227,52 +241,4 @@ function normalizePackChoice(value: string): string[] {
     .map(item => item === 'external' || item === 'cli' ? 'external-cli' : item)
     .filter(item => ['external-cli', 'memory', 'knowledge', 'ui', 'full'].includes(item))
   return selected.length > 0 ? selected : ['external-cli', 'memory', 'knowledge', 'ui']
-}
-
-function normalizeMemoryProviderChoice(value: string): string {
-  const normalized = value.trim().toLowerCase()
-  if (!normalized || normalized === '1') return 'gbrain'
-  if (normalized === '2' || normalized === 'none' || normalized === 'no' || normalized === 'skip') return 'skip'
-  if (normalized === 'gbrain') return 'gbrain'
-  return 'gbrain'
-}
-
-function normalizeMemoryModeChoice(value: string): MemoryProviderRoutingConfig['mode'] {
-  const normalized = value.trim().toLowerCase()
-  if (normalized === 'auto' || normalized === '2') return 'auto'
-  return 'external-first'
-}
-
-function createPromptSession(input: NodeJS.ReadableStream, output: NodeJS.WritableStream): PromptSession {
-  const rl = createInterface({ input, crlfDelay: Infinity })
-  return {
-    rl,
-    output,
-    iterator: rl[Symbol.asyncIterator](),
-  }
-}
-
-function normalizeInstallChoice(value: string, readyIds: string[]): { apply: boolean; ids: string[] } {
-  const normalized = value.trim().toLowerCase()
-  if (!normalized) return { apply: false, ids: [] }
-  if (normalized === 'all' || normalized === 'a' || normalized === 'y' || normalized === 'yes' || normalized === '全部') {
-    return { apply: true, ids: [] }
-  }
-  const ids = normalized
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-    .map(item => {
-      const index = Number.parseInt(item, 10)
-      if (Number.isFinite(index) && index > 0) return readyIds[index - 1]
-      return readyIds.find(id => id.toLowerCase() === item)
-    })
-    .filter((item): item is string => Boolean(item))
-  return { apply: ids.length > 0, ids: [...new Set(ids)] }
-}
-
-async function askLine(promptSession: PromptSession, question: string): Promise<string> {
-  promptSession.output.write(question)
-  const answer = await promptSession.iterator.next()
-  return answer.done ? '' : answer.value
 }

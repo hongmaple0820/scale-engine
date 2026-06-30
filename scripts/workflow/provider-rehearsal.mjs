@@ -150,18 +150,32 @@ function runGraphifyRehearsal() {
   const sourceProjectPath = resolve(options.largeProject)
   const projectPath = prepareGraphifyProject(sourceProjectPath)
   const graphOut = join(projectPath, 'graphify-out')
-  const extractCommand = options.semanticExtract ? 'extract' : 'update'
-  const extractArgs = options.semanticExtract
-    ? ['extract', projectPath, '--out', graphOut]
-    : ['update', projectPath]
   if (!options.semanticExtract) removeGeneratedGraphJson(graphOut)
-  if (options.semanticExtract && options.graphifyBackend) extractArgs.push('--backend', options.graphifyBackend)
-  if (options.noCluster) extractArgs.push('--no-cluster')
-  if (options.semanticExtract && options.globalExtract) extractArgs.push('--global')
+  const extractCommand = options.semanticExtract ? 'extract' : 'rebuild'
+  const extractSpec = options.semanticExtract
+    ? {
+        command: 'graphify',
+        args: buildGraphifyExtractArgs(projectPath, graphOut),
+        cwd: repoRoot,
+      }
+    : buildGraphifyRebuildSpec(projectPath)
+  if (!extractSpec) {
+    return capability('graphify', options.requireGraphify ? 'failed' : 'blocked', {
+      reason: 'Python is required to rebuild graphify-out/graph.json with the installed graphify package.',
+      required: options.requireGraphify,
+      commands: [help],
+      nextCommands: [
+        'Install Python 3.10+',
+        'uv tool install graphify',
+        pythonGraphifyRebuildCommand(sourceProjectPath),
+      ],
+    })
+  }
 
-  const extract = runCommand(`graphify-${extractCommand}`, 'graphify', extractArgs, {
+  const extract = runCommand(`graphify-${extractCommand}`, extractSpec.command, extractSpec.args, {
     timeoutMs: options.timeoutMs,
     env: graphifyNoModelEnv(),
+    cwd: extractSpec.cwd,
   })
   if (extract.exitCode !== 0) {
     return capability('graphify', options.requireGraphify ? 'failed' : 'blocked', {
@@ -171,7 +185,7 @@ function runGraphifyRehearsal() {
       nextCommands: [
         'graphify install --platform codex',
         'graphify hook status',
-        `graphify update ${quoteArg(sourceProjectPath)} --no-cluster`,
+        pythonGraphifyRebuildCommand(sourceProjectPath),
         'Use --semantic-extract only when semantic LLM extraction is explicitly allowed.',
       ],
     })
@@ -205,20 +219,53 @@ function runGraphifyRehearsal() {
       })
     : undefined
 
-  const passed = stats.ok && query.exitCode === 0
+  const queryOutput = `${query.stdout}\n${query.stderr}`.trim()
+  const queryMatched = query.exitCode === 0 && queryOutput.length > 0 && !/no matching nodes found/i.test(queryOutput)
+  const passed = stats.ok && queryMatched
   return capability('graphify', passed ? 'passed' : options.requireGraphify ? 'failed' : 'blocked', {
     reason: passed
       ? `graphify ${extractCommand} built a real project graph and answered a graph query`
-      : 'graphify generated an artifact but graph stats or query validation failed',
+      : 'graphify generated an artifact but graph stats or query validation did not produce matching nodes',
     required: options.requireGraphify,
     project: sourceProjectPath,
     analyzedProject: projectPath,
-    mode: options.semanticExtract ? 'semantic-extract' : 'ast-update-no-llm',
+    mode: options.semanticExtract ? 'semantic-extract' : 'ast-rebuild-no-llm',
     graphPath,
     stats,
+    queryMatched,
     commands: summarizeCommands([help, extract, query, benchmark, globalAdd]),
     nextCommands: passed ? [] : [`graphify query ${quoteArg(options.graphifyQuestion)} --graph ${quoteArg(graphPath)}`],
   })
+}
+
+function buildGraphifyExtractArgs(projectPath, graphOut) {
+  const args = ['extract', projectPath, '--out', graphOut]
+  if (options.graphifyBackend) args.push('--backend', options.graphifyBackend)
+  if (options.noCluster) args.push('--no-cluster')
+  if (options.globalExtract) args.push('--global')
+  return args
+}
+
+function buildGraphifyRebuildSpec(projectPath) {
+  const python = commandExists('python') ? 'python' : commandExists('python3') ? 'python3' : null
+  if (!python) return null
+  return {
+    command: python,
+    args: ['-c', graphifyRebuildPythonScript()],
+    cwd: projectPath,
+  }
+}
+
+function graphifyRebuildPythonScript() {
+  return [
+    'from pathlib import Path',
+    'from graphify.watch import _rebuild_code',
+    "_rebuild_code(Path('.'))",
+  ].join('; ')
+}
+
+function pythonGraphifyRebuildCommand(projectPath) {
+  return `python -c "from pathlib import Path; from graphify.watch import _rebuild_code; _rebuild_code(Path('.'))" # run inside ${quoteArg(projectPath)}`
 }
 
 function parseGraphStats(graphPath) {
@@ -321,7 +368,7 @@ function runCommand(name, command, args, opts = {}) {
   const commandLine = formatCommand(invocation.command, invocation.args)
   if (options.verbose) process.stderr.write(`[RUN] ${commandLine}\n`)
   const result = spawnStructured(invocation.command, invocation.args, {
-    cwd: repoRoot,
+    cwd: opts.cwd ?? repoRoot,
     env: opts.env ?? process.env,
     input: opts.input,
     encoding: 'utf8',
@@ -500,7 +547,7 @@ function parseArgs(args) {
     reportFile: undefined,
     writeReport: false,
     graphifyBackend: undefined,
-    graphifyQuestion: 'Where are SCALE setup, memory provider, and graphify knowledge integration implemented?',
+    graphifyQuestion: 'oauth state',
     timeoutMs: 900_000,
   }
   for (let index = 0; index < args.length; index += 1) {

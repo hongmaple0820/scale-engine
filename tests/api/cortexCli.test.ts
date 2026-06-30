@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it } from 'vitest'
 import { InstinctStore } from '../../src/cortex/InstinctStore.js'
+import { safeRmSync } from '../helpers/fs.js'
 
 const dirs: string[] = []
 const CLI_ENTRY = join(process.cwd(), 'src/api/cli.ts')
@@ -12,7 +13,7 @@ const TSX_LOADER = pathToFileURL(join(process.cwd(), 'node_modules/tsx/dist/load
 const CLI_TEST_TIMEOUT_MS = 120_000
 
 afterEach(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs) safeRmSync(dir)
   dirs.length = 0
 })
 

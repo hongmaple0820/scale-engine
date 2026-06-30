@@ -3,21 +3,22 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Doctor } from '../../src/api/doctor.js'
 import { ClaudeCodeAdapter } from '../../src/adapters/ClaudeCodeAdapter.js'
 import { writeGovernanceTemplates } from '../../src/workflow/GovernanceTemplates.js'
-import { rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { execSync } from 'node:child_process'
+import { safeRmSync } from '../helpers/fs.js'
 
-const TMP = './tmp/test-doctor'
+let TMP: string
 
 describe('Doctor', () => {
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
-    mkdirSync(TMP, { recursive: true })
+    TMP = mkdtempSync(join(tmpdir(), 'scale-doctor-'))
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
   })
 
   it('reports broken on empty project', async () => {

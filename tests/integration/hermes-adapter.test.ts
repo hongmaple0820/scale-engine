@@ -4,8 +4,9 @@ import { HermesAdapter } from '../../src/adapters/HermesAdapter.js'
 import { createAdapter, SUPPORTED_AGENTS } from '../../src/adapters/index.js'
 import { Doctor } from '../../src/api/doctor.js'
 import { SkillDiscovery } from '../../src/skills/SkillDiscovery.js'
-import { rmSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { safeRmSync } from '../helpers/fs.js'
 
 const TMP = './tmp/test-hermes'
 
@@ -13,13 +14,13 @@ describe('HermesAdapter', () => {
   let adapter: HermesAdapter
 
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
     mkdirSync(TMP, { recursive: true })
     adapter = new HermesAdapter()
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
   })
 
   it('agentType is hermes', () => {
@@ -117,12 +118,12 @@ describe('createAdapter / SUPPORTED_AGENTS — hermes', () => {
 
 describe('SkillDiscovery — hermes platform', () => {
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
     mkdirSync(TMP, { recursive: true })
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
   })
 
   it('detectPlatform returns hermes when .hermes/settings.json exists', async () => {
@@ -143,12 +144,12 @@ describe('SkillDiscovery — hermes platform', () => {
 
 describe('Doctor — hermes-aware', () => {
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
     mkdirSync(TMP, { recursive: true })
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    safeRmSync(TMP)
   })
 
   it('reports healthy after scale init --agent hermes', async () => {

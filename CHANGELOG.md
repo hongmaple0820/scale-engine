@@ -2,6 +2,22 @@
 
 ---
 
+## 0.54.2 - 2026-06-30
+
+### Installer
+- Add the customer-first `scale install` command so end users can install the workflow from inside a project with one guided entry instead of stitching together `init`, `setup`, and verification commands.
+- Standardize interactive prompts, numbered selections, install progress, warning/error summaries, and JSON output for install/setup flows.
+- Keep the `core` install path dependency-light by making an explicit empty dependency pack mean no optional third-party install planning.
+
+### Agent OS
+- Preserve the Agent OS kernel commands, capability registry, governed shell, bridge registry, delegation records, Cortex promotion flow, and dashboard workbench on top of the latest Agent Control and dashboard service baseline.
+- Document the Agent OS runtime and CLI surface alongside Dashboard/Agent Control commands.
+
+### Verification
+- Add installer and setup wizard regression coverage, published-package style CLI install smoke coverage, and compatibility fixes for dashboard bootstrap preloading.
+
+---
+
 ## 0.54.1 - 2026-06-26
 
 ### Loop Automation
