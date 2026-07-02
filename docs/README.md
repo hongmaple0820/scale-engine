@@ -10,6 +10,7 @@
 | [start/agent-full-workflow.md](start/agent-full-workflow.md) | 面向用户复制给 Agent 的满血工作流接入提示词 |
 | [start/npx-interactive-install.md](start/npx-interactive-install.md) | npx 临时执行、交互式安装、固定版本和国内镜像 fallback |
 | [start/quickstart.md](start/quickstart.md) | 3 分钟快速开始 |
+| [start/customer-smoke.md](start/customer-smoke.md) | 客户安装后的 `scale open` / `scale smoke` 一键验收路径 |
 | [start/agent-installation-guide.md](start/agent-installation-guide.md) | 22 种 Agent 安装、初始化、验证、面板和多 Agent 使用教程 |
 | [start/agent-governance-demo.md](start/agent-governance-demo.md) | 官方 demo walkthrough |
 | [start/artifact-lifecycle.md](start/artifact-lifecycle.md) | Artifact 生命周期完整 walkthrough |

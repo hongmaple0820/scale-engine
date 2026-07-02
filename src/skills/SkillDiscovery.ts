@@ -242,7 +242,6 @@ export class SkillDiscovery implements ISkillDiscovery {
     const checks: Array<{ platform: AgentPlatform; paths: string[] }> = [
       { platform: 'claude-code', paths: [join(this.projectDir, '.claude', 'settings.json')] },
       { platform: 'codex', paths: [join(this.projectDir, '.codex', 'hooks.json')] },
-      { platform: 'opencode', paths: [join(homedir(), '.config', 'opencode', 'hooks.json')] },
       { platform: 'cursor', paths: [join(this.projectDir, '.cursor', 'settings.json')] },
       { platform: 'gemini', paths: [join(this.projectDir, '.gemini', 'settings.json')] },
       { platform: 'openclaw', paths: [join(this.projectDir, '.openclaw', 'settings.json')] },
@@ -262,6 +261,7 @@ export class SkillDiscovery implements ISkillDiscovery {
       { platform: 'cline', paths: [join(this.projectDir, '.cline', 'settings.json'), join(this.projectDir, '.clinerules')] },
       { platform: 'kilocode', paths: [join(this.projectDir, '.kilocode', 'settings.json')] },
       { platform: 'antigravity', paths: [join(this.projectDir, '.agents', 'hooks.json'), join(this.projectDir, '.agents', 'rules')] },
+      { platform: 'opencode', paths: [join(homedir(), '.config', 'opencode', 'hooks.json')] },
     ]
     for (const check of checks) {
       if (check.paths.some(p => existsSync(p))) return check.platform

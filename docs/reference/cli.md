@@ -7,6 +7,8 @@
 | Command | Description |
 |---------|-------------|
 | `scale install` | Customer-first one-command workflow installation with standardized prompts, progress, dependency planning, and verification summary |
+| `scale open` | Start the resident Agent OS dashboard and open Agent Control |
+| `scale smoke` | Run one-command install, dashboard, and message-loop acceptance |
 | `scale init` | Initialize SCALE governance in a project |
 | `scale setup` | Interactive setup wizard |
 | `scale doctor` | Diagnose SCALE installation and configuration |
@@ -137,7 +139,9 @@ Evidence-driven continuous evolution with instinct extraction.
 
 | Command | Description |
 |---------|-------------|
-| `scale dashboard daemon ensure --dir . --port 3210 --json` | Start or reuse the resident dashboard watchdog for Agent Control, Feishu/Lark routing, health checks, PID files, and logs |
+| `scale open --dir .` | Start or reuse the resident dashboard watchdog and open Agent Control |
+| `scale smoke --dir .` | Verify project initialization, dashboard health, and the Agent Control send/claim/complete/reply/summary loop |
+| `scale dashboard daemon ensure --dir . --port 3210 --json` | Low-level daemon command for scripts and troubleshooting |
 | `scale dashboard daemon status --dir . --json` | Show supervisor/server process state, heartbeat, restart count, task installation state, and log paths |
 | `scale dashboard daemon restart --dir . --port 3210` | Restart the resident dashboard watchdog and HTTP server |
 | `scale dashboard daemon logs --dir . --lines 120` | Print dashboard watchdog logs |

@@ -17,9 +17,9 @@ kiro, qoder, jcode, cline, kilocode, antigravity
 统一初始化入口：
 
 ```bash
-scale init --agent AGENT-ID --dir . --governance-pack standard
-scale doctor --dir . --json
-scale preflight --preflight-profile quick
+scale install --agent AGENT-ID --pack core --dir .
+scale open --dir .
+scale smoke --dir .
 ```
 
 已有项目先跑升级检查：

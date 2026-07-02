@@ -18,7 +18,8 @@ The visual panel is the primary configuration surface. Use `http://127.0.0.1:321
 ```bash
 scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes
 scale setup --verify --pack full --json
-scale dashboard daemon ensure --dir . --port 3210 --json
+scale open --dir .
+scale smoke --dir .
 ```
 
 Open `http://127.0.0.1:3210/#integrations`.

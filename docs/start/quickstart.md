@@ -38,12 +38,9 @@ scale install --dir .
 默认建议先选择“只安装工作流本体”。核心工作流安装完成后已经可以使用：
 
 ```bash
-scale doctor --dir .
-scale status --dir .
+scale open --dir .
+scale smoke --dir .
 scale define "your feature" --dir .
-scale plan --dir .
-scale build --dir .
-scale verify --dir .
 ```
 
 ## 一条命令静默安装
@@ -98,9 +95,8 @@ scale setup --verify --pack memory,knowledge --dir .
 安装完成后至少运行：
 
 ```bash
-scale doctor --dir .
-scale status --dir .
-scale preflight --preflight-profile quick --dir .
+scale open --dir .
+scale smoke --dir .
 ```
 
 未运行验证，不要声称通过。`--json` 代表机器可读输出，不代表第三方能力已经实际可用；第三方能力需要 `setup --verify` 或对应 smoke 测试闭环。

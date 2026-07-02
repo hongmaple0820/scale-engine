@@ -1,9 +1,18 @@
-import { describe, expect, it } from 'vitest'
-import { checkKnowledgeGraphAvailability } from '../../src/api/quickstart.js'
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { afterEach, describe, expect, it } from 'vitest'
+import { autoDetectGovernancePack, checkKnowledgeGraphAvailability, classifyProject } from '../../src/api/quickstart.js'
 import type { CodeIntelligenceStatusReport } from '../../src/codegraph/CodeIntelligence.js'
 import type { ToolCapabilityReport } from '../../src/tools/ToolCapabilityRegistry.js'
 
 describe('quickstart knowledge graph detection', () => {
+  const tempDirs: string[] = []
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
   it('returns bootstrap guidance when knowledge tools are missing', () => {
     const report = checkKnowledgeGraphAvailability('E:/project/demo', {
       execSyncImpl: (() => 'Python 3.12.3') as typeof import('node:child_process').execSync,
@@ -77,5 +86,42 @@ describe('quickstart knowledge graph detection', () => {
       'codegraph init -i .',
       'Generate graphify-out/graph.json before relying on graph-backed knowledge recall.',
     ]))
+  })
+
+  it('detects enterprise, desktop, and python governance packs from project structure', () => {
+    const springVue = mkdtempSync(join(tmpdir(), 'scale-spring-vue-'))
+    const desktop = mkdtempSync(join(tmpdir(), 'scale-desktop-'))
+    const python = mkdtempSync(join(tmpdir(), 'scale-python-'))
+    tempDirs.push(springVue, desktop, python)
+
+    writeFileSync(join(springVue, 'pom.xml'), '<project />')
+    writeFileSync(join(springVue, 'package.json'), JSON.stringify({ dependencies: { vue: '^3.5.0' } }))
+    writeFileSync(join(desktop, 'package.json'), JSON.stringify({ dependencies: { '@tauri-apps/api': '^2.0.0' } }))
+    mkdirSync(join(desktop, 'src-tauri'))
+    writeFileSync(join(python, 'pyproject.toml'), '[project]\nname = "demo"\n')
+
+    expect(autoDetectGovernancePack(springVue)).toBe('spring-vue-admin')
+    expect(classifyProject(springVue).recommendedPack).toBe('spring-vue-admin')
+    expect(autoDetectGovernancePack(desktop)).toBe('desktop-app')
+    expect(classifyProject(desktop).recommendedPack).toBe('desktop-app')
+    expect(autoDetectGovernancePack(python)).toBe('python-service')
+    expect(classifyProject(python).recommendedPack).toBe('python-service')
+  })
+
+  it('detects frontend projects when package.json contains a UTF-8 BOM', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-bom-package-'))
+    tempDirs.push(projectDir)
+
+    writeFileSync(join(projectDir, 'package.json'), `\uFEFF${JSON.stringify({
+      scripts: { build: 'vite build' },
+      dependencies: { vue: '^3.5.0' },
+    })}`)
+
+    expect(autoDetectGovernancePack(projectDir)).toBe('frontend-app')
+    expect(classifyProject(projectDir)).toMatchObject({
+      language: 'node',
+      framework: 'vue',
+      recommendedPack: 'frontend-app',
+    })
   })
 })

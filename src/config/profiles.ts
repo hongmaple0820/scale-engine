@@ -44,11 +44,13 @@ export interface ProfileDefaults {
   }
 }
 
+export type ConfigLanguage = 'zh' | 'en'
+
 export const PROFILES: Record<string, ConfigProfile> = {
   minimal: {
     id: 'minimal',
-    name: 'Minimal',
-    description: 'Basic artifact management. No guardrails, no knowledge, no evolution. Good for trying SCALE.',
+    name: 'Minimal / Trial',
+    description: 'Trial and prototype mode: keep workflow artifacts and basic safety notes, with the lowest interruption level.',
     sections: ['basic'],
     defaults: {
       scenario: 'sandbox',
@@ -60,8 +62,8 @@ export const PROFILES: Record<string, ConfigProfile> = {
   },
   standard: {
     id: 'standard',
-    name: 'Standard',
-    description: 'Guardrails + lint + test verification. Recommended for most projects.',
+    name: 'Standard / Team',
+    description: 'Team default mode: block dangerous operations, require visible verification, and keep normal delivery overhead controlled.',
     sections: ['basic', 'guardrails'],
     defaults: {
       scenario: 'standard',
@@ -78,8 +80,8 @@ export const PROFILES: Record<string, ConfigProfile> = {
   },
   advanced: {
     id: 'advanced',
-    name: 'Advanced',
-    description: 'Full governance: guardrails + graphify knowledge recall + gbrain memory routing + evolution + model routing.',
+    name: 'Advanced / Delivery',
+    description: 'Strict delivery mode: stronger evidence discipline, memory/knowledge routing, expanded detectors, and release-oriented checks.',
     sections: ['basic', 'guardrails', 'knowledge', 'evolution', 'models', 'advanced'],
     defaults: {
       scenario: 'standard',
@@ -96,8 +98,8 @@ export const PROFILES: Record<string, ConfigProfile> = {
   },
   'china-local': {
     id: 'china-local',
-    name: 'China Local',
-    description: 'Optimized for local model deployment in China (Qwen/GLM/DeepSeek compatible). Reduced guardrails for local model contexts.',
+    name: 'China Local / Offline-friendly',
+    description: 'Local-first mode for Qwen/GLM/DeepSeek/Ollama-style environments: no external online service is required by default.',
     sections: ['basic', 'guardrails', 'models'],
     defaults: {
       scenario: 'standard',
@@ -123,6 +125,10 @@ const PROFILE_BOOTSTRAP_PACKS: Record<string, DependencyBootstrapPackId[]> = {
 
 const GOVERNANCE_PACK_BOOTSTRAP_PACKS: Record<string, DependencyBootstrapPackId[]> = {
   'frontend-app': ['ui'],
+  'enterprise-admin': ['ui'],
+  'spring-vue-admin': ['ui'],
+  'desktop-app': ['ui'],
+  'agent-os-workbench': ['memory', 'knowledge', 'ui'],
 }
 
 /**
@@ -174,17 +180,25 @@ export function getBootstrapPlanForProfile(profileId: string, governancePack?: s
   }
 }
 
+function profileBoundary(profileId: string): string {
+  if (profileId === 'minimal') return 'advisory-only'
+  if (profileId === 'advanced') return 'strict-evidence-and-release'
+  if (profileId === 'china-local') return 'local-first-no-external-required'
+  return 'team-default-dangerous-ops-and-verification'
+}
+
 /**
  * Generate config.yaml content for a given profile.
  * Returns only the sections relevant to the profile level.
  */
 export function generateConfigForProfile(
   profileId: string,
-  projectInfo: { name: string; type?: string; agents?: string[] }
+  projectInfo: { name: string; type?: string; agents?: string[]; language?: ConfigLanguage }
 ): string {
   const profile = getProfile(profileId)
   const d = profile.defaults
   const lines: string[] = []
+  const language = projectInfo.language ?? 'zh'
 
   lines.push(`# SCALE Engine Configuration`)
   lines.push(`# Profile: ${profile.name} — ${profile.description}`)
@@ -192,6 +206,8 @@ export function generateConfigForProfile(
   lines.push(``)
   lines.push(`version: 1`)
   lines.push(`profile: ${profileId}`)
+  lines.push(`locale: ${language}`)
+  lines.push(`agentLanguage: ${language}`)
   lines.push(``)
   lines.push(`project:`)
   lines.push(`  name: ${projectInfo.name}`)
@@ -220,6 +236,8 @@ export function generateConfigForProfile(
 
   if (profile.sections.includes('guardrails')) {
     lines.push(`guardrails:`)
+    lines.push(`  strength: ${profile.id}`)
+    lines.push(`  boundary: ${profileBoundary(profile.id)}`)
     lines.push(`  preTool:`)
     lines.push(`    enabled: ${d.guardrails.enabled}`)
     if (d.guardrails.detectors.length > 0) {

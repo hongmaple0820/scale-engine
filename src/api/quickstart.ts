@@ -17,14 +17,33 @@ export interface PlatformDetectionResult {
   suggestions: string[]
 }
 
+interface PackageJsonLike {
+  scripts?: Record<string, string>
+  dependencies?: Record<string, unknown>
+  devDependencies?: Record<string, unknown>
+  workspaces?: unknown
+  main?: unknown
+  module?: unknown
+  exports?: unknown
+}
+
 // Auto-detect the best governance pack based on project files
 export function autoDetectGovernancePack(projectDir: string): string {
   const pkgPath = join(projectDir, 'package.json')
+  if (existsSync(join(projectDir, 'src-tauri')) || existsSync(join(projectDir, 'electron'))) return 'desktop-app'
+  if (existsSync(join(projectDir, 'pom.xml')) || existsSync(join(projectDir, 'build.gradle')) || existsSync(join(projectDir, 'build.gradle.kts'))) {
+    if (existsSync(pkgPath) || existsSync(join(projectDir, 'frontend')) || existsSync(join(projectDir, 'vue'))) return 'spring-vue-admin'
+    return 'enterprise-admin'
+  }
   if (existsSync(pkgPath)) {
     try {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      const pkg = readPackageJson(pkgPath)
       const scripts = Object.keys(pkg.scripts ?? {})
       const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+      if (deps.electron || deps['@tauri-apps/api'] || deps['@tauri-apps/cli']) return 'desktop-app'
+      if (pkg.workspaces || existsSync(join(projectDir, 'pnpm-workspace.yaml')) || existsSync(join(projectDir, 'turbo.json'))) {
+        return 'microservice-platform'
+      }
 
       // Check for frontend frameworks
       if (deps.react || deps.next || deps.vue || deps['@angular/core'] ||
@@ -38,14 +57,14 @@ export function autoDetectGovernancePack(projectDir: string): string {
     } catch {}
   }
   if (existsSync(join(projectDir, 'go.mod'))) return 'go-service-matrix'
-  if (existsSync(join(projectDir, 'pyproject.toml')) || existsSync(join(projectDir, 'requirements.txt'))) return 'standard'
+  if (existsSync(join(projectDir, 'pyproject.toml')) || existsSync(join(projectDir, 'requirements.txt'))) return 'python-service'
   // Check for monorepo
   if (existsSync(join(projectDir, 'lerna.json')) || existsSync(join(projectDir, 'nx.json')) ||
       existsSync(join(projectDir, 'turbo.json'))) {
     const pkgPath = join(projectDir, 'package.json')
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+        const pkg = readPackageJson(pkgPath)
         if (pkg.workspaces) return 'moe-workspace'
       } catch {}
     }
@@ -55,7 +74,7 @@ export function autoDetectGovernancePack(projectDir: string): string {
 }
 
 export interface ProjectClassification {
-  language: 'node' | 'go' | 'python' | 'unknown'
+  language: 'node' | 'go' | 'python' | 'java' | 'unknown'
   framework?: string
   isMonorepo: boolean
   isLibrary: boolean
@@ -75,21 +94,29 @@ export function classifyProject(projectDir: string): ProjectClassification {
   }
 
   const pkgPath = join(projectDir, 'package.json')
+  if (existsSync(join(projectDir, 'pom.xml')) || existsSync(join(projectDir, 'build.gradle')) || existsSync(join(projectDir, 'build.gradle.kts'))) {
+    result.language = 'java'
+    result.framework = 'spring-boot'
+    result.recommendedPack = existsSync(pkgPath) ? 'spring-vue-admin' : 'enterprise-admin'
+  }
   if (existsSync(pkgPath)) {
     result.language = 'node'
     try {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      const pkg = readPackageJson(pkgPath)
       const deps = { ...pkg.dependencies, ...pkg.devDependencies }
 
-      if (pkg.workspaces || existsSync(join(projectDir, 'lerna.json')) || existsSync(join(projectDir, 'nx.json'))) {
+      if (deps.electron || deps['@tauri-apps/api'] || deps['@tauri-apps/cli'] || existsSync(join(projectDir, 'src-tauri'))) {
+        result.framework = deps['@tauri-apps/api'] || existsSync(join(projectDir, 'src-tauri')) ? 'tauri' : 'electron'
+        result.recommendedPack = 'desktop-app'
+      } else if (pkg.workspaces || existsSync(join(projectDir, 'lerna.json')) || existsSync(join(projectDir, 'nx.json')) || existsSync(join(projectDir, 'pnpm-workspace.yaml')) || existsSync(join(projectDir, 'turbo.json'))) {
         result.isMonorepo = true
-        result.recommendedPack = 'moe-workspace'
+        result.recommendedPack = 'microservice-platform'
       }
 
-      if (deps.react) { result.framework = 'react'; result.recommendedPack = 'frontend-app' }
+      if (deps.react) { result.framework = result.framework ?? 'react'; result.recommendedPack = result.recommendedPack === 'standard' ? 'frontend-app' : result.recommendedPack }
       else if (deps.next) { result.framework = 'next'; result.recommendedPack = 'frontend-app' }
-      else if (deps.vue) { result.framework = 'vue'; result.recommendedPack = 'frontend-app' }
-      else if (deps.express || deps.fastify || deps.koa) { result.framework = 'express'; result.recommendedPack = 'node-library' }
+      else if (deps.vue) { result.framework = result.framework ?? 'vue'; result.recommendedPack = result.recommendedPack === 'standard' ? 'frontend-app' : result.recommendedPack }
+      else if (deps.express || deps.fastify || deps.koa) { result.framework = result.framework ?? 'express'; result.recommendedPack = result.recommendedPack === 'standard' ? 'node-library' : result.recommendedPack }
 
       if (!result.framework && (pkg.main || pkg.module || pkg.exports)) {
         result.isLibrary = true
@@ -104,7 +131,7 @@ export function classifyProject(projectDir: string): ProjectClassification {
   }
 
   if (existsSync(join(projectDir, 'go.mod'))) { result.language = 'go'; result.recommendedPack = 'go-service-matrix' }
-  if (existsSync(join(projectDir, 'pyproject.toml'))) { result.language = 'python'; result.recommendedPack = 'standard' }
+  if (existsSync(join(projectDir, 'pyproject.toml')) || existsSync(join(projectDir, 'requirements.txt'))) { result.language = 'python'; result.recommendedPack = 'python-service' }
 
   return result
 }
@@ -353,4 +380,10 @@ export async function installKnowledgeGraph(projectDir: string = '.', deps: Know
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))]
+}
+
+function readPackageJson(path: string): PackageJsonLike {
+  const parsed = JSON.parse(readFileSync(path, 'utf-8').replace(/^\uFEFF/, '')) as unknown
+  if (!parsed || typeof parsed !== 'object') return {}
+  return parsed as PackageJsonLike
 }

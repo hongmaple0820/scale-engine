@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.54.2-orange?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.55.0-orange?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
   <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
-  <img src="https://img.shields.io/badge/npm-0.54.2-cb3837?style=flat-square&logo=npm" alt="npm" />
+  <img src="https://img.shields.io/badge/npm-0.55.0-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
 
 [![RepoStars](https://repostars.dev/api/embed?repo=hongmaple0820%2Fscale-engine&theme=copper)](https://repostars.dev/?repos=hongmaple0820%2Fscale-engine&theme=copper)
 
-# SCALE Engine v0.54.2
+# SCALE Engine v0.55.0
 
 ## 客户安装入口
 
@@ -31,7 +31,7 @@ scale install --dir .
 CI 或团队模板推荐显式参数：
 
 ```bash
-scale install --agent codex --profile standard --governance-pack frontend-app --pack core --dir . --json
+scale install --agent recommended --profile standard --governance-pack frontend-app --pack core --lang zh --dir . --json
 ```
 
 SCALE Engine 让 AI Agent 不再只靠"自觉"遵守工程规范。它把探索、规划、实现、验证、评审、发版这些要求变成可执行的命令、门禁和证据文件，让人类可以看见 Agent 做了什么、跳过了什么、为什么能交付或不能交付。
@@ -49,9 +49,10 @@ npm：https://www.npmjs.com/package/@hongmaple0820/scale-engine
 核心命令是：
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json
-npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes --dir .
-npx -y @hongmaple0820/scale-engine@latest dashboard daemon ensure --dir . --port 3210 --json
+npx -y @hongmaple0820/scale-engine@latest install --agent recommended --pack core --lang zh --dir .
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes --dir .
+npx -y @hongmaple0820/scale-engine@latest open --dir .
+npx -y @hongmaple0820/scale-engine@latest smoke --dir .
 ```
 
 面板默认走常驻守护模式。打开 `http://127.0.0.1:3210/#agents` 后，用户在 Agent Control 里配置 agent 平台、模型、消息通道、会话队列和飞书 route；Agent runtime 通过 `scale agent-control inbox/reply` 消费队列，不需要用户手写 JSON。
@@ -71,8 +72,7 @@ npx -y @hongmaple0820/scale-engine@latest dashboard daemon ensure --dir . --port
 
 ```bash
 mkdir scale-demo && cd scale-demo
-npx -y @hongmaple0820/scale-engine@latest quickstart --dir . --profile standard
-npx -y @hongmaple0820/scale-engine@latest setup --dir .
+npx -y @hongmaple0820/scale-engine@latest install --agent recommended --pack core --lang zh --dir .
 npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 ```
 
@@ -100,8 +100,7 @@ scale tdd slice --task-id TASK-001 --behavior "拒绝过期 OAuth state" --faili
 首次试用推荐 `npx`，不需要全局安装：
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
-npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
+npx -y @hongmaple0820/scale-engine@latest install --dir .
 ```
 
 长期高频使用再安装全局 CLI：
@@ -116,12 +115,12 @@ scale --version
 如果你希望把 UI skills、RTK、记忆/知识图谱这类第三方能力一起补齐，使用显式 bootstrap，而不是依赖静默自动安装：
 
 ```bash
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --json
-scale setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes
+scale setup --pack full --memory-provider hrain --memory-mode local-only --json
+scale setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes
 scale setup --verify --pack full --json
 ```
 
-`setup` 默认先出计划；只有显式加 `--apply --yes` 才会执行安装命令。记忆供应商当前只走 gbrain，知识/代码图谱能力由 knowledge 包验证 CodeGraph 和 Graphify 的真实可用性。
+`setup` 默认先出计划；只有显式加 `--apply --yes` 才会执行安装命令。默认记忆供应商是本地 `hrain`，不依赖外部线上服务；知识/代码图谱能力由 knowledge 包验证 CodeGraph 和 Graphify 的真实可用性。
 
 安装入口变更后，先跑安装烟测：
 
@@ -192,7 +191,7 @@ scale cortex inject --minimal
 
 ## AI OS Runtime
 
-Agent role planning is available through `scale agent plan --task "<task>" --json` and the dashboard Prompt Studio; the generated `agentCollaboration` plan includes selected agent profiles, DAG edges, handoff contracts, review gates, and per-role token budget. The dashboard Agent Control page is the visual entry for remote coding control: choose the agent platform, switch models, bind dashboard/Feishu message channels, queue messages, and expose the agent inbox/reply APIs. Use `scale dashboard daemon ensure --dir . --port 3210 --json` to keep that control surface resident with health checks, restart count, PID files, and logs. The same plan is embedded in `scale ai-os plan/run`; guarded runs with verification commands now add `agentExecution` settlement evidence, and `scale ai-os status --json` reports both through the `agent-collaboration` intelligence signal.
+Agent role planning is available through `scale agent plan --task "<task>" --json` and the dashboard Prompt Studio; the generated `agentCollaboration` plan includes selected agent profiles, DAG edges, handoff contracts, review gates, and per-role token budget. The dashboard Agent Control page is the visual entry for remote coding control: choose the agent platform, switch models, bind dashboard/Feishu message channels, queue messages, and expose the agent inbox/reply APIs. Use `scale open --dir .` to keep that control surface resident with health checks, restart count, PID files, and logs, then run `scale smoke --dir .` for one-command acceptance. The same plan is embedded in `scale ai-os plan/run`; guarded runs with verification commands now add `agentExecution` settlement evidence, and `scale ai-os status --json` reports both through the `agent-collaboration` intelligence signal.
 
 AI OS Runtime 是 SCALE 的核心运行时规划层。`scale ai-os plan` 在一次命令里生成风险治理模式、Context Compiler 预算、Memory Provider 召回、Skill Routing 执行计划和 Governance ROI，让 Agent 在开始任务前就知道应该加载什么上下文、调用什么能力、补什么证据。
 

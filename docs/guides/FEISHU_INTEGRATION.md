@@ -34,7 +34,8 @@ For agent users, the easiest path is the dashboard:
 
 ```bash
 npm run build
-scale dashboard daemon ensure --dir . --port 3210 --json
+scale open --dir .
+scale smoke --dir .
 ```
 
 Open `http://127.0.0.1:3210/#integrations`, then use **Integrations -> Feishu/Lark message channel -> Project message route** and save:
