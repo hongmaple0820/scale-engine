@@ -561,10 +561,11 @@ function projectSummary(
 }
 
 function buildCustomerNextSteps(selection: CustomerInstallSelection): string[] {
+  const featureHint = selection.language === 'zh' ? '你的功能' : 'your feature'
   const steps = [
-    'scale doctor --dir .',
-    'scale status --dir .',
-    'scale define "<feature>" --dir .',
+    'scale open --dir .',
+    'scale smoke --dir .',
+    `scale define "${featureHint}" --dir .`,
   ]
   if (selection.dependencyPacks.length > 0 && !selection.applyDependencies) {
     steps.unshift(`scale setup --pack ${selection.dependencyPacks.join(',')} --apply --yes --dir .`)

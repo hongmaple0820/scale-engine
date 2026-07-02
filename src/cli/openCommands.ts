@@ -93,8 +93,10 @@ export function createOpenCommandReport(options: OpenCommandOptions, deps: OpenC
   }
 
   if (!dashboard.supervisorAlive && !dashboard.serverAlive) {
-    warnings.push('Dashboard daemon is starting or not yet reporting a live process. Run scale smoke --dir . if the page does not load.')
+    const optionsHint = dashboardCliOptions({ host: dashboard.host, port: dashboard.port })
+    warnings.push(`Dashboard daemon is starting or not yet reporting a live process. Run scale smoke --dir .${optionsHint} if the page does not load.`)
   }
+  const optionsHint = dashboardCliOptions({ host: dashboard.host, port: dashboard.port })
 
   return {
     ok: dashboard.status === 'running' || dashboard.status === 'starting' || dashboard.supervisorAlive || dashboard.serverAlive,
@@ -104,8 +106,8 @@ export function createOpenCommandReport(options: OpenCommandOptions, deps: OpenC
     dashboard,
     warnings,
     nextActions: [
-      `scale smoke --dir ${quotePathForDisplay(dashboard.projectDir)}`,
-      `scale dashboard daemon status --dir ${quotePathForDisplay(dashboard.projectDir)}`,
+      `scale smoke --dir ${quotePathForDisplay(dashboard.projectDir)}${optionsHint}`,
+      `scale dashboard daemon status --dir ${quotePathForDisplay(dashboard.projectDir)}${optionsHint}`,
     ],
   }
 }
@@ -167,6 +169,13 @@ function parsePort(value: unknown, fallback: number): number {
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '')
+}
+
+function dashboardCliOptions(input: { host?: string; port?: number }): string {
+  const parts: string[] = []
+  if (input.host && input.host !== '127.0.0.1') parts.push(`--host ${input.host}`)
+  if (input.port && input.port !== 3210) parts.push(`--port ${input.port}`)
+  return parts.length > 0 ? ` ${parts.join(' ')}` : ''
 }
 
 function quotePathForDisplay(path: string): string {
