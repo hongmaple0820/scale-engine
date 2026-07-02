@@ -6,6 +6,7 @@ import {
   ensureDashboardService,
   type DashboardServiceOptions,
   type DashboardServiceStatus,
+  waitForDashboardServiceReady,
 } from '../dashboard/DashboardServiceSupervisor.js'
 import { buildDashboardPageUrl } from './openCommands.js'
 
@@ -36,6 +37,8 @@ export interface SmokeCommandReport {
   dashboard?: {
     url: string
     healthUrl: string
+    host: string
+    port: number
     status: DashboardServiceStatus['status']
     supervisorAlive: boolean
     serverAlive: boolean
@@ -49,6 +52,7 @@ export interface SmokeCommandReport {
 
 interface SmokeCommandDeps {
   ensureService?: (options: DashboardServiceOptions) => DashboardServiceStatus
+  waitForService?: (options: DashboardServiceOptions, timeoutMs?: number) => DashboardServiceStatus
   fetchHealth?: (url: string, timeoutMs: number) => Promise<{ ok: boolean; status?: number; error?: string; body?: unknown }>
 }
 
@@ -101,6 +105,7 @@ export async function runSmokeChecks(options: SmokeCommandOptions, deps: SmokeCo
   const scaleDir = resolve(options.scaleDir ?? join(projectDir, '.scale'))
   const checks: SmokeCheck[] = []
   const ensureService = deps.ensureService ?? ensureDashboardService
+  const waitForService = deps.waitForService ?? waitForDashboardServiceReady
   const fetchHealth = deps.fetchHealth ?? waitForHealth
   let dashboard: SmokeCommandReport['dashboard']
 
@@ -126,17 +131,23 @@ export async function runSmokeChecks(options: SmokeCommandOptions, deps: SmokeCo
 
   if (projectExists && installed.ok && options.startDashboard !== false) {
     try {
-      const service = ensureService({
+      const serviceOptions = {
         projectDir,
         scaleDir,
         host: options.host,
         port: options.port,
         intervalMs: options.intervalMs,
         timeoutMs: options.timeoutMs,
-      })
+      }
+      let service = ensureService(serviceOptions)
+      if (!deps.ensureService || deps.waitForService) {
+        service = waitForService(serviceOptions, options.timeoutMs ?? options.healthTimeoutMs)
+      }
       dashboard = {
         url: buildDashboardPageUrl(service.url, 'agents'),
         healthUrl: service.healthUrl,
+        host: service.host,
+        port: service.port,
         status: service.status,
         supervisorAlive: service.supervisorAlive,
         serverAlive: service.serverAlive,
@@ -312,8 +323,8 @@ function finalizeSmokeReport(input: {
     : input.checks.some(check => check.status === 'warn')
       ? 'degraded'
       : 'passed'
-  const host = input.host ?? '127.0.0.1'
-  const port = input.port ?? 3210
+  const host = input.dashboard?.host ?? input.host ?? '127.0.0.1'
+  const port = input.dashboard?.port ?? input.port ?? 3210
   const dashboardUrl = input.dashboard?.url ?? buildDashboardPageUrl(`http://${host}:${port}`, 'agents')
   const optionsHint = dashboardCliOptions({ host, port })
   return {

@@ -2,6 +2,17 @@
 
 ---
 
+## 0.55.2 - 2026-07-02
+
+### Customer Validation
+- Add dashboard auto-port fallback for resident `scale open` / `scale smoke` flows so a blocked default port no longer traps customers in a restart loop.
+- Wait briefly for the dashboard service to publish its resolved runtime port before rendering CLI URLs and next actions.
+
+### Verification
+- Add regression coverage for open/smoke reports after the service falls back from the requested port to a real available port.
+
+---
+
 ## 0.55.1 - 2026-07-02
 
 ### Customer Validation

@@ -41,6 +41,49 @@ describe('open and smoke CLI helpers', () => {
     expect(normalizeOpenArgs({ dir: projectDir, browser: false }).openBrowser).toBe(false)
   })
 
+  it('reports the resolved dashboard port after service fallback', async () => {
+    const projectDir = makeProject('scale-open-fallback-cli-')
+    const scaleDir = join(projectDir, '.scale')
+    writeScaleInstallFiles(scaleDir)
+    const starting = fakeDashboardStatus(projectDir, scaleDir, 3210, { status: 'starting', serverAlive: false })
+    const fallback = fakeDashboardStatus(projectDir, scaleDir, 43212)
+
+    const openReport = createOpenCommandReport({
+      projectDir,
+      scaleDir,
+      host: '127.0.0.1',
+      port: 3210,
+      page: 'agents',
+      openBrowser: false,
+    }, {
+      ensureService: () => starting,
+      waitForService: () => fallback,
+    })
+
+    expect(openReport.url).toBe('http://127.0.0.1:43212/#agents')
+    expect(openReport.nextActions[0]).toContain('--port 43212')
+
+    const smokeReport = await runSmokeChecks({
+      projectDir,
+      scaleDir,
+      port: 3210,
+      sessionId: 'vitest-fallback',
+      agentId: 'vitest-agent',
+      messageText: 'Vitest fallback smoke message loop.',
+    }, {
+      ensureService: () => starting,
+      waitForService: () => fallback,
+      fetchHealth: async (url) => {
+        expect(url).toBe('http://127.0.0.1:43212/api/health')
+        return { ok: true, status: 200, body: { ok: true } }
+      },
+    })
+
+    expect(smokeReport.status).toBe('passed')
+    expect(smokeReport.dashboard?.url).toBe('http://127.0.0.1:43212/#agents')
+    expect(smokeReport.nextActions).toContain(`scale open --dir ${projectDir} --port 43212`)
+  }, 120_000)
+
   it('runs the local smoke message loop and writes an acceptance report', async () => {
     const projectDir = makeProject('scale-smoke-cli-')
     const scaleDir = join(projectDir, '.scale')
@@ -84,7 +127,12 @@ function writeScaleInstallFiles(scaleDir: string): void {
   writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({ profiles: {} }, null, 2), 'utf-8')
 }
 
-function fakeDashboardStatus(projectDir: string, scaleDir: string, port = 3210): DashboardServiceStatus {
+function fakeDashboardStatus(
+  projectDir: string,
+  scaleDir: string,
+  port = 3210,
+  overrides: Partial<DashboardServiceStatus> = {},
+): DashboardServiceStatus {
   return {
     status: 'running',
     projectDir,
@@ -104,5 +152,6 @@ function fakeDashboardStatus(projectDir: string, scaleDir: string, port = 3210):
     serverAlive: true,
     restartCount: 0,
     installed: false,
+    ...overrides,
   }
 }
