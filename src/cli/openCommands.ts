@@ -5,6 +5,7 @@ import {
   ensureDashboardService,
   type DashboardServiceOptions,
   type DashboardServiceStatus,
+  waitForDashboardServiceReady,
 } from '../dashboard/DashboardServiceSupervisor.js'
 
 export interface OpenCommandOptions extends DashboardServiceOptions {
@@ -30,6 +31,7 @@ export interface OpenCommandReport {
 
 interface OpenCommandDeps {
   ensureService?: (options: DashboardServiceOptions) => DashboardServiceStatus
+  waitForService?: (options: DashboardServiceOptions, timeoutMs?: number) => DashboardServiceStatus
   openBrowser?: (url: string) => BrowserOpenResult
 }
 
@@ -71,15 +73,20 @@ export function normalizeOpenArgs(args: Record<string, unknown>, jsonMode = fals
 
 export function createOpenCommandReport(options: OpenCommandOptions, deps: OpenCommandDeps = {}): OpenCommandReport {
   const ensureService = deps.ensureService ?? ensureDashboardService
+  const waitForService = deps.waitForService ?? waitForDashboardServiceReady
   const openBrowser = deps.openBrowser ?? openUrlInBrowser
-  const dashboard = ensureService({
+  const serviceOptions = {
     projectDir: options.projectDir,
     scaleDir: options.scaleDir,
     host: options.host,
     port: options.port,
     intervalMs: options.intervalMs,
     timeoutMs: options.timeoutMs,
-  })
+  }
+  let dashboard = ensureService(serviceOptions)
+  if (!deps.ensureService || deps.waitForService) {
+    dashboard = waitForService(serviceOptions, options.timeoutMs)
+  }
   const url = buildDashboardPageUrl(dashboard.url, options.page)
   const warnings: string[] = []
   let opened = false

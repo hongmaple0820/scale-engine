@@ -10,6 +10,7 @@ import {
   writeDashboardServiceStatus,
   type DashboardServiceOptions,
 } from './DashboardServiceSupervisor.js'
+import { findAvailablePort } from '../api/DashboardHttpConfig.js'
 
 interface WorkerOptions extends Required<DashboardServiceOptions> {}
 
@@ -77,6 +78,11 @@ async function restartServer(options: WorkerOptions, reason?: string): Promise<v
   if (serverProcess?.pid && isProcessAlive(serverProcess.pid)) killProcess(serverProcess.pid)
   if (stalePid && stalePid !== serverProcess?.pid && isProcessAlive(stalePid)) killProcess(stalePid)
   const killedPortOwner = killStaleDashboardPortOwner(options)
+  const requestedPort = options.port
+  options.port = await findAvailablePort(options.port, options.host)
+  if (options.port !== requestedPort) {
+    log(options, `dashboard port ${requestedPort} unavailable; using ${options.port}`)
+  }
   const restartCount = current.restartCount + (hasKnownServer || killedPortOwner ? 1 : 0)
   const verb = hasKnownServer || killedPortOwner ? 'restarting' : 'starting'
   log(options, `${verb} dashboard server reason=${reason || 'unhealthy'} restart=${restartCount}`)

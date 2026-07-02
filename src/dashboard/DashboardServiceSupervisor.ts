@@ -199,6 +199,18 @@ export function ensureDashboardService(options: DashboardServiceOptions = {}): D
   return startDashboardService(options)
 }
 
+export function waitForDashboardServiceReady(options: DashboardServiceOptions = {}, timeoutMs?: number): DashboardServiceStatus {
+  const normalized = normalizeDashboardServiceOptions(options)
+  const deadline = Date.now() + Math.max(0, timeoutMs ?? normalized.timeoutMs)
+  let status = readDashboardServiceStatus(normalized)
+  while (Date.now() <= deadline) {
+    if (status.serverAlive || status.status === 'running') return status
+    sleepSync(200)
+    status = readDashboardServiceStatus(normalized)
+  }
+  return status
+}
+
 export function stopDashboardService(options: DashboardServiceOptions = {}): DashboardServiceStatus {
   const normalized = normalizeDashboardServiceOptions(options)
   const status = readDashboardServiceStatus(normalized)
@@ -356,6 +368,11 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback
   const number = Number(value)
   return Number.isInteger(number) && number > 0 ? number : fallback
+}
+
+function sleepSync(ms: number): void {
+  const buffer = new SharedArrayBuffer(4)
+  Atomics.wait(new Int32Array(buffer), 0, 0, ms)
 }
 
 function psQuote(value: string): string {
