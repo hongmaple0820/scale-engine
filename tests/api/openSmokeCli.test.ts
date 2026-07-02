@@ -20,13 +20,13 @@ describe('open and smoke CLI helpers', () => {
       projectDir,
       scaleDir,
       host: '127.0.0.1',
-      port: 3210,
+      port: 43212,
       page: 'integrations',
       openBrowser: true,
     }, {
-      ensureService: () => fakeDashboardStatus(projectDir, scaleDir),
+      ensureService: () => fakeDashboardStatus(projectDir, scaleDir, 43212),
       openBrowser: (url) => {
-        expect(url).toBe('http://127.0.0.1:3210/#integrations')
+        expect(url).toBe('http://127.0.0.1:43212/#integrations')
         return { ok: true, command: 'test-open' }
       },
     })
@@ -36,6 +36,8 @@ describe('open and smoke CLI helpers', () => {
     expect(report.opened).toBe(true)
     expect(report.browserCommand).toBe('test-open')
     expect(report.nextActions[0]).toContain('scale smoke')
+    expect(report.nextActions[0]).toContain('--port 43212')
+    expect(report.nextActions[1]).toContain('--port 43212')
     expect(normalizeOpenArgs({ dir: projectDir, browser: false }).openBrowser).toBe(false)
   })
 
@@ -48,6 +50,7 @@ describe('open and smoke CLI helpers', () => {
       projectDir,
       scaleDir,
       startDashboard: false,
+      port: 43212,
       sessionId: 'vitest-smoke',
       agentId: 'vitest-agent',
       messageText: 'Vitest smoke message loop.',
@@ -61,6 +64,8 @@ describe('open and smoke CLI helpers', () => {
     ]))
     expect(report.artifacts.reportPath).toBeTruthy()
     expect(existsSync(report.artifacts.reportPath ?? '')).toBe(true)
+    expect(report.nextActions).toContain(`scale open --dir ${projectDir} --port 43212`)
+    expect(report.nextActions).toContain('http://127.0.0.1:43212/#agents')
     expect(normalizeSmokeArgs({ dir: projectDir, dashboard: false }).startDashboard).toBe(false)
   }, 120_000)
 })
@@ -79,15 +84,15 @@ function writeScaleInstallFiles(scaleDir: string): void {
   writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({ profiles: {} }, null, 2), 'utf-8')
 }
 
-function fakeDashboardStatus(projectDir: string, scaleDir: string): DashboardServiceStatus {
+function fakeDashboardStatus(projectDir: string, scaleDir: string, port = 3210): DashboardServiceStatus {
   return {
     status: 'running',
     projectDir,
     scaleDir,
     host: '127.0.0.1',
-    port: 3210,
-    url: 'http://127.0.0.1:3210',
-    healthUrl: 'http://127.0.0.1:3210/api/health',
+    port,
+    url: `http://127.0.0.1:${port}`,
+    healthUrl: `http://127.0.0.1:${port}/api/health`,
     serviceDir: join(scaleDir, 'artifacts', 'dashboard-service'),
     statusPath: join(scaleDir, 'artifacts', 'dashboard-service', 'status.json'),
     logPath: join(scaleDir, 'artifacts', 'dashboard-service', 'daemon.log'),

@@ -2,6 +2,17 @@
 
 ---
 
+## 0.55.1 - 2026-07-02
+
+### Customer Validation
+- Fix `scale install` next steps so fresh projects are guided to `scale open`, `scale smoke`, and a localized `scale define` command instead of lower-level doctor/status commands.
+- Preserve non-default dashboard host/port values in `scale open` and `scale smoke` next actions, including `--no-dashboard` smoke reports, so customers are not sent back to the default port after a fallback.
+
+### Verification
+- Add regression coverage for localized install next steps and non-default dashboard port hints discovered while testing `E:\project\qwen-project\blog`.
+
+---
+
 ## 0.55.0 - 2026-07-02
 
 ### Customer Experience

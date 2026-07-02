@@ -187,6 +187,8 @@ export async function runSmokeChecks(options: SmokeCommandOptions, deps: SmokeCo
     projectDir,
     scaleDir,
     dashboard,
+    host: options.host,
+    port: options.port,
     checks,
   })
   report.artifacts.reportPath = writeSmokeReport(report)
@@ -301,6 +303,8 @@ function finalizeSmokeReport(input: {
   projectDir: string
   scaleDir: string
   dashboard?: SmokeCommandReport['dashboard']
+  host?: string
+  port?: number
   checks: SmokeCheck[]
 }): SmokeCommandReport {
   const status = input.checks.some(check => check.status === 'fail')
@@ -308,7 +312,10 @@ function finalizeSmokeReport(input: {
     : input.checks.some(check => check.status === 'warn')
       ? 'degraded'
       : 'passed'
-  const dashboardUrl = input.dashboard?.url ?? buildDashboardPageUrl(`http://127.0.0.1:3210`, 'agents')
+  const host = input.host ?? '127.0.0.1'
+  const port = input.port ?? 3210
+  const dashboardUrl = input.dashboard?.url ?? buildDashboardPageUrl(`http://${host}:${port}`, 'agents')
+  const optionsHint = dashboardCliOptions({ host, port })
   return {
     ok: status !== 'failed',
     status,
@@ -320,11 +327,11 @@ function finalizeSmokeReport(input: {
     nextActions: status === 'failed'
       ? [
           `scale install --dir ${quotePathForDisplay(input.projectDir)}`,
-          `scale open --dir ${quotePathForDisplay(input.projectDir)} --no-browser`,
-          `scale dashboard daemon logs --dir ${quotePathForDisplay(input.projectDir)} --lines 120`,
+          `scale open --dir ${quotePathForDisplay(input.projectDir)} --no-browser${optionsHint}`,
+          `scale dashboard daemon logs --dir ${quotePathForDisplay(input.projectDir)}${optionsHint} --lines 120`,
         ]
       : [
-          `scale open --dir ${quotePathForDisplay(input.projectDir)}`,
+          `scale open --dir ${quotePathForDisplay(input.projectDir)}${optionsHint}`,
           dashboardUrl,
         ],
   }
@@ -419,6 +426,13 @@ function sleep(ms: number): Promise<void> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function dashboardCliOptions(input: { host?: string; port?: number }): string {
+  const parts: string[] = []
+  if (input.host && input.host !== '127.0.0.1') parts.push(`--host ${input.host}`)
+  if (input.port && input.port !== 3210) parts.push(`--port ${input.port}`)
+  return parts.length > 0 ? ` ${parts.join(' ')}` : ''
 }
 
 function quotePathForDisplay(path: string): string {

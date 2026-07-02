@@ -41,7 +41,11 @@ describe('customer install', () => {
     expect(existsSync(join(projectDir, '.scale', 'thresholds.json'))).toBe(true)
     expect(existsSync(join(projectDir, 'AGENTS.md'))).toBe(true)
     expect(report.steps.map(step => step.status)).toEqual(expect.arrayContaining(['run', 'ok', 'skip']))
-    expect(report.nextSteps).toContain('scale doctor --dir .')
+    expect(report.nextSteps).toEqual([
+      'scale open --dir .',
+      'scale smoke --dir .',
+      'scale define "your feature" --dir .',
+    ])
   })
 
   it('initializes multiple agent adapters and writes the language policy', async () => {
@@ -70,5 +74,6 @@ describe('customer install', () => {
     expect(readFileSync(join(projectDir, '.scale', 'agent-language.md'), 'utf-8')).toContain('Language: zh')
     expect(readFileSync(join(projectDir, 'AGENTS.md'), 'utf-8')).toContain('SCALE Language Policy')
     expect(readFileSync(join(projectDir, 'CLAUDE.md'), 'utf-8')).toContain('SCALE Language Policy')
+    expect(report.nextSteps).toContain('scale define "你的功能" --dir .')
   })
 })
