@@ -26,7 +26,7 @@
 5. `npx -y @hongmaple0820/scale-engine@latest codegraph status --dir . --json`
 6. 如果存在 UI/web 任务，再检查浏览器/E2E 环境。
 7. 如果需要消息通知或远程控制，再检查飞书 CLI 和飞书消息发送 dry-run 能力。
-8. 如果项目允许启动本地面板，优先运行常驻守护入口 `scale dashboard daemon ensure --dir . --port 3210 --json`，再打开 `http://127.0.0.1:3210/#agents`。没有守护能力时才临时运行 `scale serve` 或 `npx -y @hongmaple0820/scale-engine@latest serve --dir .`。优先在 Agent Control 页面配置 agent 平台、模型、消息通道、会话队列和飞书 route；不要让用户手写 JSON。Agent runtime 使用 `scale agent-control inbox --session <session> --claim-first --agent-id <agent> --json` 认领任务，再用 `scale agent-control reply --session <session> --message <message> --text "<result>" --agent-id <agent> --json` 回写结果。
+8. 如果项目允许启动本地面板，优先运行产品入口 `scale open --dir .`，再运行 `scale smoke --dir .` 验收面板健康和消息闭环。没有守护能力时才临时运行 `scale serve` 或 `npx -y @hongmaple0820/scale-engine@latest serve --dir .`。优先在 Agent Control 页面配置 agent 平台、模型、消息通道、会话队列和飞书 route；不要让用户手写 JSON。Agent runtime 使用 `scale agent-control inbox --session <session> --claim-first --agent-id <agent> --json` 认领任务，再用 `scale agent-control reply --session <session> --message <message> --text "<result>" --agent-id <agent> --json` 回写结果。
 
 如果 SCALE 或第三方能力缺失，先给出安装计划，不要直接修改项目。计划里必须包含：
 - 会安装/验证哪些能力。
@@ -63,7 +63,7 @@
 | Graphify | 默认知识图谱产物供应商 | `scale setup --verify --pack knowledge --json` |
 | 浏览器/E2E | UI/web 任务必须检查 | 项目测试命令或 Playwright smoke |
 | 飞书 CLI/消息通道 | 消息提醒、远程控制、手机端场景必须检查 | dry-run 消息计划，确认目标后再真实发送 |
-| Dashboard daemon | 面板、Agent Control 和消息通道配置的常驻守护入口 | `scale dashboard daemon ensure --dir . --port 3210 --json` 后检查 `/api/health` 和 `/api/dashboard/service` |
+| Dashboard daemon | 面板、Agent Control 和消息通道配置的常驻守护入口 | `scale open --dir .` 后运行 `scale smoke --dir .`；底层排障再检查 `/api/health` 和 `/api/dashboard/service` |
 | Agent Control 面板 | Agent 平台、模型、消息通道和会话队列的默认配置入口 | 打开 `/#agents` 查看 Agent Control 和 `/api/agent-control` |
 | Agent Control CLI | Agent runtime 消费远程 coding 队列的默认入口 | `scale agent-control inbox --claim-first --json` 和 `scale agent-control reply --message <id> --json` |
 | Agent 聊天记录 | 默认保留会话历史、检索、摘要卡片和知识库归档入口 | `scale agent-control transcript --session <id> --json`、`scale agent-control search --query "<keyword>" --session <id> --json`、`scale agent-control summary --session <id> --json` |

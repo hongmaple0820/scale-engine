@@ -2,6 +2,23 @@
 
 ---
 
+## 0.55.0 - 2026-07-02
+
+### Customer Experience
+- Add `scale open` as the customer-facing Agent OS dashboard entry that starts the resident control plane and opens Agent Control without exposing daemon internals.
+- Add `scale smoke` to verify project initialization, dashboard health, and the Agent Control send/claim/complete/reply/summary loop with a persisted `.scale/artifacts/smoke/` report.
+- Simplify first-run documentation around `scale install`, `scale open`, and `scale smoke` so customers can validate a project without learning low-level daemon or preflight commands first.
+
+### Installer and Templates
+- Improve guided installation with language-aware onboarding, standardized choices, progress rendering, clearer exceptions, and multi-agent install options.
+- Expand governance template packs for enterprise admin, Spring/Vue admin, microservice platforms, Python services, desktop apps, and Agent OS workbench scenarios.
+
+### Verification
+- Add regression coverage for the `scale open` URL/browser flow and `scale smoke` local Agent Control message-loop acceptance.
+- Validate the built CLI smoke/open commands against a temporary real project and keep `--no-dashboard` / `--no-browser` behavior stable.
+
+---
+
 ## 0.54.4 - 2026-06-30
 
 ### Installer

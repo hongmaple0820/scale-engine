@@ -20,17 +20,19 @@ npx -y @hongmaple0820/scale-engine@latest install --dir .
 
 安装器会显示：
 
+- 作者、来源和安装器品牌头。
+- 安装语言选择，并写入 `.scale/config.yaml` 与 `.scale/agent-language.md`。
 - 项目检测结果。
-- 标准化编号选择。
-- 安装阶段进度。
+- 标准化编号/ID 选择。
+- 安装阶段进度条和百分比。
 - 第三方能力计划和确认。
 - 失败原因、阻塞项、修复建议。
-- 安装后的下一步命令。
+- 安装后的下一步命令和用途说明。
 
 ## 固定版本
 
 ```bash
-npx -y @hongmaple0820/scale-engine@0.50.6 install --dir .
+npx -y @hongmaple0820/scale-engine@0.55.0 install --dir .
 ```
 
 团队教程、CI 和客户交付建议固定版本，避免 `@latest` 行为漂移。
@@ -60,13 +62,23 @@ CI 或脚本安装：
 
 ```bash
 npx -y @hongmaple0820/scale-engine@latest install \
-  --agent codex \
+  --agent recommended \
   --profile standard \
   --governance-pack frontend-app \
   --pack core \
+  --lang zh \
   --dir . \
   --json
 ```
+
+Agent 平台参数支持：
+
+| 参数 | 含义 |
+| --- | --- |
+| `--agent recommended` | 一次写入 Codex、Claude Code、Cursor、Qoder、Cline、Windsurf 这些常用入口。 |
+| `--agent all` | 一次写入当前版本支持的全部 Agent 适配器。 |
+| `--agent codex,claude-code` | 只写入指定多个 Agent。 |
+| `--agent codex` | 只写入一个 Agent。 |
 
 安装并执行推荐第三方能力：
 
@@ -99,3 +111,21 @@ scale setup --verify --pack full --dir .
 ```
 
 普通用户优先使用 `scale install`，只有在排查、CI 拆分或需要精细控制时才使用底层命令。
+
+## 下一步命令是什么意思
+
+安装结束通常会看到：
+
+```bash
+scale open --dir .
+scale smoke --dir .
+scale define "<feature>" --dir .
+```
+
+它们的含义是：
+
+| 命令 | 用途 |
+| --- | --- |
+| `scale open --dir .` | 启动常驻面板并打开 Agent Control，可视化配置 agent、模型和消息通道。 |
+| `scale smoke --dir .` | 一键验收安装、面板健康和 Agent Control 消息闭环，并生成本地报告。 |
+| `scale define "<feature>" --dir .` | 开始一个需求，把自然语言功能描述转成可执行规格；把 `<feature>` 换成真实需求。 |

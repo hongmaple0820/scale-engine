@@ -8,13 +8,15 @@
    不全局安装也能用 `npx` 跑 `scale install`。
 2. [3 分钟快速开始](quickstart.md)
    从客户项目里安装 SCALE 工作流，并完成基础验收。
-3. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
+3. [客户冒烟测试](customer-smoke.md)
+   安装后只跑 `scale open` 和 `scale smoke`，确认面板、健康检查和消息闭环。
+4. [22 种 Agent 安装与使用教程](agent-installation-guide.md)
    查看 Codex、Claude Code、Cursor、Qoder、Cline、Windsurf 等 adapter 的细节。
-4. [Artifact 生命周期](artifact-lifecycle.md)
+5. [Artifact 生命周期](artifact-lifecycle.md)
    理解 Need、Spec、Plan、Task、Change、Evidence、Release 的状态流转。
-5. [官方 Demo Walkthrough](agent-governance-demo.md)
+6. [官方 Demo Walkthrough](agent-governance-demo.md)
    看一条真实任务如何走完诊断、TDD、证据和治理闭环。
-6. [工作流能力与横向对比](../workflow/competitive-comparison.md)
+7. [工作流能力与横向对比](../workflow/competitive-comparison.md)
    理解 SCALE 与 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC 的定位差异。
 
 如果你要开发 `scale-engine` 仓库本身，而不是把 SCALE 接入别的项目，请看：
@@ -29,17 +31,16 @@
 mkdir scale-demo
 cd scale-demo
 npx -y @hongmaple0820/scale-engine@latest install --dir .
-scale doctor --dir .
-scale status --dir .
-scale preflight --preflight-profile quick --dir .
+scale open --dir .
+scale smoke --dir .
 ```
 
 跑完后先确认：
 
 - `.scale/config.yaml` 是否存在。
 - `AGENTS.md` 或对应 Agent 规则文件是否存在。
-- `scale status --dir .` 是否能给出下一步建议。
-- `scale preflight --preflight-profile quick --dir .` 是否能执行。
+- `scale open --dir .` 是否能打开 Agent Control 面板。
+- `scale smoke --dir .` 是否能生成通过/失败原因清晰的验收报告。
 
 如果这些问题答不上来，先不要继续看高级命令。SCALE 的原则是：没有真实命令结果，就不要声称通过。
 

@@ -12,6 +12,12 @@ export type GovernancePackId =
   | 'go-service-matrix'
   | 'node-library'
   | 'frontend-app'
+  | 'enterprise-admin'
+  | 'spring-vue-admin'
+  | 'microservice-platform'
+  | 'python-service'
+  | 'desktop-app'
+  | 'agent-os-workbench'
   | 'solo-dev'
 
 export interface GovernanceGeneratedFile {
@@ -136,10 +142,88 @@ const PACKS: GovernanceTemplatePack[] = [
   },
   {
     id: 'frontend-app',
-    version: 1,
-    description: 'Frontend app governance with UI and visual evidence requirements.',
+    version: 2,
+    description: 'Frontend app governance with UI, visual evidence, accessibility, and product smoke requirements.',
     modeDefaults,
-    generatedFiles: [],
+    generatedFiles: [
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
+      { path: 'docs/workflow/frontend-app.md', kind: 'doc', owned: true, content: frontendAppGuide() },
+    ],
+  },
+  {
+    id: 'enterprise-admin',
+    version: 1,
+    description: 'Enterprise admin platform governance inspired by modular RBAC/tenant/audit architectures such as RuoYi-Vue-Plus.',
+    modeDefaults,
+    generatedFiles: [
+      ...workflowWrapperFiles(),
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
+      { path: 'docs/workflow/enterprise-admin.md', kind: 'doc', owned: true, content: enterpriseAdminGuide() },
+      { path: 'docs/product/architecture-standard.md', kind: 'doc', owned: true, content: enterpriseArchitectureStandard() },
+    ],
+  },
+  {
+    id: 'spring-vue-admin',
+    version: 1,
+    description: 'Spring Boot + Vue admin governance with backend layering, frontend module boundaries, SQL migration, and RBAC review.',
+    modeDefaults,
+    defaultServices: [
+      { name: 'backend', path: '.', type: 'custom', required: true },
+      { name: 'frontend', path: '.', type: 'node', required: false },
+    ],
+    generatedFiles: [
+      ...workflowWrapperFiles(),
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
+      { path: 'docs/workflow/spring-vue-admin.md', kind: 'doc', owned: true, content: springVueAdminGuide() },
+      { path: 'docs/product/language-standards.md', kind: 'doc', owned: true, content: springVueLanguageStandards() },
+    ],
+  },
+  {
+    id: 'microservice-platform',
+    version: 1,
+    description: 'Multi-service platform governance for gateway, auth, admin, worker, and shared package boundaries.',
+    modeDefaults,
+    generatedFiles: [
+      ...workflowWrapperFiles(),
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'monorepo' }) },
+      { path: 'docs/workflow/microservice-platform.md', kind: 'doc', owned: true, content: microservicePlatformGuide() },
+    ],
+  },
+  {
+    id: 'python-service',
+    version: 1,
+    description: 'Python service governance for API, worker, data, and CLI projects with environment and test gates.',
+    modeDefaults,
+    defaultServices: [
+      { name: 'python-service', path: '.', type: 'python', required: true },
+    ],
+    generatedFiles: [
+      ...workflowWrapperFiles(),
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
+      { path: 'docs/workflow/python-service.md', kind: 'doc', owned: true, content: pythonServiceGuide() },
+    ],
+  },
+  {
+    id: 'desktop-app',
+    version: 1,
+    description: 'Desktop app governance for Electron/Tauri workspaces with platform, installer, storage, and permission checks.',
+    modeDefaults,
+    generatedFiles: [
+      ...workflowWrapperFiles(),
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
+      { path: 'docs/workflow/desktop-app.md', kind: 'doc', owned: true, content: desktopAppGuide() },
+    ],
+  },
+  {
+    id: 'agent-os-workbench',
+    version: 1,
+    description: 'Agent OS workbench governance for multi-agent orchestration, tools, memory, sessions, dashboards, and local-first runtime.',
+    modeDefaults,
+    generatedFiles: [
+      ...workflowWrapperFiles(),
+      { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
+      { path: 'docs/workflow/agent-os-workbench.md', kind: 'doc', owned: true, content: agentOsWorkbenchGuide() },
+    ],
   },
   {
     id: 'solo-dev',
@@ -157,6 +241,180 @@ const PACKS: GovernanceTemplatePack[] = [
     ],
   },
 ]
+
+function frontendAppGuide(): string {
+  return `# Frontend App Governance
+
+## Architecture Boundary
+
+- Keep route/page components thin; move reusable UI into components and domain logic into services or hooks.
+- Track visual, accessibility, product-smoke, and build evidence for user-facing changes.
+- Do not claim completion without a real viewport check when layout, styling, navigation, or interaction changes.
+
+## Verification
+
+- Build: framework production build.
+- Lint/typecheck: project standard.
+- Product smoke: at least one happy path in .scale/product-smoke.json.
+- Visual review: screenshot or browser evidence for changed screens.
+`
+}
+
+function enterpriseAdminGuide(): string {
+  return `# Enterprise Admin Governance
+
+This template is inspired by mature modular admin systems such as RuoYi-Vue-Plus, without vendoring upstream code.
+
+## Architecture Boundary
+
+- Identity, RBAC, tenant, audit, notification, and system settings are independent modules.
+- Controllers/pages must stay thin; business rules belong to services; persistence stays behind repository/mapper APIs.
+- Permission changes require security review, migration notes, and regression evidence.
+- Generated module shells are scaffolds only; project-specific code style and tests remain authoritative.
+
+## Required Review Surfaces
+
+- API contract
+- Database migration
+- Permission and tenant isolation
+- Audit trail
+- Admin UI flow
+- Backward compatibility
+`
+}
+
+function enterpriseArchitectureStandard(): string {
+  return `# Enterprise Architecture Standard
+
+## Layers
+
+- Interface: controller, route, page, or adapter entry.
+- Application: use cases, transactions, orchestration, validation.
+- Domain: entities, policies, permission rules, tenant rules.
+- Infrastructure: persistence, cache, queue, external services.
+
+## Module Rules
+
+- A module owns its database tables, API namespace, UI route namespace, tests, and docs.
+- Cross-module calls go through application services or published contracts.
+- Security-sensitive modules must include audit events and rollback notes.
+`
+}
+
+function springVueAdminGuide(): string {
+  return `# Spring + Vue Admin Governance
+
+## Backend
+
+- Controller only maps protocol and validation.
+- Service owns transactions, permissions, tenant boundaries, and audit events.
+- Mapper/repository owns persistence and must be covered by migration notes.
+
+## Frontend
+
+- Route modules mirror backend capability boundaries.
+- API clients are typed and kept outside view components.
+- Permission directives and menus must be verified together.
+
+## Gates
+
+- Backend build/test or project equivalent.
+- Frontend build/lint or project equivalent.
+- Security review for auth, RBAC, tenant, captcha, token, and file upload changes.
+`
+}
+
+function springVueLanguageStandards(): string {
+  return `# Spring + Vue Language Standards
+
+## Java / Spring
+
+- Prefer constructor injection, explicit transaction boundaries, and DTO/VO separation.
+- Do not put business rules in controllers or mappers.
+- Migration scripts must be reversible or have documented rollback.
+
+## Vue / TypeScript
+
+- Keep API clients typed.
+- Keep page components focused on composition and state wiring.
+- Validate route permissions, menu metadata, and button-level permissions together.
+
+## SQL
+
+- Every schema change needs purpose, affected module, rollback, and data compatibility notes.
+`
+}
+
+function microservicePlatformGuide(): string {
+  return `# Microservice Platform Governance
+
+## Architecture Boundary
+
+- Gateway, auth, admin, worker, and shared packages must have explicit ownership.
+- Public contracts are versioned; breaking changes require migration notes.
+- Cross-service changes require dependency order and rollback plan.
+
+## Verification
+
+- Run targeted service checks first, then contract/integration checks.
+- Record affected services in .scale/verification.json.
+- Release notes must mention service ordering and compatibility.
+`
+}
+
+function pythonServiceGuide(): string {
+  return `# Python Service Governance
+
+## Architecture Boundary
+
+- Keep CLI/API entry points thin.
+- Put business logic in importable modules with unit tests.
+- Separate runtime configuration from code.
+
+## Verification
+
+- Environment check: Python version and package manager.
+- Static check: formatter/linter/type checker when available.
+- Test: targeted unit tests plus integration smoke for changed endpoints or jobs.
+`
+}
+
+function desktopAppGuide(): string {
+  return `# Desktop App Governance
+
+## Architecture Boundary
+
+- OS access belongs in the native/main process, not directly in the renderer.
+- Renderer state, storage, shell execution, and secret access must go through explicit adapters.
+- Installer, auto-update, permissions, and platform-specific paths need separate evidence on Windows, macOS, and Linux when touched.
+
+## Verification
+
+- Frontend build and native build checks.
+- Platform path normalization review.
+- Permission, keychain, shell, and filesystem access review.
+`
+}
+
+function agentOsWorkbenchGuide(): string {
+  return `# Agent OS Workbench Governance
+
+## Product Boundary
+
+- Workflow artifacts define intent and evidence.
+- Agent OS runtime coordinates tasks, tools, memory, sessions, dashboards, and local model/provider routing.
+- Local-first providers must work without external online services unless explicitly enabled by the user.
+
+## Required Surfaces
+
+- Agent adapter configuration
+- Tool policy
+- Memory provider routing
+- Runtime evidence
+- Dashboard/status visibility
+- Final report guard
+`
+}
 
 function workflowWrapper(label: string, scaleCommand: string): string {
   return `#!/usr/bin/env bash

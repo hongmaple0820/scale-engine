@@ -12,6 +12,12 @@ describe('governance template packs', () => {
       'go-service-matrix',
       'node-library',
       'frontend-app',
+      'enterprise-admin',
+      'spring-vue-admin',
+      'microservice-platform',
+      'python-service',
+      'desktop-app',
+      'agent-os-workbench',
       'solo-dev',
     ])
   })
@@ -95,6 +101,25 @@ describe('governance template packs', () => {
       '.scale/workspace.json',
       'docs/workflow/node-library.md',
       '.planning/tasks/.gitkeep',
+    ]))
+  })
+
+  it('resolves enterprise admin templates with architecture standards', () => {
+    const pack = resolveGovernanceTemplatePack('enterprise-admin')
+
+    expect(pack.generatedFiles.map(file => file.path)).toEqual(expect.arrayContaining([
+      'docs/workflow/enterprise-admin.md',
+      'docs/product/architecture-standard.md',
+      'scripts/workflow/new-task.sh',
+    ]))
+  })
+
+  it('resolves agent OS workbench templates with runtime governance docs', () => {
+    const pack = resolveGovernanceTemplatePack('agent-os-workbench')
+
+    expect(pack.generatedFiles.map(file => file.path)).toEqual(expect.arrayContaining([
+      'docs/workflow/agent-os-workbench.md',
+      '.scale/workspace.json',
     ]))
   })
 

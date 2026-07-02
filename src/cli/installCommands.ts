@@ -34,9 +34,11 @@ export const installCommand = defineCommand({
     json: { type: 'boolean', default: false, description: 'Output machine-readable install report' },
   },
   async run({ args }) {
-    const lang = resolveCliLanguage({ lang: args.lang, projectDir: String(args.dir ?? PROJECT_DIR) })
+    const explicitLang = optionalString(args.lang)
+    const lang = resolveCliLanguage({ lang: explicitLang, projectDir: String(args.dir ?? PROJECT_DIR) })
     try {
       const pack = parseInstallPack(args.pack)
+      if (!isTruthyFlag(args.json)) console.log(renderInstallBanner(lang))
       const report = await runCustomerInstall({
         projectDir: String(args.dir ?? PROJECT_DIR),
         agent: optionalString(args.agent),
@@ -47,10 +49,10 @@ export const installCommand = defineCommand({
         includeIds: parseCommaList(args.include),
         apply: isTruthyFlag(args.apply),
         yes: isTruthyFlag(args.yes),
-        interactive: isTruthyFlag(args.interactive) && !isTruthyFlag(args.json),
+        interactive: isTruthyFlag(args.interactive) && !isTruthyFlag(args.json) && Boolean(process.stdin.isTTY),
         skipDeps: isTruthyFlag(args['no-deps']),
         skipVerify: isTruthyFlag(args['skip-verify']),
-        lang: normalizeLanguage(lang),
+        lang: explicitLang ? normalizeLanguage(lang) : undefined,
         memoryProvider: optionalString(args['memory-provider']),
         memoryMode: normalizeMemoryModeArg(args['memory-mode']),
         memoryEndpoint: optionalString(args['memory-endpoint']),
@@ -86,39 +88,94 @@ function renderInstallReport(report: CustomerInstallReport): void {
   if (lang === 'zh') {
     console.log('\nSCALE 安装结果')
     console.log(`  项目: ${report.projectDir}`)
+    console.log(`  语言: ${report.selection.language}`)
     console.log(`  Agent: ${report.selection.agent}`)
+    console.log(`  Agent 明细: ${report.selection.agents.join(', ')}`)
     console.log(`  Profile: ${report.selection.profile}`)
     console.log(`  模板: ${report.selection.governancePack}`)
     console.log(`  第三方能力: ${report.selection.dependencyPackLabel}`)
     console.log(`  结果: ${report.ok ? '完成' : '需要处理'}`)
     console.log(`  配置: ${report.init.configPath}`)
     console.log(`  规则: ${report.init.knowledgeDocPath}`)
+    console.log(`  语言规范: ${report.init.languagePolicyPath}`)
     console.log(`  数据目录: ${report.init.scaleDir}`)
     if (report.warnings.length > 0) {
       console.log(`\n需要关注 (${Math.min(report.warnings.length, 8)}/${report.warnings.length}):`)
       for (const warning of report.warnings.slice(0, 8)) console.log(`  - ${warning}`)
     }
     console.log('\n下一步:')
-    for (const step of report.nextSteps) console.log(`  ${step}`)
+    for (const step of report.nextSteps) {
+      console.log(`  ${step}`)
+      console.log(`    ${explainNextStep(step, lang)}`)
+    }
     return
   }
 
   console.log('\nSCALE Install Result')
   console.log(`  Project: ${report.projectDir}`)
+  console.log(`  Language: ${report.selection.language}`)
   console.log(`  Agent: ${report.selection.agent}`)
+  console.log(`  Agents: ${report.selection.agents.join(', ')}`)
   console.log(`  Profile: ${report.selection.profile}`)
   console.log(`  Template: ${report.selection.governancePack}`)
   console.log(`  Capabilities: ${report.selection.dependencyPackLabel}`)
   console.log(`  Result: ${report.ok ? 'complete' : 'needs attention'}`)
   console.log(`  Config: ${report.init.configPath}`)
   console.log(`  Rules: ${report.init.knowledgeDocPath}`)
+  console.log(`  Language policy: ${report.init.languagePolicyPath}`)
   console.log(`  Data dir: ${report.init.scaleDir}`)
   if (report.warnings.length > 0) {
     console.log(`\nAttention (${Math.min(report.warnings.length, 8)}/${report.warnings.length}):`)
     for (const warning of report.warnings.slice(0, 8)) console.log(`  - ${warning}`)
   }
   console.log('\nNext:')
-  for (const step of report.nextSteps) console.log(`  ${step}`)
+  for (const step of report.nextSteps) {
+    console.log(`  ${step}`)
+    console.log(`    ${explainNextStep(step, lang)}`)
+  }
+}
+
+function renderInstallBanner(lang: 'zh' | 'en'): string {
+  const subtitle = lang === 'zh'
+    ? 'AI 工作流 + Agent OS 治理安装器'
+    : 'AI Workflow + Agent OS governance installer'
+  return [
+    '+------------------------------------------------------------+',
+    '| SCALE Engine                                               |',
+    `| ${padRight(subtitle, 58)} |`,
+    '| Author: hongmaple0820                                      |',
+    '| Source: https://github.com/hongmaple0820/scale-engine       |',
+    '+------------------------------------------------------------+',
+  ].join('\n')
+}
+
+function padRight(value: string, width: number): string {
+  const text = value.length > width ? value.slice(0, width) : value
+  return `${text}${' '.repeat(Math.max(0, width - text.length))}`
+}
+
+function explainNextStep(step: string, lang: 'zh' | 'en'): string {
+  if (step.startsWith('scale setup ')) {
+    return lang === 'zh'
+      ? '安装可选第三方能力；核心工作流已经可用，这一步只补齐增强能力。'
+      : 'Installs optional third-party capabilities; the core workflow already works.'
+  }
+  if (step.startsWith('scale doctor')) {
+    return lang === 'zh'
+      ? '检查当前项目的 SCALE 配置、运行时和治理健康度。'
+      : 'Checks SCALE config, runtime, and governance health for this project.'
+  }
+  if (step.startsWith('scale status')) {
+    return lang === 'zh'
+      ? '查看当前任务、证据、门禁和工作流状态。'
+      : 'Shows task, evidence, gate, and workflow status.'
+  }
+  if (step.startsWith('scale define')) {
+    return lang === 'zh'
+      ? '开始一个需求，把自然语言功能描述转成可执行规格。把 <feature> 换成你的需求。'
+      : 'Starts a requirement and turns a feature description into an executable spec. Replace <feature>.'
+  }
+  return lang === 'zh' ? '按需执行。' : 'Run when needed.'
 }
 
 function parseInstallPack(value: unknown): { dependencyPack?: DependencyPackChoice; packIds?: string[] } {

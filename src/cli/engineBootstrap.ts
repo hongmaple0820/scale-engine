@@ -18,7 +18,7 @@ import { SkillRegistry } from '../skills/SkillRegistry.js'
 import { registerCoreSkills } from '../skills/coreSkills.js'
 import { registerExternalSkills } from '../skills/ExternalSkills.js'
 import { WorkflowEngine } from '../workflow/WorkflowEngine.js'
-import { generateConfigForProfile } from '../config/profiles.js'
+import { generateConfigForProfile, type ConfigLanguage } from '../config/profiles.js'
 import { WorkflowArtifactWriter } from '../workflow/WorkflowArtifactWriter.js'
 import type { GateStage } from '../workflow/types.js'
 import type { GovernanceMode } from '../workflow/GovernanceTemplates.js'
@@ -48,9 +48,15 @@ export function profileFromScenario(scenario: string): string {
   return 'standard'
 }
 
-export function writeConfigYaml(projectDir: string, profileId: string, projectName: string, agents: string[]): string {
+export function writeConfigYaml(
+  projectDir: string,
+  profileId: string,
+  projectName: string,
+  agents: string[],
+  language?: ConfigLanguage,
+): string {
   const configPath = join(projectDir, '.scale', 'config.yaml')
-  const content = generateConfigForProfile(profileId, { name: projectName, agents })
+  const content = generateConfigForProfile(profileId, { name: projectName, agents, language })
   writeFileSync(configPath, content, 'utf-8')
   return configPath
 }

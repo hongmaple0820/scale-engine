@@ -4,7 +4,16 @@ SCALE dashboard should be treated as a resident Agent OS control plane, not as a
 
 ## Quick Start
 
-Build once, then start the watchdog:
+ For daily use, use the product-level entry:
+
+```bash
+scale open --dir .
+scale smoke --dir .
+```
+
+`scale open` starts the resident watchdog and opens the Agent Control page. `scale smoke` verifies that the project is initialized, the dashboard health endpoint is reachable, and the Agent Control message loop can send, claim, complete, reply, and summarize a dry-run task.
+
+For local development, build once before using the daemon directly:
 
 ```bash
 npm run build
@@ -28,6 +37,8 @@ The Agent Control page shows **Dashboard service** with supervisor PID, server P
 ## Commands
 
 ```bash
+scale open --dir .
+scale smoke --dir .
 scale dashboard daemon status --dir . --json
 scale dashboard daemon start --dir . --port 3210
 scale dashboard daemon ensure --dir . --port 3210
@@ -94,7 +105,7 @@ If the browser opens a blank page:
 1. Check the lightweight health endpoint:
 
    ```bash
-   curl http://127.0.0.1:3210/api/health
+   scale smoke --dir .
    ```
 
 2. Check daemon status:

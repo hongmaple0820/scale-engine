@@ -20,7 +20,8 @@ Do not silently downgrade to a minimal setup. Verify and report these capabiliti
    - default skills: gbrain-memory, find-skills, hookify-rules, configure-notifications, feishu-card, feishu-doc-reader
 
 3. Resident panel:
-   - scale dashboard daemon ensure --dir . --port 3210 --json
+   - scale open --dir .
+   - scale smoke --dir .
    - check http://127.0.0.1:3210/api/health
    - check http://127.0.0.1:3210/api/dashboard/service
 

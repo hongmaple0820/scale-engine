@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.54.2-orange?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.55.0-orange?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
   <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
-  <img src="https://img.shields.io/badge/npm-0.54.2-cb3837?style=flat-square&logo=npm" alt="npm" />
+  <img src="https://img.shields.io/badge/npm-0.55.0-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
 
 [![RepoStars](https://repostars.dev/api/embed?repo=hongmaple0820%2Fscale-engine&theme=copper)](https://repostars.dev/?repos=hongmaple0820%2Fscale-engine&theme=copper)
 
-# SCALE Engine v0.54.2
+# SCALE Engine v0.55.0
 
 SCALE Engine turns AI-agent engineering discipline into executable commands, gates, and evidence files instead of relying on prompt discipline alone. It helps humans see what the agent explored, planned, verified, skipped, and why a task is or is not ready to ship.
 
@@ -20,13 +20,15 @@ Changelog: [CHANGELOG.md](CHANGELOG.md)
 
 ## Shortest Agent-First Setup
 
-If the docs feel too long for an end user, do not make the user run every command manually. Open the project and paste the prompt from [Agent Full Workflow Setup](docs/start/agent-full-workflow.md) into the active coding agent. The agent should inspect SCALE, gbrain, CodeGraph, Graphify, rtk, browser/E2E tooling, and the Feishu message channel when notifications or remote control are required, then report the install plan and verification evidence.
+If the docs feel too long for an end user, do not make the user run every command manually. Start with `scale install --dir .` in the target project. Open the project and paste the prompt from [Agent Full Workflow Setup](docs/start/agent-full-workflow.md) into the active coding agent only when you need full optional capability checks.
 
 The core commands are:
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --dir . --json
-npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gbrain --memory-mode external-first --apply --yes --dir .
+npx -y @hongmaple0820/scale-engine@latest install --agent recommended --pack core --lang en --dir .
+npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider hrain --memory-mode local-only --apply --yes --dir .
+npx -y @hongmaple0820/scale-engine@latest open --dir .
+npx -y @hongmaple0820/scale-engine@latest smoke --dir .
 ```
 
 ## What It Solves
@@ -44,8 +46,7 @@ npx -y @hongmaple0820/scale-engine@latest setup --pack full --memory-provider gb
 
 ```bash
 mkdir scale-demo && cd scale-demo
-npx -y @hongmaple0820/scale-engine@latest quickstart --dir . --profile standard
-npx -y @hongmaple0820/scale-engine@latest setup --dir .
+npx -y @hongmaple0820/scale-engine@latest install --agent recommended --pack core --lang en --dir .
 npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 ```
 
@@ -73,8 +74,7 @@ Read [Agent Full Workflow Setup](docs/start/agent-full-workflow.md), [npx and In
 For first-time evaluation, use `npx` without global install:
 
 ```bash
-npx -y @hongmaple0820/scale-engine@latest onboard --lang en
-npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
+npx -y @hongmaple0820/scale-engine@latest install --dir .
 ```
 
 For frequent use, install the global CLI:
@@ -132,8 +132,8 @@ See [AI OS Runtime docs](docs/AI_ENGINEERING_OS_POSITIONING.md) for the full com
 
 | Goal | Entry point | What you learn |
 | --- | --- | --- |
-| Let the agent take over | [Agent Full Workflow Setup](docs/start/agent-full-workflow.md) | Paste one prompt so the agent checks full setup, gbrain, CodeGraph, Graphify, rtk, browser/E2E, and Feishu messaging |
-| Try without global install | [npx and Interactive Install](docs/start/npx-interactive-install.md) | Run `onboard`, `init --interactive`, and `setup` with `npx` |
+| Let the agent take over | [Agent Full Workflow Setup](docs/start/agent-full-workflow.md) | Paste one prompt only when the agent should check full optional setup, CodeGraph, Graphify, rtk, browser/E2E, and Feishu messaging |
+| Try without global install | [npx and Interactive Install](docs/start/npx-interactive-install.md) | Run the standardized `install` wizard with `npx` |
 | Get running | [Quickstart](docs/start/quickstart.md) | Install CLI, init governance files, run preflight |
 | Connect an agent | [22-Agent Installation Guide](docs/start/agent-installation-guide.md) | Initialize and verify Codex, Claude Code, Cursor, Cline, Windsurf, and other adapters |
 | See full loop | [Demo Walkthrough](docs/start/agent-governance-demo.md) | Context, diagnosis, TDD, artifact, and verification evidence |

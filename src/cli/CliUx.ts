@@ -130,9 +130,10 @@ export async function askCliMultiSelect<T extends string>(
 }
 
 export function renderProgressLine(event: CliProgressEvent): string {
-  const width = 18
+  const width = 24
   const done = event.total <= 0 ? width : Math.max(0, Math.min(width, Math.round((event.index / event.total) * width)))
   const bar = `${'#'.repeat(done)}${'-'.repeat(width - done)}`
+  const percent = event.total <= 0 ? 100 : Math.max(0, Math.min(100, Math.round((event.index / event.total) * 100)))
   const status = {
     run: 'RUN',
     ok: 'OK',
@@ -141,7 +142,7 @@ export function renderProgressLine(event: CliProgressEvent): string {
     skip: 'SKIP',
   }[event.status]
   const detail = event.detail ? ` - ${event.detail}` : ''
-  return `[${bar}] ${event.index}/${event.total} ${status} ${event.label}${detail}`
+  return `[${bar}] ${String(percent).padStart(3, ' ')}% ${event.index}/${event.total} ${status} ${event.label}${detail}`
 }
 
 export function renderCliError(error: unknown, lang: ScaleLanguage, context?: {
@@ -157,10 +158,12 @@ export function renderCliError(error: unknown, lang: ScaleLanguage, context?: {
     ? [
         '',
         context?.title ?? 'SCALE 操作失败',
-        `  原因: ${message}`,
-        context?.command ? `  命令: ${context.command}` : undefined,
+        '',
+        `原因: ${message}`,
+        context?.command ? `命令: ${context.command}` : undefined,
         ...stackHint.map(line => `  位置: ${line}`),
-        '  建议:',
+        '',
+        '建议:',
         ...(context?.next?.length ? context.next.map(item => `    - ${item}`) : [
           '    - 使用 --json 获取机器可读错误信息',
           '    - 运行 scale doctor --dir . 检查项目状态',
@@ -170,10 +173,12 @@ export function renderCliError(error: unknown, lang: ScaleLanguage, context?: {
     : [
         '',
         context?.title ?? 'SCALE operation failed',
-        `  Reason: ${message}`,
-        context?.command ? `  Command: ${context.command}` : undefined,
+        '',
+        `Reason: ${message}`,
+        context?.command ? `Command: ${context.command}` : undefined,
         ...stackHint.map(line => `  Location: ${line}`),
-        '  Try:',
+        '',
+        'Try:',
         ...(context?.next?.length ? context.next.map(item => `    - ${item}`) : [
           '    - Re-run with --json for machine-readable output',
           '    - Run scale doctor --dir . to inspect project state',
@@ -196,7 +201,7 @@ function formatSelectPrompt<T extends string>(options: CliSelectOptions<T>, defa
     lines.push(`  ${index + 1}. ${choice.label}${recommended}`)
     if (choice.hint) lines.push(`     ${choice.hint}`)
   })
-  lines.push(`> ${options.lang === 'en' ? 'Choose' : '请选择'} [${defaultIndex + 1}]: `)
+  lines.push(`> ${options.lang === 'en' ? 'Choose number/ID, Enter for default' : '输入编号/ID，直接回车使用默认值'} [${defaultIndex + 1}]: `)
   return lines.join('\n')
 }
 

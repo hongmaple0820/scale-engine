@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createAdapter, SUPPORTED_AGENTS } from '../adapters/index.js'
 import type { AgentPlatform } from '../artifact/types.js'
@@ -53,11 +53,13 @@ export interface CustomerInstallOptions {
 
 export interface CustomerInstallSelection {
   agent: string
+  agents: string[]
   profile: string
   governancePack: string
   dependencyPackLabel: string
   dependencyPacks: string[]
   applyDependencies: boolean
+  language: ScaleLanguage
 }
 
 export interface CustomerInstallInitReport {
@@ -66,6 +68,7 @@ export interface CustomerInstallInitReport {
   scaleDir: string
   thresholdsPath: string
   configPath: string
+  languagePolicyPath: string
   created: string[]
   skipped: string[]
 }
@@ -86,15 +89,16 @@ export interface CustomerInstallReport {
 export type DependencyPackChoice = 'core' | 'recommended' | 'full' | 'ui' | 'memory-knowledge'
 
 const CUSTOMER_AGENT_DEFAULT = 'codex'
+const RECOMMENDED_AGENT_GROUP = ['codex', 'claude-code', 'cursor', 'qoder', 'cline', 'windsurf'] as const
 
 export async function runCustomerInstall(options: CustomerInstallOptions = {}): Promise<CustomerInstallReport> {
   const projectDir = resolve(options.projectDir ?? process.cwd())
   const scaleDir = options.scaleDir ?? join(projectDir, '.scale')
-  const lang = options.lang ?? 'zh'
+  let lang = options.lang ?? 'zh'
   const interactive = options.interactive ?? Boolean(process.stdin.isTTY)
   const steps: CliProgressEvent[] = []
   const warnings: string[] = []
-  const totalSteps = 5
+  const totalSteps = 6
   let stepIndex = 0
   let promptSession: CliPromptSession | undefined
 
@@ -106,29 +110,45 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
   }
 
   try {
+    if (interactive) promptSession = createCliPromptSession(options.input, options.output)
+
+    emit('run', lang === 'zh' ? '选择安装语言' : 'Choose install language')
+    if (promptSession && !options.lang) {
+      lang = await askCliSelect(promptSession, {
+        title: 'SCALE install language',
+        message: 'Choose the language used by the installer and written into agent instructions.',
+        lang: 'en',
+        defaultValue: lang,
+        choices: [
+          { value: 'zh', label: '中文', hint: '安装提示和后续 Agent 对话默认使用中文。' },
+          { value: 'en', label: 'English', hint: 'Installer prompts and agent language policy use English.' },
+        ],
+      })
+    }
+    emit('ok', lang === 'zh' ? '安装语言已确认' : 'Install language confirmed', lang)
+
     emit('run', lang === 'zh' ? '检测项目' : 'Detect project')
     const classification = classifyProject(projectDir)
     const detection = detectPlatform(projectDir)
     const detectedAgent = detection.platform ?? undefined
-    const defaultAgent = normalizeAgent(options.agent ?? detectedAgent ?? CUSTOMER_AGENT_DEFAULT)
+    const defaultAgent = normalizeAgentChoice(options.agent ?? detectedAgent ?? 'recommended')
     const defaultGovernancePack = options.governancePack ?? classification.recommendedPack ?? autoDetectGovernancePack(projectDir)
     const defaultProfile = options.profile ?? classification.recommendedProfile ?? 'standard'
     emit('ok', lang === 'zh' ? '项目检测完成' : 'Project detected', projectSummary(classification, detectedAgent, defaultGovernancePack))
 
-    if (interactive) promptSession = createCliPromptSession(options.input, options.output)
-
     emit('run', lang === 'zh' ? '选择安装配置' : 'Resolve install choices')
-    const agent = promptSession && !options.agent
+    const agentChoice = promptSession && !options.agent
       ? await askCliSelect(promptSession, {
-        title: lang === 'zh' ? '选择 Agent 入口' : 'Agent entry',
+        title: lang === 'zh' ? '选择 Agent 平台' : 'Agent platform',
         message: lang === 'zh'
-          ? '安装器会为所选 Agent 写入对应配置和规则文件。'
-          : 'The installer writes adapter-specific config and rule files.',
+          ? '推荐一次安装常用平台；也可以选择 all 一次写入全部已支持平台配置。'
+          : 'Recommended installs common adapters; all writes every supported adapter config.',
         lang,
         defaultValue: defaultAgent,
-        choices: agentChoices(detectedAgent),
+        choices: agentChoices(lang, detectedAgent),
       })
       : defaultAgent
+    const agents = resolveAgentSelection(agentChoice, detectedAgent)
 
     const profile = promptSession && !options.profile
       ? await askCliSelect(promptSession, {
@@ -183,15 +203,16 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
         defaultValue: false,
       })
     }
-    emit('ok', lang === 'zh' ? '安装配置已确认' : 'Install choices resolved', `${agent}, ${profile}, ${governancePack}, deps=${dependencyPackLabel}`)
+    emit('ok', lang === 'zh' ? '安装配置已确认' : 'Install choices resolved', `${formatAgents(agents)}, ${profile}, ${governancePack}, deps=${dependencyPackLabel}`)
 
     emit('run', lang === 'zh' ? '初始化工作流' : 'Initialize workflow')
     const init = await initializeProject({
       projectDir,
       scaleDir,
-      agent,
+      agents,
       profile,
       governancePack,
+      lang,
     })
     emit('ok', lang === 'zh' ? '工作流初始化完成' : 'Workflow initialized', `${init.created.length} created, ${init.skipped.length} skipped`)
 
@@ -236,12 +257,14 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
     }
 
     const selection = {
-      agent,
+      agent: formatAgents(agents),
+      agents,
       profile,
       governancePack,
       dependencyPackLabel,
       dependencyPacks,
       applyDependencies,
+      language: lang,
     }
     return {
       ok: Boolean((setup?.ok ?? true) && (verification?.ok ?? true)),
@@ -263,36 +286,57 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
 async function initializeProject(options: {
   projectDir: string
   scaleDir: string
-  agent: string
+  agents: string[]
   profile: string
   governancePack: string
+  lang: ScaleLanguage
 }): Promise<CustomerInstallInitReport> {
   ensureDir(options.scaleDir)
   const scenario = getProfile(options.profile).defaults.scenario
-  const adapter = createAdapter(options.agent)
-  const result = await adapter.init({
-    projectDir: options.projectDir,
-    scaleDir: options.scaleDir,
-    agentType: options.agent as AgentPlatform,
-    scenarioMode: scenario,
-    thresholdsPath: join(options.scaleDir, 'thresholds.json'),
-  })
+  const created: string[] = []
+  const skipped: string[] = []
+  const knowledgeDocPaths: string[] = []
+  let settingsPath = ''
+  let knowledgeDocPath = ''
+  for (const agent of options.agents) {
+    const adapter = createAdapter(agent)
+    const result = await adapter.init({
+      projectDir: options.projectDir,
+      scaleDir: options.scaleDir,
+      agentType: agent as AgentPlatform,
+      scenarioMode: scenario,
+      thresholdsPath: join(options.scaleDir, 'thresholds.json'),
+    })
+    if (!settingsPath) settingsPath = result.settingsPath
+    if (!knowledgeDocPath) knowledgeDocPath = result.knowledgeDocPath
+    knowledgeDocPaths.push(result.knowledgeDocPath)
+    created.push(...result.created)
+    skipped.push(...result.skipped)
+  }
   const projectName = options.projectDir.split(/[/\\]/).pop() || 'Project'
   const governance = writeGovernanceTemplates(options.projectDir, {
     mode: governanceModeFromScenario(scenario),
     projectName,
     pack: options.governancePack,
   })
-  const configPath = writeConfigYaml(options.projectDir, options.profile, projectName, [options.agent])
+  const configPath = writeConfigYaml(options.projectDir, options.profile, projectName, options.agents, options.lang)
   const thresholdsPath = writeThresholds(options.scaleDir, scenario)
+  const languagePolicyPath = writeAgentLanguagePolicy({
+    projectDir: options.projectDir,
+    scaleDir: options.scaleDir,
+    lang: options.lang,
+    agents: options.agents,
+    knowledgeDocPaths,
+  })
   return {
-    settingsPath: result.settingsPath,
-    knowledgeDocPath: result.knowledgeDocPath,
-    scaleDir: result.scaleDir,
+    settingsPath,
+    knowledgeDocPath,
+    scaleDir: options.scaleDir,
     thresholdsPath,
     configPath,
-    created: uniqueStrings([...result.created, ...governance.created, configPath, thresholdsPath]),
-    skipped: uniqueStrings([...result.skipped, ...governance.skipped]),
+    languagePolicyPath,
+    created: uniqueStrings([...created, ...governance.created, configPath, thresholdsPath, languagePolicyPath]),
+    skipped: uniqueStrings([...skipped, ...governance.skipped]),
   }
 }
 
@@ -316,12 +360,110 @@ function writeThresholds(scaleDir: string, scenario: 'sandbox' | 'standard' | 'c
   return thresholdsPath
 }
 
-function normalizeAgent(value: string): string {
-  return SUPPORTED_AGENTS.includes(value as AgentPlatform) ? value : CUSTOMER_AGENT_DEFAULT
+function writeAgentLanguagePolicy(options: {
+  projectDir: string
+  scaleDir: string
+  lang: ScaleLanguage
+  agents: string[]
+  knowledgeDocPaths: string[]
+}): string {
+  ensureDir(options.scaleDir)
+  const policyPath = join(options.scaleDir, 'agent-language.md')
+  const languageName = options.lang === 'zh' ? 'Chinese (Simplified)' : 'English'
+  const content = `# SCALE Agent Language Policy
+
+Language: ${options.lang}
+Display name: ${languageName}
+Agents: ${options.agents.join(', ')}
+
+## Required Behavior
+
+- The agent must respond to the user in ${languageName} unless the user explicitly asks for another language.
+- Generated user-facing documents should use ${languageName} by default.
+- Code identifiers, commands, package names, file paths, and logs should keep their original spelling.
+- If a third-party tool returns output in another language, summarize it in ${languageName} and keep exact commands unchanged.
+`
+  writeFileSync(policyPath, content, 'utf-8')
+  for (const docPath of uniqueStrings(options.knowledgeDocPaths)) {
+    appendLanguagePolicyLink(docPath, options.lang, policyPath)
+  }
+  return policyPath
 }
 
-function agentChoices(detectedAgent?: string): Array<CliChoice<string>> {
-  return uniqueStrings([
+function appendLanguagePolicyLink(docPath: string, lang: ScaleLanguage, policyPath: string): void {
+  if (!existsSync(docPath)) return
+  const markerStart = '<!-- scale-engine:language-policy:start -->'
+  const markerEnd = '<!-- scale-engine:language-policy:end -->'
+  const relativePolicy = policyPath.startsWith(process.cwd()) ? policyPath : policyPath
+  const block = [
+    '',
+    markerStart,
+    '## SCALE Language Policy',
+    '',
+    lang === 'zh'
+      ? `- 默认使用中文与用户沟通，除非用户明确要求其他语言。`
+      : `- Use English with the user by default unless the user explicitly asks for another language.`,
+    `- Follow the project language policy at \`${relativePolicy}\`.`,
+    markerEnd,
+    '',
+  ].join('\n')
+  const current = readFileSync(docPath, 'utf-8')
+  const pattern = new RegExp(`${escapeRegExp(markerStart)}[\\s\\S]*?${escapeRegExp(markerEnd)}\\n?`, 'm')
+  const next = pattern.test(current)
+    ? current.replace(pattern, block.trimStart())
+    : `${current.trimEnd()}\n${block}`
+  writeFileSync(docPath, next, 'utf-8')
+}
+
+function normalizeAgentChoice(value: string): string {
+  const raw = value.trim().toLowerCase()
+  if (!raw || raw === 'default') return CUSTOMER_AGENT_DEFAULT
+  if (['all', 'all-supported', 'all-platforms', '全部', '所有'].includes(raw)) return 'all'
+  if (['recommended', 'recommend', 'common', '常用', '推荐'].includes(raw)) return 'recommended'
+  if (raw.includes(',')) return raw
+  return SUPPORTED_AGENTS.includes(raw as AgentPlatform) ? raw : CUSTOMER_AGENT_DEFAULT
+}
+
+function resolveAgentSelection(value: string, detectedAgent?: string): string[] {
+  const normalized = normalizeAgentChoice(value)
+  if (normalized === 'all') return [...SUPPORTED_AGENTS]
+  if (normalized === 'recommended') {
+    return uniqueStrings([detectedAgent, ...RECOMMENDED_AGENT_GROUP].filter(Boolean) as string[])
+  }
+  const selected = normalized
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => normalizeAgentChoice(item))
+    .flatMap(item => {
+      if (item === 'all') return [...SUPPORTED_AGENTS]
+      if (item === 'recommended') return [...RECOMMENDED_AGENT_GROUP]
+      return [item]
+    })
+    .filter(agent => SUPPORTED_AGENTS.includes(agent as AgentPlatform))
+  return uniqueStrings(selected.length > 0 ? selected : [CUSTOMER_AGENT_DEFAULT])
+}
+
+function formatAgents(agents: string[]): string {
+  if (agents.length === SUPPORTED_AGENTS.length) return `all-supported (${agents.length})`
+  if (agents.length > 3) return `${agents.slice(0, 3).join(',')} +${agents.length - 3}`
+  return agents.join(',')
+}
+
+function agentChoices(lang: ScaleLanguage, detectedAgent?: string): Array<CliChoice<string>> {
+  const choices: Array<CliChoice<string>> = [
+    {
+      value: 'recommended',
+      label: lang === 'zh' ? '推荐组合' : 'recommended',
+      hint: 'codex, claude-code, cursor, qoder, cline, windsurf',
+    },
+    {
+      value: 'all',
+      label: lang === 'zh' ? '全部已支持平台' : 'all-supported',
+      hint: lang === 'zh' ? '为当前项目写入所有已支持 Agent 适配器配置。' : 'Write config for every supported agent adapter in this project.',
+    },
+  ]
+  choices.push(...uniqueStrings([
     detectedAgent,
     CUSTOMER_AGENT_DEFAULT,
     'claude-code',
@@ -333,8 +475,9 @@ function agentChoices(detectedAgent?: string): Array<CliChoice<string>> {
   ].filter(Boolean) as string[]).map(agent => ({
     value: agent,
     label: agent,
-    hint: agent === detectedAgent ? 'Detected in this project.' : undefined,
-  }))
+    hint: agent === detectedAgent ? (lang === 'zh' ? '已在当前项目检测到。' : 'Detected in this project.') : undefined,
+  })))
+  return choices
 }
 
 function profileChoices(lang: ScaleLanguage): Array<CliChoice<string>> {
@@ -347,12 +490,12 @@ function profileChoices(lang: ScaleLanguage): Array<CliChoice<string>> {
 
 function zhProfileHint(profileId: string): string {
   const hints: Record<string, string> = {
-    minimal: '最小规则，适合试用和原型。',
-    standard: '推荐默认值，包含常用门禁和验证要求。',
-    advanced: '完整治理，包含记忆、知识和进化能力。',
-    'china-local': '面向国内本地模型环境的配置。',
+    minimal: '体验/原型：只保留轻量提示和基础安全，不强压交付门禁。',
+    standard: '团队默认：拦截危险操作，要求可见验证，适合多数项目。',
+    advanced: '严格交付：更强证据、记忆/知识能力和发布前检查。',
+    'china-local': '本地优先：面向 Qwen/GLM/DeepSeek/Ollama，不默认依赖外部线上服务。',
   }
-  return hints[profileId] ?? '标准治理配置。'
+  return hints[profileId] ?? '标准治理配置：边界清晰，先保证可用。'
 }
 
 function governancePackChoices(lang: ScaleLanguage, detectedPack: string): Array<CliChoice<string>> {
@@ -361,7 +504,13 @@ function governancePackChoices(lang: ScaleLanguage, detectedPack: string): Array
     'standard',
     'frontend-app',
     'node-library',
+    'enterprise-admin',
+    'spring-vue-admin',
+    'microservice-platform',
     'go-service-matrix',
+    'python-service',
+    'desktop-app',
+    'agent-os-workbench',
     'moe-workspace',
     'resource-governance',
   ])
@@ -425,4 +574,8 @@ function buildCustomerNextSteps(selection: CustomerInstallSelection): string[] {
 
 function uniqueStrings(items: string[]): string[] {
   return [...new Set(items.map(item => item.trim()).filter(Boolean))]
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

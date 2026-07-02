@@ -98,6 +98,8 @@ import { runtimeCommand, memoryCommand, outOfScopeCommand, skillCommand, token a
 import { toolCommand, agentCommand, teamCommand } from '../cli/toolAgentCommands.js'
 import { agentControlCommand } from '../cli/agentControlCommands.js'
 import { dashboardCommand } from '../cli/dashboardCommands.js'
+import { openCommand } from '../cli/openCommands.js'
+import { smokeCommand } from '../cli/smokeCommands.js'
 import { productCommand } from '../cli/productCommands.js'
 import {
   bridgeCommand as agentOsBridgeCommand,
@@ -1810,6 +1812,8 @@ const main = defineCommand({
     agent: agentCommand,
     'agent-control': agentControlCommand,
     dashboard: dashboardCommand,
+    open: openCommand,
+    smoke: smokeCommand,
     team: teamCommand,
     product: productCommand,
     products: productCommand,

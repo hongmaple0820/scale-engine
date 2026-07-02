@@ -40,6 +40,23 @@ Built-in solution blueprints currently cover:
 - notification center
 - tenant SaaS foundation
 
+## Governance Template Packs
+
+`scale install` can now select project-level governance packs before any module scaffold is generated:
+
+| Pack | Use when | Generated guidance |
+| --- | --- | --- |
+| `frontend-app` | React/Vue/Next/Vite user-facing apps | UI boundary, visual evidence, accessibility and product smoke expectations |
+| `node-library` | npm packages and Node libraries | package build/test/pack checks and workflow wrappers |
+| `enterprise-admin` | RuoYi-Vue-Plus-style enterprise admin products | RBAC, tenant, audit, module ownership, architecture standard |
+| `spring-vue-admin` | Spring Boot + Vue admin systems | backend layering, frontend route/API boundaries, SQL migration review |
+| `microservice-platform` | gateway/auth/admin/worker/shared-package platforms | service ownership, contract review, release ordering |
+| `python-service` | Python API, worker, data or CLI projects | environment, static check and targeted test gates |
+| `desktop-app` | Electron/Tauri apps | OS access, installer, secret storage, cross-platform path review |
+| `agent-os-workbench` | Agent OS products | tools, memory, sessions, dashboard, runtime evidence and local-first provider routing |
+
+These packs write governance documents and policy files. They do not vendor upstream source code.
+
 ## Existing Project Onboarding
 
 For mature or legacy projects, start by making the current state explicit. `scale product onboard-existing` scans the target project, builds a codebase map, and generates the planning artifacts a development agent should read before changing old code.

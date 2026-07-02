@@ -22,26 +22,25 @@ SCALE 接入 Agent 分三层：
 
 ```bash
 npx -y @hongmaple0820/scale-engine@latest --version
-npx -y @hongmaple0820/scale-engine@latest onboard --lang zh
+npx -y @hongmaple0820/scale-engine@latest install --dir .
 ```
 
-要求 Node.js 22+。Agent 本体仍按各自官方方式安装，SCALE 负责把项目接入该 Agent 的治理入口。长期高频使用时再执行 `npm install -g @hongmaple0820/scale-engine`。
+要求 Node.js 22+。Agent 本体仍按各自官方方式安装，SCALE 负责把项目接入该 Agent 的治理入口。长期高频使用时再执行 `npm install -g @hongmaple0820/scale-engine`，之后在目标项目目录运行 `scale install --dir .`。
 
 ## 1. 新项目 3 分钟接入
 
 ```bash
 mkdir scale-demo
 cd scale-demo
-npx -y @hongmaple0820/scale-engine@latest init --interactive --dir .
-npx -y @hongmaple0820/scale-engine@latest setup --verify --pack full --memory-provider hrain --memory-mode local-only --dir . --json
+npx -y @hongmaple0820/scale-engine@latest install --agent recommended --pack core --lang zh --dir .
 npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --dir .
 npx -y @hongmaple0820/scale-engine@latest status --dir .
 ```
 
 关键点：
 
-- `--agent` 选择当前项目主要使用的 Agent；不传时会尝试 auto-detect。
-- 新项目统一推荐 `gbrain` 作为记忆供应商。
+- `--agent recommended` 一次写入 Codex、Claude Code、Cursor、Qoder、Cline、Windsurf；`--agent all` 写入全部已支持平台；`--agent codex,claude-code` 写入指定组合。
+- 新项目默认推荐 `hrain` 本地记忆供应商；它不要求外部 API key 或线上 embedding 服务。
 - full workflow 默认检查 rtk、gbrain、CodeGraph、Graphify、浏览器/E2E；消息提醒或远程控制场景再检查飞书 CLI/消息通道。
 - `setup --verify --pack full --json` 是第三方能力可用性检查；如果需要安装，再让 Agent 输出计划并在确认后运行 `setup --pack full --apply --yes`。
 - 真正交付前至少跑 `scale preflight --preflight-profile quick` 或项目自己的 build/lint/test。
@@ -55,17 +54,15 @@ npx -y @hongmaple0820/scale-engine@latest status --dir .
 ```bash
 scale upgrade check --dir . --lang zh
 scale upgrade plan --dir . --html --lang zh
-scale init --agent codex --dir . --governance-pack standard
-scale doctor --dir . --json
+scale install --agent recommended --pack core --dir .
+scale smoke --dir . --json
 git diff
 ```
 
 如果项目已经接入某个 Agent，需要再补第二个 Agent，可以重复运行：
 
 ```bash
-scale init --agent claude-code --dir .
-scale init --agent cursor --dir .
-scale init --agent cline --dir .
+scale install --agent claude-code,cursor,cline --pack core --dir .
 ```
 
 每次都应看 `git diff`。SCALE 会尽量合并已存在配置，但团队自定义规则仍需要人工确认。
@@ -75,9 +72,9 @@ scale init --agent cline --dir .
 统一命令模板：
 
 ```bash
-scale init --agent AGENT-ID --dir . --governance-pack standard
-scale doctor --dir . --json
-scale preflight --preflight-profile quick
+scale install --agent AGENT-ID --pack core --dir .
+scale open --dir .
+scale smoke --dir .
 ```
 
 下表为了可读性使用 `scale ...` 简写。没有全局安装时，把 `scale` 替换为 `npx -y @hongmaple0820/scale-engine@latest` 即可。
@@ -211,10 +208,11 @@ scale agent plan \
 
 ```bash
 npm run build
-scale dashboard daemon ensure --dir . --port 3210 --json
+scale open --dir .
+scale smoke --dir .
 ```
 
-打开 `http://127.0.0.1:3210/#agents`。Agent Control 页面可以配置 agent 平台、模型、消息通道、会话队列、飞书 route，并显示 dashboard service 的 supervisor PID、server PID、心跳、重启次数和日志路径。
+`scale open` 会打开 Agent Control 页面。这里可以配置 agent 平台、模型、消息通道、会话队列、飞书 route，并显示 dashboard service 的 supervisor PID、server PID、心跳、重启次数和日志路径。`scale smoke` 会验收面板健康和本地消息闭环。
 
 常驻服务的日常命令：
 
