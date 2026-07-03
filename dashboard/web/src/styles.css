@@ -541,12 +541,103 @@ button.platform-target:hover {
   line-height: 1.65;
 }
 
+.closure-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.closure-score-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.closure-score-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.07);
+}
+
+.closure-score-cell.primary {
+  border-color: rgba(24, 160, 88, 0.34);
+  background: rgba(24, 160, 88, 0.1);
+}
+
+.closure-score-cell span {
+  color: #8b949e;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.closure-score-cell strong {
+  color: #f0f6fc;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
 .integration-score-card {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 14px;
   padding: 18px;
+}
+
+.closure-focus-card {
+  justify-content: flex-start;
+}
+
+.closure-focus-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.closure-focus-body strong,
+.closure-focus-body p,
+.closure-focus-body code {
+  overflow-wrap: anywhere;
+}
+
+.closure-focus-body p {
+  margin: 0;
+  color: #8b949e;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.closure-focus-body code {
+  padding: 8px;
+  border-radius: 6px;
+  color: #f0f6fc;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 12px;
+}
+
+.closure-mini-progress {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.closure-mini-progress span {
+  color: #8b949e;
+  font-size: 12px;
 }
 
 .integration-score-head {
@@ -640,10 +731,24 @@ button.platform-target:hover {
   cursor: pointer;
 }
 
+.integration-step-group {
+  margin: 6px 0 0;
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .integration-step:hover,
 .integration-step.active {
   border-color: rgba(24, 160, 88, 0.55);
   background: rgba(24, 160, 88, 0.08);
+}
+
+.integration-step.ready {
+  border-color: rgba(24, 160, 88, 0.22);
+  background: rgba(24, 160, 88, 0.045);
 }
 
 .integration-step-title {
@@ -2024,8 +2129,10 @@ button.platform-target:hover {
   }
 
   .route-form-grid,
+  .closure-score-grid,
   .integration-status-strip,
   .integration-stat-strip,
+  .closure-mini-progress,
   .readiness-stage-grid,
   .agent-config-grid,
   .agent-quick-stats,
@@ -2033,6 +2140,10 @@ button.platform-target:hover {
   .path-grid,
   .wizard-step-grid {
     grid-template-columns: 1fr;
+  }
+
+  .closure-score-cell strong {
+    font-size: 20px;
   }
 
   .integration-task-toolbar {

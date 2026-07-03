@@ -53,6 +53,7 @@ type GraphKey = 'graphify' | 'memory'
 type LoadKey = 'projects' | 'capabilities' | 'dashboardService' | 'metrics' | 'state' | 'topology' | 'domains' | 'documents' | 'knowledge' | 'knowledgeBase' | 'integrations' | 'agentControl' | 'prompts' | 'agentWorkbench'
 type CommandCenterArea = 'agent' | 'channel' | 'knowledge' | 'loop' | 'cost'
 type IntegrationTab = 'overview' | 'messages' | 'agent-connect' | 'knowledge' | 'automation' | 'diagnostics'
+type IntegrationClosureScope = 'core' | 'remote' | 'optional'
 
 interface ProjectSummary {
   id: string
@@ -619,6 +620,13 @@ interface CommandCenterCheck {
   metric: string
   actionLabel: string
   page: PageKey
+}
+
+interface IntegrationClosureItem extends CommandCenterCheck {
+  scope: IntegrationClosureScope
+  tab: IntegrationTab
+  helper: string
+  command?: string
 }
 
 interface CommandCenterPath {
@@ -1525,6 +1533,203 @@ const integrationWizardScore = computed(() => {
   return Math.round((points / integrationWizardSteps.value.length) * 100)
 })
 const integrationWizardTone = computed(() => integrationWizardScore.value >= 80 ? 'success' : 'warning')
+const integrationCoreClosureItems = computed<IntegrationClosureItem[]>(() => {
+  const dashboardReady = Boolean(dashboardService.value?.supervisorAlive && dashboardService.value.serverAlive)
+  const agentReady = (agentControl.value?.summary.ready || 0) > 0
+  const hasAgentSession = (agentControl.value?.summary.sessions || 0) > 0
+  const memoryReady = Boolean((knowledgeBase.value?.summary?.memoryNodes || 0) > 0 || memorySource.value?.status === 'ready')
+  const knowledgeReady = Boolean((knowledgeBase.value?.summary?.documents || 0) > 0 || (knowledgeBase.value?.summary?.graphNodes || 0) > 0 || knowledgeBaseSource.value?.status === 'ready')
+  const acceptance = agentOsAcceptance.value
+  const acceptanceReady = Boolean(acceptance?.ok || integrations.value?.acceptance?.ok)
+  return [
+    {
+      id: 'core-dashboard',
+      area: 'loop',
+      scope: 'core',
+      tab: 'diagnostics',
+      title: t('integrations.coreDashboard'),
+      description: t('integrations.coreDashboardDesc'),
+      helper: dashboardReady ? t('integrations.coreDashboardReady') : dashboardServiceAlertText.value,
+      status: dashboardReady ? 'ready' : dashboardService.value?.serverAlive ? 'partial' : 'missing',
+      metric: dashboardService.value?.url || 'scale open --dir .',
+      command: 'scale open --dir .',
+      actionLabel: dashboardReady ? t('common.view') : t('service.ensure'),
+      page: 'integrations',
+    },
+    {
+      id: 'core-agent-control',
+      area: 'agent',
+      scope: 'core',
+      tab: 'overview',
+      title: t('integrations.coreAgentControl'),
+      description: t('integrations.coreAgentControlDesc'),
+      helper: agentReady ? t('integrations.coreAgentControlReady') : t('integrations.coreAgentControlHelp'),
+      status: agentReady ? 'ready' : hasAgentSession ? 'partial' : 'missing',
+      metric: `${agentControl.value?.summary.sessions || 0} ${t('agents.sessions')}`,
+      actionLabel: t('commandCenter.openAgents'),
+      page: 'agents',
+    },
+    {
+      id: 'core-knowledge',
+      area: 'knowledge',
+      scope: 'core',
+      tab: 'knowledge',
+      title: t('integrations.coreKnowledge'),
+      description: t('integrations.coreKnowledgeDesc'),
+      helper: memoryReady && knowledgeReady ? t('integrations.coreKnowledgeReady') : t('integrations.coreKnowledgeHelp'),
+      status: memoryReady && knowledgeReady ? 'ready' : memoryReady || knowledgeReady ? 'partial' : 'missing',
+      metric: `${formatNumber(knowledgeBase.value?.summary?.documents || 0)} docs / ${formatNumber(knowledgeBase.value?.summary?.memoryNodes || 0)} memory`,
+      actionLabel: t('commandCenter.openKnowledge'),
+      page: 'knowledge',
+    },
+    {
+      id: 'core-acceptance',
+      area: 'loop',
+      scope: 'core',
+      tab: 'diagnostics',
+      title: t('integrations.coreAcceptance'),
+      description: t('integrations.coreAcceptanceDesc'),
+      helper: acceptanceReady ? t('integrations.coreAcceptanceReady') : t('integrations.coreAcceptanceHelp'),
+      status: acceptanceReady ? 'ready' : acceptance?.status === 'blocked' || acceptance?.status === 'failed' ? 'partial' : 'missing',
+      metric: acceptanceReady ? `${agentOsAcceptance.value?.score ?? integrations.value?.acceptance?.score ?? 100}%` : 'scale smoke --dir .',
+      command: 'scale smoke --dir .',
+      actionLabel: acceptanceReady ? t('integrations.copyAcceptancePath') : t('integrations.runAcceptance'),
+      page: 'integrations',
+    },
+  ]
+})
+const integrationRemoteClosureItems = computed<IntegrationClosureItem[]>(() => {
+  const workflow = connectorWorkflow.value
+  const tokenReady = Boolean(workflow?.config.managementApi.hasToken && workflow.config.bridge.hasToken && workflow.config.webhook.hasToken)
+  const bridgeReady = Boolean(workflow?.config.bridge.enabled && workflow.config.bridge.hasToken)
+  const webhookReady = Boolean(workflow?.config.webhook.enabled && workflow.config.webhook.hasToken)
+  const routes = feishuProvider.value?.routeConfigs || []
+  const configuredRoutes = routes.filter(route => route.configured).length
+  return [
+    {
+      id: 'remote-agent-connect',
+      area: 'channel',
+      scope: 'remote',
+      tab: 'agent-connect',
+      title: t('integrations.remoteAgentConnect'),
+      description: t('integrations.remoteAgentConnectDesc'),
+      helper: workflow?.config.configured ? t('integrations.remoteAgentConnectReady') : t('integrations.remoteAgentConnectHelp'),
+      status: workflow?.config.configured ? 'ready' : workflow?.config.enabled ? 'partial' : 'missing',
+      metric: workflow?.config.configPath || '.scale/integrations/agent-connect.json',
+      actionLabel: workflow?.config.configured ? t('common.view') : t('integrations.saveAgentConnect'),
+      page: 'integrations',
+    },
+    {
+      id: 'remote-token-bridge',
+      area: 'channel',
+      scope: 'remote',
+      tab: 'agent-connect',
+      title: t('integrations.remoteTokenBridge'),
+      description: t('integrations.remoteTokenBridgeDesc'),
+      helper: tokenReady && bridgeReady && webhookReady ? t('integrations.remoteTokenBridgeReady') : t('integrations.remoteTokenBridgeHelp'),
+      status: tokenReady && bridgeReady && webhookReady ? 'ready' : workflow?.config.enabled || agentConnectDirty.value ? 'partial' : 'missing',
+      metric: `${bridgeReady ? 'Bridge' : '-'} / ${webhookReady ? 'Webhook' : '-'}`,
+      actionLabel: t('integrations.applyRecommended'),
+      page: 'integrations',
+    },
+    {
+      id: 'remote-feishu-cli',
+      area: 'channel',
+      scope: 'remote',
+      tab: 'messages',
+      title: t('integrations.remoteFeishuCli'),
+      description: t('integrations.remoteFeishuCliDesc'),
+      helper: feishuProvider.value?.status === 'ready' ? t('integrations.remoteFeishuCliReady') : sourceReason(feishuSource.value) || t('integrations.remoteFeishuCliHelp'),
+      status: feishuProvider.value?.status === 'ready' ? 'ready' : feishuProvider.value?.commandAvailable ? 'partial' : 'missing',
+      metric: feishuProvider.value?.commandPath || feishuProvider.value?.command || 'lark-cli',
+      command: 'lark-cli doctor',
+      actionLabel: t('integrations.runDoctor'),
+      page: 'integrations',
+    },
+    {
+      id: 'remote-feishu-route',
+      area: 'channel',
+      scope: 'remote',
+      tab: 'messages',
+      title: t('integrations.remoteFeishuRoute'),
+      description: t('integrations.remoteFeishuRouteDesc'),
+      helper: configuredRoutes > 0 ? t('integrations.remoteFeishuRouteReady') : t('integrations.remoteFeishuRouteHelp'),
+      status: configuredRoutes > 0 ? 'ready' : feishuProvider.value?.commandAvailable ? 'partial' : 'missing',
+      metric: `${configuredRoutes}/${Math.max(routes.length, 1)} ${t('integrations.routeConfiguredShort')}`,
+      actionLabel: t('integrations.saveRoute'),
+      page: 'integrations',
+    },
+  ]
+})
+const integrationOptionalClosureItems = computed<IntegrationClosureItem[]>(() => {
+  const loops = connectorWorkflow.value?.automationLoops || []
+  const enabledLoops = loops.filter(loop => loop.enabled).length
+  const modelRecords = modelUsage.value?.totalRecords || 0
+  return [
+    {
+      id: 'optional-ima',
+      area: 'knowledge',
+      scope: 'optional',
+      tab: 'knowledge',
+      title: t('integrations.optionalIma'),
+      description: t('integrations.optionalImaDesc'),
+      helper: imaProvider.value?.knowledgeConfig?.configured ? t('integrations.optionalImaReady') : t('integrations.optionalImaHelp'),
+      status: imaProvider.value?.knowledgeConfig?.configured ? 'ready' : imaProvider.value?.status || 'missing',
+      metric: imaProvider.value?.knowledgeConfig?.knowledgeBaseId || 'Tencent ima',
+      actionLabel: t('integrations.saveProvider'),
+      page: 'integrations',
+    },
+    {
+      id: 'optional-automation',
+      area: 'loop',
+      scope: 'optional',
+      tab: 'automation',
+      title: t('integrations.optionalAutomation'),
+      description: t('integrations.optionalAutomationDesc'),
+      helper: enabledLoops >= 2 ? t('integrations.optionalAutomationReady') : t('integrations.optionalAutomationHelp'),
+      status: enabledLoops >= 2 ? 'ready' : loops.length > 0 ? 'partial' : 'missing',
+      metric: `${enabledLoops}/${loops.length}`,
+      actionLabel: t('integrations.loopAutomation'),
+      page: 'integrations',
+    },
+    {
+      id: 'optional-cost',
+      area: 'cost',
+      scope: 'optional',
+      tab: 'diagnostics',
+      title: t('integrations.optionalCost'),
+      description: t('integrations.optionalCostDesc'),
+      helper: modelRecords > 0 ? t('integrations.optionalCostReady') : t('integrations.optionalCostHelp'),
+      status: modelRecords > 0 ? 'ready' : tokenSource.value?.status || 'missing',
+      metric: `${formatNumber(modelRecords)} ${t('costs.modelUsage')}`,
+      actionLabel: t('commandCenter.openCosts'),
+      page: 'costs',
+    },
+  ]
+})
+const integrationClosureItems = computed(() => [
+  ...integrationCoreClosureItems.value,
+  ...integrationRemoteClosureItems.value,
+  ...integrationOptionalClosureItems.value,
+])
+const integrationCoreClosureScore = computed(() => scoreClosureItems(integrationCoreClosureItems.value))
+const integrationRemoteClosureScore = computed(() => scoreClosureItems(integrationRemoteClosureItems.value))
+const integrationOptionalClosureScore = computed(() => scoreClosureItems(integrationOptionalClosureItems.value))
+const integrationCoreClosureTone = computed(() => scoreTone(integrationCoreClosureScore.value))
+const integrationPrimaryWorkItem = computed(() =>
+  integrationCoreClosureItems.value.find(item => item.status !== 'ready')
+  || integrationRemoteClosureItems.value.find(item => item.status !== 'ready')
+  || integrationOptionalClosureItems.value.find(item => item.status !== 'ready')
+  || integrationCoreClosureItems.value[0])
+const integrationBlockingCount = computed(() => integrationCoreClosureItems.value.filter(item => item.status !== 'ready').length)
+const integrationReadyCount = computed(() => integrationClosureItems.value.filter(item => item.status === 'ready').length)
+const integrationClosureStatusLine = computed(() => {
+  if (integrationBlockingCount.value === 0) return t('integrations.coreClosureReadyLine')
+  return t('integrations.coreClosureBlockedLine', { count: integrationBlockingCount.value })
+})
+const integrationActionQueue = computed(() => integrationClosureItems.value
+  .filter(item => item.status !== 'ready')
+  .sort((left, right) => scopeRank(left.scope) - scopeRank(right.scope)))
 
 watch(feishuProvider, provider => {
   if (feishuRouteDirty.value) return
@@ -3334,11 +3539,87 @@ function focusIntegrationStep(stepId: string) {
   activeIntegrationTab.value = integrationTabForStep(stepId)
 }
 
+function focusIntegrationWorkItem(item?: IntegrationClosureItem | CommandCenterCheck | null) {
+  if (!item) return
+  if (item.page && item.page !== 'integrations') {
+    setPage(item.page)
+    return
+  }
+  activePage.value = 'integrations'
+  activeIntegrationTab.value = 'tab' in item ? item.tab : integrationTabForStep(item.id)
+  history.replaceState(null, '', '#integrations')
+}
+
 function integrationTabForStep(stepId: string): IntegrationTab {
-  if (stepId === 'feishu-cli' || stepId === 'feishu-route') return 'messages'
-  if (stepId === 'agent-connect-config' || stepId === 'tokens' || stepId === 'bridge-webhook') return 'agent-connect'
-  if (stepId === 'required-skills') return 'automation'
+  if (stepId === 'feishu-cli' || stepId === 'feishu-route' || stepId === 'remote-feishu-cli' || stepId === 'remote-feishu-route') return 'messages'
+  if (stepId === 'agent-connect-config' || stepId === 'tokens' || stepId === 'bridge-webhook' || stepId === 'remote-agent-connect' || stepId === 'remote-token-bridge') return 'agent-connect'
+  if (stepId === 'required-skills' || stepId === 'optional-automation') return 'automation'
+  if (stepId === 'core-acceptance' || stepId === 'core-dashboard' || stepId === 'optional-cost') return 'diagnostics'
+  if (stepId === 'core-knowledge' || stepId === 'optional-ima') return 'knowledge'
   return 'overview'
+}
+
+function scoreClosureItems(items: IntegrationClosureItem[]): number {
+  if (items.length === 0) return 0
+  const points = items.reduce((total, item) => total + (item.status === 'ready' ? 1 : item.status === 'partial' ? 0.5 : 0), 0)
+  return Math.round((points / items.length) * 100)
+}
+
+function scoreTone(score: number): 'success' | 'warning' | 'error' {
+  if (score >= 80) return 'success'
+  if (score >= 45) return 'warning'
+  return 'error'
+}
+
+function scopeRank(scope: IntegrationClosureScope): number {
+  if (scope === 'core') return 0
+  if (scope === 'remote') return 1
+  return 2
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'string') return null
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function friendlyFeishuStartText(result?: FeishuAuthStartResult | null): string {
+  if (!result) return ''
+  if (result.verificationUrl) return result.verificationUrl
+  if (result.setupCommand) return result.setupCommand
+  const parsed = parseJsonObject(result.error)
+  const error = parsed?.error
+  const notice = parsed?.notice
+  let upgradeHint = ''
+  if (isRecord(notice)) {
+    const update = notice.update
+    if (isRecord(update)) {
+      const message = normalizeString(update.message)
+      const command = normalizeString(update.command)
+      upgradeHint = [message, command].filter(Boolean).join(' ')
+    }
+  }
+  if (isRecord(error)) {
+    const message = normalizeString(error.message)
+    const hint = normalizeString(error.hint)
+    const detail = [message, hint, upgradeHint].filter(Boolean).join(' ')
+    if (detail) return detail
+    if (message) return message
+  }
+  if (upgradeHint) return upgradeHint
+  return result.error || result.status
 }
 
 interface DashboardHttpResponse {
@@ -4436,6 +4717,58 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.bootstrapLocal': '一键本地闭环',
     'integrations.localBootstrapComplete': '本地 Agent OS 闭环已初始化，当前闭环进度 {score}%。外部飞书目标和腾讯 ima 授权仍需按项目补齐。',
     'integrations.setupProgress': '闭环进度',
+    'integrations.coreClosure': '核心闭环',
+    'integrations.remoteClosure': '远程通道',
+    'integrations.optionalClosure': '可选增强',
+    'integrations.readyItems': '已就绪项',
+    'integrations.coreClosureTitle': '本地 Agent OS 主路径',
+    'integrations.currentBlocker': '当前阻断项',
+    'integrations.allClosed': '已全部闭环',
+    'integrations.coreClosureReadyLine': '核心闭环已完成，可以进入真实项目测试，并继续扩展飞书、Bridge、Webhook 等远程通道。',
+    'integrations.coreClosureBlockedLine': '核心闭环还有 {count} 个阻断项。先处理这些项，再评估外部通道和可选增强。',
+    'integrations.coreDashboard': '可视化面板驻留',
+    'integrations.coreDashboardDesc': 'Dashboard 服务与守护进程要稳定运行，用户打开项目即可看到状态和操作入口。',
+    'integrations.coreDashboardReady': '可视化面板和本地 API 均已在线。',
+    'integrations.coreAgentControl': 'Agent 控制台',
+    'integrations.coreAgentControlDesc': '至少有一个可用 Agent 会话，支持模型、渠道、消息队列和结果回传。',
+    'integrations.coreAgentControlReady': 'Agent 控制台已有可用会话。',
+    'integrations.coreAgentControlHelp': '进入 Agent 控制台，选择已安装平台和模型后创建会话。',
+    'integrations.coreKnowledge': '知识与记忆',
+    'integrations.coreKnowledgeDesc': '本地记忆、文档索引或知识图谱要进入默认上下文，支撑 Agent 长期协作。',
+    'integrations.coreKnowledgeReady': '知识库或 gbrain 记忆已接入默认上下文。',
+    'integrations.coreKnowledgeHelp': '导入项目文档、生成知识索引，或确认 gbrain 本地记忆可用。',
+    'integrations.coreAcceptance': '一键验收',
+    'integrations.coreAcceptanceDesc': '用 smoke/acceptance 结果证明安装、状态、消息入口和核心数据源可被真实项目调用。',
+    'integrations.coreAcceptanceReady': 'Agent OS 验收已通过，具备真实项目测试证据。',
+    'integrations.coreAcceptanceHelp': '运行一键验收，生成可追溯报告后再声明完成。',
+    'integrations.remoteAgentConnect': 'Agent Connect 配置',
+    'integrations.remoteAgentConnectDesc': '管理 API、Bridge、Webhook 的项目级配置要保存到 .scale 集成配置。',
+    'integrations.remoteAgentConnectReady': 'Agent Connect 已保存并具备项目级配置。',
+    'integrations.remoteAgentConnectHelp': '使用推荐本地配置或手动填写端口、前缀和 token 后保存。',
+    'integrations.remoteTokenBridge': 'Token 与 Bridge/Webhook',
+    'integrations.remoteTokenBridgeDesc': '远程写入、Bridge 转发和 Webhook 回调必须有独立 token 与开关。',
+    'integrations.remoteTokenBridgeReady': 'Bridge、Webhook 和管理 API token 均已就绪。',
+    'integrations.remoteTokenBridgeHelp': '生成本地 token，确认 Bridge/Webhook 启用后保存配置。',
+    'integrations.remoteFeishuCli': '飞书 CLI 授权',
+    'integrations.remoteFeishuCliDesc': '机器级 lark-cli profile、keychain 和 doctor 必须通过，凭证不写入项目仓库。',
+    'integrations.remoteFeishuCliReady': '飞书/Lark CLI 已通过本机授权检查。',
+    'integrations.remoteFeishuCliHelp': '先运行初始化或 doctor，根据提示绑定身份并升级 CLI。',
+    'integrations.remoteFeishuRoute': '飞书项目路由',
+    'integrations.remoteFeishuRouteDesc': '为每个 Agent 平台绑定 chat/user 目标，远程消息才能进入正确会话。',
+    'integrations.remoteFeishuRouteReady': '至少一个 Agent 平台已有飞书消息路由。',
+    'integrations.remoteFeishuRouteHelp': '选择平台和目标类型，填入真实 chat/user ID 后保存路由。',
+    'integrations.optionalIma': '腾讯 ima 知识库',
+    'integrations.optionalImaDesc': '在线知识库是增强项；未配置时不阻断本地 Agent OS 主路径。',
+    'integrations.optionalImaReady': '腾讯 ima 知识库已绑定。',
+    'integrations.optionalImaHelp': '按项目补齐知识库 ID 与凭证，或继续使用本地知识库。',
+    'integrations.optionalAutomation': '自动化循环',
+    'integrations.optionalAutomationDesc': '心跳、通知、回调和长期任务提醒让远程协作更稳定。',
+    'integrations.optionalAutomationReady': '多个自动化循环已启用。',
+    'integrations.optionalAutomationHelp': '启用心跳、通知或回调循环后再保存 Agent Connect。',
+    'integrations.optionalCost': 'Token 与成本账本',
+    'integrations.optionalCostDesc': '模型调用记录用于成本、缓存命中和质量治理分析。',
+    'integrations.optionalCostReady': '已有模型用量记录。',
+    'integrations.optionalCostHelp': '完成一次 Agent 对话或导入模型用量后即可生成成本视图。',
     'integrations.nextActions': '下一步',
     'integrations.nextActionsDesc': '按状态选择要处理的接入步骤。',
     'integrations.configTabs': '配置工作区',
@@ -4897,6 +5230,58 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.bootstrapLocal': 'Bootstrap local loop',
     'integrations.localBootstrapComplete': 'Local Agent OS loop initialized. Current closure score is {score}%. External Feishu targets and Tencent ima authorization still need project credentials.',
     'integrations.setupProgress': 'Closure progress',
+    'integrations.coreClosure': 'Core loop',
+    'integrations.remoteClosure': 'Remote channels',
+    'integrations.optionalClosure': 'Optional upgrades',
+    'integrations.readyItems': 'Ready items',
+    'integrations.coreClosureTitle': 'Local Agent OS main path',
+    'integrations.currentBlocker': 'Current blocker',
+    'integrations.allClosed': 'Everything is closed loop',
+    'integrations.coreClosureReadyLine': 'The core loop is complete. You can test with a real project and continue expanding Feishu, Bridge, and Webhook channels.',
+    'integrations.coreClosureBlockedLine': 'The core loop still has {count} blocker(s). Finish these before judging remote channels and optional upgrades.',
+    'integrations.coreDashboard': 'Resident dashboard',
+    'integrations.coreDashboardDesc': 'The dashboard service and watchdog must stay online so users can open a project and act immediately.',
+    'integrations.coreDashboardReady': 'The visual dashboard and local API are online.',
+    'integrations.coreAgentControl': 'Agent Control',
+    'integrations.coreAgentControlDesc': 'At least one agent session must support model selection, channels, queues, and reply handoff.',
+    'integrations.coreAgentControlReady': 'Agent Control has a ready session.',
+    'integrations.coreAgentControlHelp': 'Open Agent Control, select an installed platform and model, then create a session.',
+    'integrations.coreKnowledge': 'Knowledge and memory',
+    'integrations.coreKnowledgeDesc': 'Local memory, document indexes, or the knowledge graph must feed the default agent context.',
+    'integrations.coreKnowledgeReady': 'Knowledge base or gbrain memory is connected to the default context.',
+    'integrations.coreKnowledgeHelp': 'Import project docs, build the knowledge index, or confirm local gbrain memory is available.',
+    'integrations.coreAcceptance': 'One-click acceptance',
+    'integrations.coreAcceptanceDesc': 'Smoke/acceptance evidence proves install, status, message entry, and core data sources work in a real project.',
+    'integrations.coreAcceptanceReady': 'Agent OS acceptance passed with real project evidence.',
+    'integrations.coreAcceptanceHelp': 'Run one-click acceptance and generate a traceable report before calling the work complete.',
+    'integrations.remoteAgentConnect': 'Agent Connect config',
+    'integrations.remoteAgentConnectDesc': 'Management API, Bridge, and Webhook project config must be saved under .scale integrations.',
+    'integrations.remoteAgentConnectReady': 'Agent Connect is saved with project-level config.',
+    'integrations.remoteAgentConnectHelp': 'Apply the recommended local config or fill ports, prefixes, and tokens manually, then save.',
+    'integrations.remoteTokenBridge': 'Tokens and Bridge/Webhook',
+    'integrations.remoteTokenBridgeDesc': 'Remote writes, Bridge forwarding, and Webhook callbacks need separate tokens and switches.',
+    'integrations.remoteTokenBridgeReady': 'Bridge, Webhook, and management API tokens are ready.',
+    'integrations.remoteTokenBridgeHelp': 'Generate local tokens, enable Bridge/Webhook, then save the config.',
+    'integrations.remoteFeishuCli': 'Feishu CLI authorization',
+    'integrations.remoteFeishuCliDesc': 'Machine-level lark-cli profile, keychain, and doctor checks must pass; credentials stay outside the repo.',
+    'integrations.remoteFeishuCliReady': 'Feishu/Lark CLI passed the local authorization check.',
+    'integrations.remoteFeishuCliHelp': 'Run setup or doctor first, then bind identity and upgrade the CLI from the prompt.',
+    'integrations.remoteFeishuRoute': 'Feishu project route',
+    'integrations.remoteFeishuRouteDesc': 'Bind chat/user targets per agent platform so remote messages enter the correct session.',
+    'integrations.remoteFeishuRouteReady': 'At least one agent platform has a Feishu message route.',
+    'integrations.remoteFeishuRouteHelp': 'Pick a platform and target type, enter a real chat/user ID, then save the route.',
+    'integrations.optionalIma': 'Tencent ima knowledge base',
+    'integrations.optionalImaDesc': 'Online knowledge is an upgrade; missing ima config no longer blocks the local Agent OS path.',
+    'integrations.optionalImaReady': 'Tencent ima knowledge base is bound.',
+    'integrations.optionalImaHelp': 'Add the project knowledge base ID and credentials, or keep using the local knowledge base.',
+    'integrations.optionalAutomation': 'Automation loops',
+    'integrations.optionalAutomationDesc': 'Heartbeat, notifications, callbacks, and long-task nudges make remote collaboration steadier.',
+    'integrations.optionalAutomationReady': 'Multiple automation loops are enabled.',
+    'integrations.optionalAutomationHelp': 'Enable heartbeat, notification, or callback loops, then save Agent Connect.',
+    'integrations.optionalCost': 'Token and cost ledger',
+    'integrations.optionalCostDesc': 'Model usage records support cost, cache, and quality governance analysis.',
+    'integrations.optionalCostReady': 'Model usage records exist.',
+    'integrations.optionalCostHelp': 'Run one agent conversation or import model usage to populate the cost view.',
     'integrations.nextActions': 'Next actions',
     'integrations.nextActionsDesc': 'Pick the integration step that needs work.',
     'integrations.configTabs': 'Configuration workspace',
@@ -6176,41 +6561,60 @@ const translations: Record<Lang, Record<string, string>> = {
             <div class="integration-workbench">
               <section class="integration-hero">
                 <div class="integration-hero-main">
-                  <n-text depth="3">{{ t('integrations.productSurface') }}</n-text>
-                  <h2>{{ t('integrations.workbench') }}</h2>
-                  <p>{{ t('integrations.workbenchDesc') }}</p>
+                  <div class="closure-eyebrow">
+                    <n-tag :type="integrationCoreClosureTone" size="small">{{ t('integrations.coreClosure') }}</n-tag>
+                    <span>{{ integrationClosureStatusLine }}</span>
+                  </div>
+                  <h2>{{ t('integrations.coreClosureTitle') }}</h2>
+                  <p>{{ integrationPrimaryWorkItem?.helper || t('integrations.coreClosureReadyLine') }}</p>
+                  <div class="closure-score-grid">
+                    <div class="closure-score-cell primary">
+                      <span>{{ t('integrations.coreClosure') }}</span>
+                      <strong>{{ integrationCoreClosureScore }}%</strong>
+                    </div>
+                    <div class="closure-score-cell">
+                      <span>{{ t('integrations.remoteClosure') }}</span>
+                      <strong>{{ integrationRemoteClosureScore }}%</strong>
+                    </div>
+                    <div class="closure-score-cell">
+                      <span>{{ t('integrations.optionalClosure') }}</span>
+                      <strong>{{ integrationOptionalClosureScore }}%</strong>
+                    </div>
+                    <div class="closure-score-cell">
+                      <span>{{ t('integrations.readyItems') }}</span>
+                      <strong>{{ integrationReadyCount }}/{{ integrationClosureItems.length }}</strong>
+                    </div>
+                  </div>
                   <n-space wrap>
-                    <n-button type="primary" :loading="agentOsBootstrapLoading" @click="bootstrapLocalAgentOs">{{ t('integrations.bootstrapLocal') }}</n-button>
+                    <n-button type="primary" @click="focusIntegrationWorkItem(integrationPrimaryWorkItem)">{{ integrationPrimaryWorkItem?.actionLabel || t('commandCenter.openAgents') }}</n-button>
+                    <n-button :loading="agentOsBootstrapLoading" @click="bootstrapLocalAgentOs">{{ t('integrations.bootstrapLocal') }}</n-button>
+                    <n-button @click="runAgentOsAcceptance" :loading="agentOsAcceptanceLoading">{{ t('integrations.runAcceptance') }}</n-button>
                     <n-button @click="activeIntegrationTab = 'messages'">{{ t('integrations.configureMessages') }}</n-button>
-                    <n-button @click="activeIntegrationTab = 'agent-connect'">{{ t('integrations.configureAgentConnect') }}</n-button>
-                    <n-button @click="activeIntegrationTab = 'knowledge'">{{ t('integrations.configureKnowledge') }}</n-button>
-                    <n-button @click="activeIntegrationTab = 'diagnostics'">{{ t('integrations.runDoctor') }}</n-button>
                   </n-space>
                 </div>
-                <aside class="integration-score-card">
+                <aside class="integration-score-card closure-focus-card">
                   <div class="integration-score-head">
-                    <span>{{ t('integrations.setupProgress') }}</span>
-                    <strong>{{ agentOsReadinessScore }}%</strong>
+                    <span>{{ t('integrations.currentBlocker') }}</span>
+                    <n-tag v-if="integrationPrimaryWorkItem" :type="statusTag(integrationPrimaryWorkItem.status)" size="small">{{ statusLabel(integrationPrimaryWorkItem.status) }}</n-tag>
                   </div>
-                  <n-progress type="line" :percentage="agentOsReadinessScore" :status="agentOsReadinessTone" :height="10" :border-radius="5" :show-indicator="false" />
-                  <div class="integration-status-strip">
-                    <span>
-                      <strong>{{ agentOsReadiness?.summary.ready || 0 }}/{{ agentOsReadiness?.stages.length || 0 }}</strong>
-                      {{ t('overview.readySources') }}
-                    </span>
-                    <span>
-                      <strong>{{ agentOsReadiness?.summary.partial || 0 }}</strong>
-                      {{ t('overview.partialSources') }}
-                    </span>
-                    <span>
-                      <strong>{{ agentOsReadiness?.summary.missing || 0 }}</strong>
-                      {{ t('overview.missingSources') }}
-                    </span>
+                  <div class="closure-focus-body">
+                    <strong>{{ integrationPrimaryWorkItem?.title || t('integrations.allClosed') }}</strong>
+                    <p>{{ integrationPrimaryWorkItem?.helper || integrationPrimaryWorkItem?.description || t('integrations.coreClosureReadyLine') }}</p>
+                    <code v-if="integrationPrimaryWorkItem?.command">{{ integrationPrimaryWorkItem.command }}</code>
+                  </div>
+                  <div class="closure-mini-progress">
+                    <span>{{ t('integrations.remoteClosure') }}</span>
+                    <n-progress type="line" :percentage="integrationRemoteClosureScore" :status="scoreTone(integrationRemoteClosureScore)" :height="8" :border-radius="4" :show-indicator="false" />
+                    <span>{{ t('integrations.optionalClosure') }}</span>
+                    <n-progress type="line" :percentage="integrationOptionalClosureScore" :status="scoreTone(integrationOptionalClosureScore)" :height="8" :border-radius="4" :show-indicator="false" />
                   </div>
                 </aside>
               </section>
 
-              <n-alert :type="statusTag(feishuSource?.status || 'missing')">
+              <n-alert :type="integrationBlockingCount === 0 ? 'success' : 'warning'">
+                {{ integrationBlockingCount === 0 ? t('integrations.coreClosureReadyLine') : t('integrations.coreClosureBlockedLine', { count: integrationBlockingCount }) }}
+              </n-alert>
+              <n-alert v-if="feishuSource?.status === 'error'" :type="statusTag(feishuSource?.status || 'missing')">
                 {{ feishuSource?.status === 'ready' ? t('integrations.feishuReady') : sourceReason(feishuSource) || feishuProvider?.nextAction || t('source.feishu-channel.reason') }}
               </n-alert>
               <n-alert v-if="isResourceLoading('integrations') && !integrations" type="info">
@@ -6224,15 +6628,48 @@ const translations: Record<Lang, Record<string, string>> = {
                 <aside class="integration-step-rail">
                   <div class="panel-heading">
                     <h3>{{ t('integrations.nextActions') }}</h3>
-                    <n-text depth="3">{{ t('integrations.nextActionsDesc') }}</n-text>
+                    <n-text depth="3">{{ integrationActionQueue.length ? t('integrations.nextActionsDesc') : t('integrations.allClosed') }}</n-text>
                   </div>
+                  <div class="integration-step-group">{{ t('integrations.coreClosure') }}</div>
                   <button
-                    v-for="step in integrationWizardSteps"
+                    v-for="step in integrationCoreClosureItems"
                     :key="step.id"
                     type="button"
                     class="integration-step"
-                    :class="{ active: activeIntegrationTab === integrationTabForStep(step.id) }"
-                    @click="focusIntegrationStep(step.id)"
+                    :class="{ active: activeIntegrationTab === step.tab, ready: step.status === 'ready' }"
+                    @click="focusIntegrationWorkItem(step)"
+                  >
+                    <span class="integration-step-title">
+                      <strong>{{ step.title }}</strong>
+                      <n-tag size="small" :type="statusTag(step.status)">{{ statusLabel(step.status) }}</n-tag>
+                    </span>
+                    <small>{{ step.description }}</small>
+                    <span class="integration-step-meta">{{ step.metric }}</span>
+                  </button>
+                  <div class="integration-step-group">{{ t('integrations.remoteClosure') }}</div>
+                  <button
+                    v-for="step in integrationRemoteClosureItems"
+                    :key="step.id"
+                    type="button"
+                    class="integration-step"
+                    :class="{ active: activeIntegrationTab === step.tab, ready: step.status === 'ready' }"
+                    @click="focusIntegrationWorkItem(step)"
+                  >
+                    <span class="integration-step-title">
+                      <strong>{{ step.title }}</strong>
+                      <n-tag size="small" :type="statusTag(step.status)">{{ statusLabel(step.status) }}</n-tag>
+                    </span>
+                    <small>{{ step.description }}</small>
+                    <span class="integration-step-meta">{{ step.metric }}</span>
+                  </button>
+                  <div class="integration-step-group">{{ t('integrations.optionalClosure') }}</div>
+                  <button
+                    v-for="step in integrationOptionalClosureItems"
+                    :key="step.id"
+                    type="button"
+                    class="integration-step"
+                    :class="{ active: activeIntegrationTab === step.tab, ready: step.status === 'ready' }"
+                    @click="focusIntegrationWorkItem(step)"
                   >
                     <span class="integration-step-title">
                       <strong>{{ step.title }}</strong>
@@ -6440,14 +6877,14 @@ const translations: Record<Lang, Record<string, string>> = {
                             <n-tag v-if="feishuRouteDirty" type="warning" size="small">{{ t('integrations.unsaved') }}</n-tag>
                           </n-space>
                           <n-alert v-if="feishuConfigResult" :type="feishuConfigResult.ok ? 'success' : feishuConfigResult.status === 'blocked' ? 'warning' : 'error'">
-                            {{ feishuConfigResult.verificationUrl || feishuConfigResult.setupCommand || feishuConfigResult.error || feishuConfigResult.status }}
+                            {{ friendlyFeishuStartText(feishuConfigResult) }}
                           </n-alert>
                           <n-space v-if="feishuConfigResult?.verificationUrl || feishuConfigResult?.setupCommand" size="small">
                             <n-button v-if="feishuConfigResult?.verificationUrl" size="small" tag="a" :href="feishuConfigResult.verificationUrl" target="_blank">{{ t('common.open') }}</n-button>
                             <n-button size="small" @click="copyText(feishuConfigResult?.verificationUrl || feishuConfigResult?.setupCommand || '')">{{ t('common.copy') }}</n-button>
                           </n-space>
                           <n-alert v-if="feishuAuthResult" :type="feishuAuthResult.ok ? 'success' : feishuAuthResult.status === 'blocked' ? 'warning' : 'error'">
-                            {{ feishuAuthResult.verificationUrl || feishuAuthResult.setupCommand || feishuAuthResult.error || feishuAuthResult.status }}
+                            {{ friendlyFeishuStartText(feishuAuthResult) }}
                           </n-alert>
                           <n-space v-if="feishuAuthResult?.verificationUrl || feishuAuthResult?.setupCommand" size="small">
                             <n-button v-if="feishuAuthResult?.verificationUrl" size="small" tag="a" :href="feishuAuthResult.verificationUrl" target="_blank">{{ t('common.open') }}</n-button>
