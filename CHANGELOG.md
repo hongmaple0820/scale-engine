@@ -2,6 +2,18 @@
 
 ---
 
+## 0.55.3 - 2026-07-03
+
+### Dashboard Closure
+- Split the Integration workbench into core Agent OS closure, remote channels, and optional upgrades so customers can distinguish local readiness from external Feishu/Bridge setup.
+- Replace raw Feishu/Lark authorization JSON with concise reason, hint, and upgrade-command feedback.
+- Improve desktop and mobile Integration layout with a clear current blocker, grouped next actions, and responsive closure score cards.
+
+### Verification
+- Rebuild the dashboard after the version bump, run dashboard API regression tests, and validate the updated Integration page against `E:\project\qwen-project\blog` with Playwright screenshots and `scale smoke`.
+
+---
+
 ## 0.55.2 - 2026-07-02
 
 ### Customer Validation
