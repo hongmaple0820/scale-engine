@@ -516,6 +516,7 @@ interface AgentControlSession {
   commandPrefix: string
   mode: AgentControlMode
   autoImportKnowledge: boolean
+  localExecutor?: boolean
   updatedAt: number
   status: SourceStatus | 'blocked'
   channel: {
@@ -544,6 +545,7 @@ interface AgentControlMessage {
   channelProvider: 'dashboard' | 'feishu'
   channelRouteId: string
   dryRun: boolean
+  willExecute?: boolean
   commandPlan?: IntegrationCommandPlan
   responsePreview?: string
   claimedBy?: string
@@ -557,7 +559,7 @@ interface AgentControlMessage {
 interface AgentControlReport {
   project: ProjectSummary
   generatedAt: number
-  summary: { sessions: number; ready: number; partial: number; missing: number; queuedMessages: number; claimedMessages: number; completedMessages: number; failedMessages: number }
+  summary: { sessions: number; ready: number; partial: number; missing: number; queuedMessages: number; claimedMessages: number; completedMessages: number; failedMessages: number; successRate?: number; avgLatencyMs?: number | null; dryRunRatio?: number | null; closedLoopCoverage?: number | null }
   modelOptions: AgentControlModelOption[]
   platformTargets: IntegrationProviderReport['platformTargets']
   sessions: AgentControlSession[]
@@ -647,6 +649,7 @@ interface AgentSessionDraft {
   commandPrefix: string
   mode: AgentControlMode
   autoImportKnowledge: boolean
+  localExecutor: boolean
 }
 
 interface MetricsReport {
@@ -1017,7 +1020,24 @@ interface BarRow {
 }
 
 const lang = ref<Lang>((localStorage.getItem('scale-dashboard-lang') as Lang) || 'zh')
-const dark = ref(localStorage.getItem('scale-dashboard-theme') !== 'light')
+type ThemeMode = 'light' | 'dark' | 'system'
+const themeMode = ref<ThemeMode>(readThemeModePreference())
+const prefersDark = ref(false)
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+  const mql = window.matchMedia('(prefers-color-scheme: dark)')
+  prefersDark.value = mql.matches
+  mql.addEventListener?.('change', (event: MediaQueryListEvent) => { prefersDark.value = event.matches })
+}
+const isDark = computed(() => themeMode.value === 'dark' || (themeMode.value === 'system' && prefersDark.value))
+const themeModeOptions = computed(() => [
+  { label: t('common.themeLight'), value: 'light' as const },
+  { label: t('common.themeDark'), value: 'dark' as const },
+  { label: t('common.themeSystem'), value: 'system' as const },
+])
+function readThemeModePreference(): ThemeMode {
+  const stored = localStorage.getItem('scale-dashboard-theme')
+  return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+}
 const dashboardBootstrap = readDashboardBootstrap()
 const dashboardTransportAvailable = typeof globalThis.fetch === 'function' || typeof globalThis.XMLHttpRequest === 'function'
 const initialPage = location.hash.slice(1) as PageKey
@@ -1153,7 +1173,7 @@ let knowledgeGraphChartTheme: 'dark' | 'light' = 'light'
 let knowledgeGraphFingerprint = ''
 let graphResizeObserver: ResizeObserver | null = null
 
-const theme = computed(() => dark.value ? darkTheme : null)
+const theme = computed(() => isDark.value ? darkTheme : null)
 const naiveLocale = computed(() => lang.value === 'zh' ? zhCN : enUS)
 const pageTitle = computed(() => t(`nav.${activePage.value}`))
 const currentProject = computed(() => capabilities.value?.project || projects.value.find(project => project.current))
@@ -1187,6 +1207,17 @@ const agentControlAlertText = computed(() => {
   return agentControl.value
     ? t('source.agent-control-plane.reason.partial')
     : t('source.agent-control-plane.reason')
+})
+const agentExecutionModeText = computed(() => {
+  const session = selectedAgentSession.value
+  if (!session) return ''
+  return session.localExecutor && session.mode === 'live-guarded'
+    ? t('agents.executionModeLive')
+    : t('agents.executionModeDry')
+})
+const agentExecutionModeType = computed(() => {
+  const session = selectedAgentSession.value
+  return session?.localExecutor && session?.mode === 'live-guarded' ? 'success' : 'warning'
 })
 const documentSource = computed(() => sourceById('documents'))
 const commandSource = computed(() => sourceById('command-runs'))
@@ -1730,6 +1761,30 @@ const integrationClosureStatusLine = computed(() => {
 const integrationActionQueue = computed(() => integrationClosureItems.value
   .filter(item => item.status !== 'ready')
   .sort((left, right) => scopeRank(left.scope) - scopeRank(right.scope)))
+const integrationVisibleActionItems = computed(() => integrationActionQueue.value.slice(0, 5))
+const integrationHiddenActionCount = computed(() => Math.max(0, integrationActionQueue.value.length - integrationVisibleActionItems.value.length))
+const integrationActiveTabTitle = computed(() => {
+  const keyByTab: Record<IntegrationTab, string> = {
+    overview: 'integrations.tabOverview',
+    messages: 'integrations.tabMessages',
+    'agent-connect': 'integrations.tabAgentConnect',
+    knowledge: 'integrations.tabKnowledge',
+    automation: 'integrations.tabAutomation',
+    diagnostics: 'integrations.tabDiagnostics',
+  }
+  return t(keyByTab[activeIntegrationTab.value])
+})
+const integrationActiveTabDescription = computed(() => {
+  const keyByTab: Record<IntegrationTab, string> = {
+    overview: 'integrations.tabOverviewDesc',
+    messages: 'integrations.tabMessagesDesc',
+    'agent-connect': 'integrations.tabAgentConnectDesc',
+    knowledge: 'integrations.tabKnowledgeDesc',
+    automation: 'integrations.tabAutomationDesc',
+    diagnostics: 'integrations.tabDiagnosticsDesc',
+  }
+  return t(keyByTab[activeIntegrationTab.value])
+})
 
 watch(feishuProvider, provider => {
   if (feishuRouteDirty.value) return
@@ -2809,6 +2864,7 @@ function createEmptyAgentSessionDraft(): AgentSessionDraft {
     commandPrefix: '/scale',
     mode: 'dry-run',
     autoImportKnowledge: true,
+    localExecutor: false,
   }
 }
 
@@ -2827,6 +2883,7 @@ function syncAgentSessionDraft() {
     commandPrefix: session.commandPrefix,
     mode: session.mode,
     autoImportKnowledge: session.autoImportKnowledge,
+    localExecutor: session.localExecutor ?? false,
   }
 }
 
@@ -2998,7 +3055,13 @@ async function sendAgentMessage() {
       return
     }
     agentMessageDraft.value = ''
-    notice.value = payload.message?.status === 'blocked' ? t('agents.messageBlocked') : t('agents.messageQueued')
+    if (payload.message?.willExecute) {
+      notice.value = t('agents.messageExecuting')
+    } else if (payload.message?.status === 'blocked') {
+      notice.value = t('agents.messageBlocked')
+    } else {
+      notice.value = t('agents.messageQueued')
+    }
     await refreshAgentControl()
     await refreshCapabilitiesOnly()
   } catch (error) {
@@ -3139,8 +3202,17 @@ function connectStream() {
   stream.value.addEventListener('heartbeat', () => {
     sseStatus.value = capabilities.value?.realtime.busAvailable ? 'live' : 'polling'
   })
-  stream.value.addEventListener('event', () => {
+  stream.value.addEventListener('event', (event: MessageEvent) => {
     sseStatus.value = 'live'
+    try {
+      const parsed = JSON.parse(event.data) as { event?: { type?: string } }
+      if (parsed?.event?.type === 'agent-control.message') {
+        void refreshAgentControl()
+        return
+      }
+    } catch {
+      // ignore malformed SSE payloads
+    }
     void refreshAll()
   })
   stream.value.onerror = () => {
@@ -3520,9 +3592,9 @@ function setLang(next: Lang) {
   localStorage.setItem('scale-dashboard-lang', next)
 }
 
-function setTheme(next: boolean) {
-  dark.value = next
-  localStorage.setItem('scale-dashboard-theme', next ? 'dark' : 'light')
+function setThemeMode(next: ThemeMode) {
+  themeMode.value = next
+  localStorage.setItem('scale-dashboard-theme', next)
 }
 
 function onProjectChange(value: string) {
@@ -4538,6 +4610,17 @@ const translations: Record<Lang, Record<string, string>> = {
     'agents.channel': '消息通道',
     'agents.mode': '控制模式',
     'agents.commandPrefix': '命令前缀',
+    'agents.successRate': '执行成功率',
+    'agents.avgLatencyMs': '平均时延',
+    'agents.dryRunRatio': '预演占比',
+    'agents.closedLoopCoverage': '闭环覆盖率',
+    'agents.localExecutor': '本地执行器（实跑）',
+    'agents.executionModeLive': '实跑模式：消息将触发本地执行器自动执行。',
+    'agents.executionModeDry': '预演模式：消息仅入队、不会真正执行。在"会话配置"开启本地执行器可启用实跑。',
+    'agents.messageExecuting': '已触发本地执行器，正在执行…',
+    'common.themeLight': '浅色',
+    'common.themeDark': '深色',
+    'common.themeSystem': '跟随系统',
     'agents.autoImportKnowledge': '自动导入知识',
     'agents.saveSession': '保存会话',
     'agents.sessionSaved': 'Agent 会话已保存',
@@ -4779,6 +4862,13 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.tabKnowledge': '知识库',
     'integrations.tabAutomation': '能力与自动化',
     'integrations.tabDiagnostics': '诊断',
+    'integrations.tabOverviewDesc': '先看主路径状态、验收阶段和配置边界。',
+    'integrations.tabMessagesDesc': '配置飞书/Lark 机器授权和项目路由。',
+    'integrations.tabAgentConnectDesc': '管理 API、Bridge、Webhook 和本地 token 只在这里处理。',
+    'integrations.tabKnowledgeDesc': '绑定在线知识库，或确认本地知识与记忆可用。',
+    'integrations.tabAutomationDesc': '确认默认能力、循环任务和平台预设。',
+    'integrations.tabDiagnosticsDesc': '运行验收、复制报告路径和查看诊断命令。',
+    'integrations.morePending': '还有 {count} 个待处理项，可在右侧工作区继续处理。',
     'integrations.agentOsReadiness': 'Agent OS 闭环验收',
     'agentOs.remote-control.title': '远程控制面',
     'agentOs.remote-control.desc': '管理 API、Bridge/Webhook 和至少一个可控 Agent 会话就绪。',
@@ -5119,6 +5209,17 @@ const translations: Record<Lang, Record<string, string>> = {
     'agents.channel': 'Message channel',
     'agents.mode': 'Control mode',
     'agents.commandPrefix': 'Command prefix',
+    'agents.successRate': 'Execution success rate',
+    'agents.avgLatencyMs': 'Avg latency',
+    'agents.dryRunRatio': 'Dry-run ratio',
+    'agents.closedLoopCoverage': 'Closed-loop coverage',
+    'agents.localExecutor': 'Local executor (live run)',
+    'agents.executionModeLive': 'Live mode: messages trigger the local executor automatically.',
+    'agents.executionModeDry': 'Dry-run mode: messages are queued but not executed. Enable local executor in Session config to run live.',
+    'agents.messageExecuting': 'Local executor triggered, executing…',
+    'common.themeLight': 'Light',
+    'common.themeDark': 'Dark',
+    'common.themeSystem': 'System',
     'agents.autoImportKnowledge': 'Auto-import knowledge',
     'agents.saveSession': 'Save session',
     'agents.sessionSaved': 'Agent session saved',
@@ -5292,6 +5393,13 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.tabKnowledge': 'Knowledge',
     'integrations.tabAutomation': 'Capabilities',
     'integrations.tabDiagnostics': 'Diagnostics',
+    'integrations.tabOverviewDesc': 'Start with main path status, acceptance stages, and config boundaries.',
+    'integrations.tabMessagesDesc': 'Configure Feishu/Lark machine authorization and project routes.',
+    'integrations.tabAgentConnectDesc': 'Handle management API, Bridge, Webhook, and local tokens only here.',
+    'integrations.tabKnowledgeDesc': 'Bind online knowledge, or confirm local knowledge and memory are usable.',
+    'integrations.tabAutomationDesc': 'Review default capabilities, loops, and platform presets.',
+    'integrations.tabDiagnosticsDesc': 'Run acceptance, copy report paths, and inspect diagnostic commands.',
+    'integrations.morePending': '{count} more pending item(s) are available in the workspace.',
     'integrations.agentOsReadiness': 'Agent OS readiness',
     'agentOs.remote-control.title': 'Remote control plane',
     'agentOs.remote-control.desc': 'Management API, Bridge/Webhook, and at least one controllable agent session are ready.',
@@ -5490,10 +5598,7 @@ const translations: Record<Lang, Record<string, string>> = {
             />
             <n-button size="small" :loading="loading" @click="refreshAll">{{ t('common.refresh') }}</n-button>
             <n-button size="small" @click="setLang(lang === 'zh' ? 'en' : 'zh')">{{ lang === 'zh' ? 'EN' : '中文' }}</n-button>
-            <n-switch :value="dark" @update:value="setTheme">
-              <template #checked>Dark</template>
-              <template #unchecked>Light</template>
-            </n-switch>
+            <n-segmented :value="themeMode" :options="themeModeOptions" @update:value="setThemeMode" />
           </div>
         </n-layout-header>
 
@@ -6213,11 +6318,19 @@ const translations: Record<Lang, Record<string, string>> = {
               <n-card><n-statistic :label="t('agents.queuedMessages')" :value="agentControl?.summary.queuedMessages || 0" /></n-card>
               <n-card><n-statistic :label="t('agents.claimedMessages')" :value="agentControl?.summary.claimedMessages || 0" /></n-card>
               <n-card><n-statistic :label="t('agents.completedMessages')" :value="agentControl?.summary.completedMessages || 0" /></n-card>
+              <n-card><n-statistic :label="t('agents.successRate')" :value="agentControl?.summary.successRate != null ? `${Math.round(agentControl.summary.successRate * 100)}%` : '—'" /></n-card>
+              <n-card><n-statistic :label="t('agents.avgLatencyMs')" :value="agentControl?.summary.avgLatencyMs != null ? `${agentControl.summary.avgLatencyMs} ms` : '—'" /></n-card>
+              <n-card><n-statistic :label="t('agents.dryRunRatio')" :value="agentControl?.summary.dryRunRatio != null ? `${Math.round(agentControl.summary.dryRunRatio * 100)}%` : '—'" /></n-card>
+              <n-card><n-statistic :label="t('agents.closedLoopCoverage')" :value="agentControl?.summary.closedLoopCoverage != null ? `${Math.round(agentControl.summary.closedLoopCoverage * 100)}%` : '—'" /></n-card>
               <n-card><n-statistic :label="t('agents.modelCatalog')" :value="agentControl?.modelOptions.length || 0" /></n-card>
             </div>
 
             <n-alert :type="agentControlAlertType">
               {{ agentControlAlertText }}
+            </n-alert>
+
+            <n-alert v-if="agentExecutionModeText" :type="agentExecutionModeType" style="margin-bottom: 12px">
+              {{ agentExecutionModeText }}
             </n-alert>
 
             <div class="agent-workspace-grid">
@@ -6501,6 +6614,10 @@ const translations: Record<Lang, Record<string, string>> = {
                       <span>{{ t('agents.autoImportKnowledge') }}</span>
                       <n-switch :value="agentSessionDraft.autoImportKnowledge" @update:value="value => updateAgentSessionDraft('autoImportKnowledge', value)" />
                     </label>
+                    <label class="agent-switch-row">
+                      <span>{{ t('agents.localExecutor') }}</span>
+                      <n-switch :value="agentSessionDraft.localExecutor" @update:value="value => updateAgentSessionDraft('localExecutor', value)" />
+                    </label>
                   </div>
                   <n-space>
                     <n-button type="primary" :loading="agentSessionSaving" @click="saveAgentSession">{{ t('agents.saveSession') }}</n-button>
@@ -6561,9 +6678,12 @@ const translations: Record<Lang, Record<string, string>> = {
             <div class="integration-workbench">
               <section class="integration-hero">
                 <div class="integration-hero-main">
-                  <div class="closure-eyebrow">
-                    <n-tag :type="integrationCoreClosureTone" size="small">{{ t('integrations.coreClosure') }}</n-tag>
-                    <span>{{ integrationClosureStatusLine }}</span>
+                  <div class="integration-hero-head">
+                    <div class="closure-eyebrow">
+                      <n-tag :type="integrationCoreClosureTone" size="small">{{ t('integrations.coreClosure') }}</n-tag>
+                      <span>{{ integrationClosureStatusLine }}</span>
+                    </div>
+                    <n-tag size="small">{{ t('integrations.readyItems') }} {{ integrationReadyCount }}/{{ integrationClosureItems.length }}</n-tag>
                   </div>
                   <h2>{{ t('integrations.coreClosureTitle') }}</h2>
                   <p>{{ integrationPrimaryWorkItem?.helper || t('integrations.coreClosureReadyLine') }}</p>
@@ -6580,40 +6700,24 @@ const translations: Record<Lang, Record<string, string>> = {
                       <span>{{ t('integrations.optionalClosure') }}</span>
                       <strong>{{ integrationOptionalClosureScore }}%</strong>
                     </div>
-                    <div class="closure-score-cell">
-                      <span>{{ t('integrations.readyItems') }}</span>
-                      <strong>{{ integrationReadyCount }}/{{ integrationClosureItems.length }}</strong>
-                    </div>
                   </div>
-                  <n-space wrap>
+                  <div class="integration-focus-line">
+                    <div>
+                      <span>{{ t('integrations.currentBlocker') }}</span>
+                      <strong>{{ integrationPrimaryWorkItem?.title || t('integrations.allClosed') }}</strong>
+                      <p>{{ integrationPrimaryWorkItem?.helper || integrationPrimaryWorkItem?.description || t('integrations.coreClosureReadyLine') }}</p>
+                    </div>
+                    <code v-if="integrationPrimaryWorkItem?.command">{{ integrationPrimaryWorkItem.command }}</code>
+                  </div>
+                  <n-space class="integration-primary-actions" wrap>
                     <n-button type="primary" @click="focusIntegrationWorkItem(integrationPrimaryWorkItem)">{{ integrationPrimaryWorkItem?.actionLabel || t('commandCenter.openAgents') }}</n-button>
                     <n-button :loading="agentOsBootstrapLoading" @click="bootstrapLocalAgentOs">{{ t('integrations.bootstrapLocal') }}</n-button>
                     <n-button @click="runAgentOsAcceptance" :loading="agentOsAcceptanceLoading">{{ t('integrations.runAcceptance') }}</n-button>
                     <n-button @click="activeIntegrationTab = 'messages'">{{ t('integrations.configureMessages') }}</n-button>
                   </n-space>
                 </div>
-                <aside class="integration-score-card closure-focus-card">
-                  <div class="integration-score-head">
-                    <span>{{ t('integrations.currentBlocker') }}</span>
-                    <n-tag v-if="integrationPrimaryWorkItem" :type="statusTag(integrationPrimaryWorkItem.status)" size="small">{{ statusLabel(integrationPrimaryWorkItem.status) }}</n-tag>
-                  </div>
-                  <div class="closure-focus-body">
-                    <strong>{{ integrationPrimaryWorkItem?.title || t('integrations.allClosed') }}</strong>
-                    <p>{{ integrationPrimaryWorkItem?.helper || integrationPrimaryWorkItem?.description || t('integrations.coreClosureReadyLine') }}</p>
-                    <code v-if="integrationPrimaryWorkItem?.command">{{ integrationPrimaryWorkItem.command }}</code>
-                  </div>
-                  <div class="closure-mini-progress">
-                    <span>{{ t('integrations.remoteClosure') }}</span>
-                    <n-progress type="line" :percentage="integrationRemoteClosureScore" :status="scoreTone(integrationRemoteClosureScore)" :height="8" :border-radius="4" :show-indicator="false" />
-                    <span>{{ t('integrations.optionalClosure') }}</span>
-                    <n-progress type="line" :percentage="integrationOptionalClosureScore" :status="scoreTone(integrationOptionalClosureScore)" :height="8" :border-radius="4" :show-indicator="false" />
-                  </div>
-                </aside>
               </section>
 
-              <n-alert :type="integrationBlockingCount === 0 ? 'success' : 'warning'">
-                {{ integrationBlockingCount === 0 ? t('integrations.coreClosureReadyLine') : t('integrations.coreClosureBlockedLine', { count: integrationBlockingCount }) }}
-              </n-alert>
               <n-alert v-if="feishuSource?.status === 'error'" :type="statusTag(feishuSource?.status || 'missing')">
                 {{ feishuSource?.status === 'ready' ? t('integrations.feishuReady') : sourceReason(feishuSource) || feishuProvider?.nextAction || t('source.feishu-channel.reason') }}
               </n-alert>
@@ -6630,9 +6734,8 @@ const translations: Record<Lang, Record<string, string>> = {
                     <h3>{{ t('integrations.nextActions') }}</h3>
                     <n-text depth="3">{{ integrationActionQueue.length ? t('integrations.nextActionsDesc') : t('integrations.allClosed') }}</n-text>
                   </div>
-                  <div class="integration-step-group">{{ t('integrations.coreClosure') }}</div>
                   <button
-                    v-for="step in integrationCoreClosureItems"
+                    v-for="step in integrationVisibleActionItems"
                     :key="step.id"
                     type="button"
                     class="integration-step"
@@ -6643,55 +6746,28 @@ const translations: Record<Lang, Record<string, string>> = {
                       <strong>{{ step.title }}</strong>
                       <n-tag size="small" :type="statusTag(step.status)">{{ statusLabel(step.status) }}</n-tag>
                     </span>
-                    <small>{{ step.description }}</small>
+                    <small>{{ step.helper || step.description }}</small>
                     <span class="integration-step-meta">{{ step.metric }}</span>
                   </button>
-                  <div class="integration-step-group">{{ t('integrations.remoteClosure') }}</div>
-                  <button
-                    v-for="step in integrationRemoteClosureItems"
-                    :key="step.id"
-                    type="button"
-                    class="integration-step"
-                    :class="{ active: activeIntegrationTab === step.tab, ready: step.status === 'ready' }"
-                    @click="focusIntegrationWorkItem(step)"
-                  >
-                    <span class="integration-step-title">
-                      <strong>{{ step.title }}</strong>
-                      <n-tag size="small" :type="statusTag(step.status)">{{ statusLabel(step.status) }}</n-tag>
-                    </span>
-                    <small>{{ step.description }}</small>
-                    <span class="integration-step-meta">{{ step.metric }}</span>
-                  </button>
-                  <div class="integration-step-group">{{ t('integrations.optionalClosure') }}</div>
-                  <button
-                    v-for="step in integrationOptionalClosureItems"
-                    :key="step.id"
-                    type="button"
-                    class="integration-step"
-                    :class="{ active: activeIntegrationTab === step.tab, ready: step.status === 'ready' }"
-                    @click="focusIntegrationWorkItem(step)"
-                  >
-                    <span class="integration-step-title">
-                      <strong>{{ step.title }}</strong>
-                      <n-tag size="small" :type="statusTag(step.status)">{{ statusLabel(step.status) }}</n-tag>
-                    </span>
-                    <small>{{ step.description }}</small>
-                    <span class="integration-step-meta">{{ step.metric }}</span>
-                  </button>
+                  <div v-if="integrationHiddenActionCount > 0" class="integration-rail-note">
+                    {{ t('integrations.morePending', { count: integrationHiddenActionCount }) }}
+                  </div>
+                  <div v-if="integrationActionQueue.length === 0" class="integration-empty-state">
+                    <strong>{{ t('integrations.allClosed') }}</strong>
+                    <span>{{ t('integrations.coreClosureReadyLine') }}</span>
+                  </div>
+                  <div class="integration-completion-summary">
+                    <span>{{ t('integrations.readyItems') }}</span>
+                    <strong>{{ integrationReadyCount }}/{{ integrationClosureItems.length }}</strong>
+                  </div>
                 </aside>
 
                 <main class="integration-task-board">
                   <div class="integration-task-toolbar">
                     <div>
-                      <h3>{{ t('integrations.configTabs') }}</h3>
-                      <n-text depth="3">{{ t('integrations.configTabsDesc') }}</n-text>
+                      <h3>{{ integrationActiveTabTitle }}</h3>
+                      <n-text depth="3">{{ integrationActiveTabDescription }}</n-text>
                     </div>
-                    <n-space wrap>
-                      <n-button size="small" type="primary" :loading="agentOsBootstrapLoading" @click="bootstrapLocalAgentOs">{{ t('integrations.bootstrapLocal') }}</n-button>
-                      <n-button size="small" @click="applyRecommendedAgentConnectDefaults">{{ t('integrations.applyRecommended') }}</n-button>
-                      <n-button size="small" @click="generateAgentConnectTokens">{{ t('integrations.generateLocalTokens') }}</n-button>
-                      <n-button size="small" :type="agentConnectDirty ? 'primary' : 'default'" :loading="agentConnectSaveLoading" :disabled="!agentConnectDirty" @click="saveAgentConnectConfig">{{ t('integrations.saveAgentConnect') }}</n-button>
-                    </n-space>
                   </div>
 
                   <n-tabs v-model:value="activeIntegrationTab" type="line" animated class="integration-tabs">

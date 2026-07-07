@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { dirname, join, relative } from 'node:path'
 import { DEFAULT_MODELS, LOCAL_MODELS, type ModelConfig } from '../routing/ModelRouter.js'
 import { buildFeishuSendMessageCommand, type FeishuCommandPlan } from '../communication/FeishuChannelProvider.js'
+import type { EventBus } from '../core/eventBus.js'
+import type { AiOsRunReport } from '../runtime/AiOsRuntime.js'
 
 export type AgentControlStatus = 'ready' | 'partial' | 'missing' | 'blocked'
 export type AgentControlMode = 'dry-run' | 'interactive' | 'live-guarded'
@@ -46,6 +48,7 @@ export interface AgentControlSessionConfig {
   commandPrefix: string
   mode: AgentControlMode
   autoImportKnowledge: boolean
+  localExecutor?: boolean
   updatedAt: number
 }
 
@@ -113,6 +116,11 @@ export interface AgentControlReport {
     claimedMessages: number
     completedMessages: number
     failedMessages: number
+    cancelledMessages: number
+    successRate: number | null
+    avgLatencyMs: number | null
+    dryRunRatio: number | null
+    closedLoopCoverage: number | null
   }
   modelOptions: AgentControlModelOption[]
   platformTargets: AgentControlPlatformTarget[]
@@ -143,6 +151,9 @@ export interface AgentControlConversationSummary {
   pendingMessages: number
   completedMessages: number
   blockedMessages: number
+  failedMessages: number
+  cancelledMessages: number
+  successRate: number | null
   firstMessageAt?: number
   lastMessageAt?: number
   latestOperatorText?: string
@@ -226,6 +237,7 @@ export class AgentControlPlane {
     private readonly project: AgentControlProject,
     private readonly platformTargets: AgentControlPlatformTarget[],
     private readonly feishuRoutes: AgentControlFeishuRoute | AgentControlFeishuRoute[],
+    private readonly bus?: EventBus,
   ) {}
 
   getReport(): AgentControlReport {
@@ -244,7 +256,15 @@ export class AgentControlPlane {
         queuedMessages: messages.filter(message => message.status === 'queued').length,
         claimedMessages: messages.filter(message => message.status === 'claimed').length,
         completedMessages: messages.filter(message => message.status === 'completed').length,
-        failedMessages: messages.filter(message => message.status === 'failed' || message.status === 'cancelled').length,
+        failedMessages: messages.filter(message => message.status === 'failed').length,
+        cancelledMessages: messages.filter(message => message.status === 'cancelled').length,
+        successRate: summarizeAgentControlSuccessRate(
+          messages.filter(message => message.status === 'completed').length,
+          messages.filter(message => message.status === 'failed').length,
+        ),
+        avgLatencyMs: summarizeAgentControlAvgLatencyMs(messages),
+        dryRunRatio: summarizeAgentControlDryRunRatio(messages),
+        closedLoopCoverage: summarizeAgentControlClosedLoopCoverage(messages),
       },
       modelOptions,
       platformTargets: this.platformTargets,
@@ -369,6 +389,68 @@ export class AgentControlPlane {
     return record
   }
 
+  isLocalExecutorEnabled(sessionId: string): boolean {
+    try {
+      return Boolean(this.getSessionConfig(sessionId).localExecutor)
+    } catch {
+      return false
+    }
+  }
+
+  async executeLocallyIfEnabled(sessionId: string, messageId: string): Promise<AgentControlMessageRecord | null> {
+    const session = this.getSessionConfig(sessionId)
+    if (!session.localExecutor) return null
+    const message = this.readMessages(sessionId).find(candidate => candidate.id === messageId)
+    if (!message || message.dryRun || message.status !== 'queued') return null
+    return this.executeLocally(sessionId, messageId)
+  }
+
+  private static readonly LOCAL_AGENT_ID = 'local-executor'
+
+  private async executeLocally(sessionId: string, messageId: string): Promise<AgentControlMessageRecord> {
+    // 1) 互斥认领：claimMessage 用 claimedBy ?? agentId（first-wins）。若已被他人认领 → 让位返回。
+    const claimed = this.claimMessage(sessionId, messageId, {
+      agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      note: 'Claimed by local executor.',
+    })
+    if (claimed.claimedBy && claimed.claimedBy !== AgentControlPlane.LOCAL_AGENT_ID) {
+      return claimed
+    }
+
+    // 2) 受治理运行（进程内，不 shell）。allowShell:false 默认不执行外部命令，只规划落报告。
+    let report: AiOsRunReport
+    try {
+      const { createAiOsRun } = await import('../runtime/AiOsRuntime.js')
+      report = await withTimeout(
+        createAiOsRun({
+          projectDir: this.project.projectDir,
+          scaleDir: this.project.scaleDir,
+          task: claimed.text,
+          mode: 'guarded',
+          allowShell: false,
+        }),
+        LOCAL_EXECUTOR_TIMEOUT_MS,
+        'Local executor timed out.',
+      )
+    } catch (error) {
+      const text = `[local-executor] 执行异常：${error instanceof Error ? error.message : String(error)}`
+      return this.completeMessage(sessionId, messageId, {
+        status: 'failed',
+        text,
+        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      }).message
+    }
+
+    // 3) 映射 + 完成（completeMessage 传 text 会自动 postReply，生成 agent-to-operator 回复）。
+    const { result, text, evidencePath } = synthesizeLocalExecutorReply(report)
+    return this.completeMessage(sessionId, messageId, {
+      status: result,
+      text,
+      evidencePath,
+      agentId: AgentControlPlane.LOCAL_AGENT_ID,
+    }).message
+  }
+
   getInbox(sessionId: string, options: { includeClaimed?: boolean } = {}): AgentControlMessageRecord[] {
     return this.readMessages(sessionId).filter(message => {
       if (message.direction !== 'operator-to-agent') return false
@@ -380,7 +462,7 @@ export class AgentControlPlane {
   claimMessage(sessionId: string, messageId: string, input: AgentControlClaimInput = {}): AgentControlMessageRecord {
     const agentId = normalizeString(input.agentId, sessionId)
     const note = normalizeOptionalString(input.note)
-    return this.updateMessage(sessionId, messageId, message => {
+    const claimed = this.updateMessage(sessionId, messageId, message => {
       if (message.direction !== 'operator-to-agent') {
         throw new Error(`Message ${messageId} is not an operator-to-agent task.`)
       }
@@ -395,6 +477,8 @@ export class AgentControlPlane {
         responsePreview: note || `Claimed by ${agentId}.`,
       }
     })
+    this.emitAgentControlMessage(sessionId, claimed, 'claimed')
+    return claimed
   }
 
   completeMessage(sessionId: string, messageId: string, input: AgentControlCompleteInput = {}): AgentControlCompletionResult {
@@ -426,6 +510,7 @@ export class AgentControlPlane {
     const reply = text
       ? this.postReply(sessionId, { text, from: agentId })
       : undefined
+    this.emitAgentControlMessage(sessionId, message, 'completed')
     return { message, reply }
   }
 
@@ -547,6 +632,7 @@ export class AgentControlPlane {
       commandPrefix: route.commandPrefix || '/scale',
       mode: 'dry-run',
       autoImportKnowledge: true,
+      localExecutor: false,
       updatedAt: Date.now(),
     }
   }
@@ -631,12 +717,17 @@ export class AgentControlPlane {
     writeFileSync(path, `${JSON.stringify({ version: 1, sessions }, null, 2)}\n`, 'utf-8')
   }
 
+  private emitAgentControlMessage(sessionId: string, message: AgentControlMessageRecord, phase: 'queued' | 'claimed' | 'completed'): void {
+    this.bus?.emit('agent-control.message', { sessionId, messageId: message.id, message, phase })
+  }
+
   private appendMessage(record: AgentControlMessageRecord): void {
     const path = this.messagesPath(record.sessionId)
     mkdirSync(dirname(path), { recursive: true })
     const previous = existsSync(path) ? readFileSync(path, 'utf-8').trim() : ''
     const next = `${previous ? `${previous}\n` : ''}${JSON.stringify(record)}\n`
     writeFileSync(path, next, 'utf-8')
+    this.emitAgentControlMessage(record.sessionId, record, 'queued')
   }
 
   private updateMessage(
@@ -687,6 +778,8 @@ export class AgentControlPlane {
     const agentMessages = ordered.filter(message => message.direction === 'agent-to-operator')
     const pendingMessages = operatorMessages.filter(message => message.status === 'queued' || message.status === 'claimed')
     const completedMessages = operatorMessages.filter(message => message.status === 'completed')
+    const failedMessages = operatorMessages.filter(message => message.status === 'failed')
+    const cancelledMessages = operatorMessages.filter(message => message.status === 'cancelled')
     const blockedMessages = ordered.filter(message => ['blocked', 'failed', 'cancelled'].includes(message.status))
     const latestOperator = [...operatorMessages].reverse().find(message => message.text.trim())
     const latestAgent = [...agentMessages].reverse().find(message => message.text.trim())
@@ -717,6 +810,9 @@ export class AgentControlPlane {
       pendingMessages: pendingMessages.length,
       completedMessages: completedMessages.length,
       blockedMessages: blockedMessages.length,
+      failedMessages: failedMessages.length,
+      cancelledMessages: cancelledMessages.length,
+      successRate: summarizeAgentControlSuccessRate(completedMessages.length, failedMessages.length),
       firstMessageAt,
       lastMessageAt,
       latestOperatorText: latestOperator ? trimForSummary(latestOperator.text, 240) : undefined,
@@ -777,6 +873,7 @@ function normalizeAgentControlSession(
     commandPrefix: normalizeCommandPrefix(record.commandPrefix, fallback.commandPrefix),
     mode: normalizeMode(record.mode, fallback.mode),
     autoImportKnowledge: typeof record.autoImportKnowledge === 'boolean' ? record.autoImportKnowledge : fallback.autoImportKnowledge,
+    localExecutor: typeof record.localExecutor === 'boolean' ? record.localExecutor : fallback.localExecutor,
     updatedAt: Date.now(),
   }
 }
@@ -893,6 +990,75 @@ function markdownBullets(values: string[]): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
+}
+
+function summarizeAgentControlSuccessRate(completed: number, failed: number): number | null {
+  const concluded = completed + failed
+  if (concluded <= 0) return null
+  return completed / concluded
+}
+
+function summarizeAgentControlAvgLatencyMs(messages: AgentControlMessageRecord[]): number | null {
+  const samples = messages
+    .filter(message => message.status === 'completed' && typeof message.completedAt === 'number')
+    .map(message => (message.completedAt as number) - (typeof message.claimedAt === 'number' ? (message.claimedAt as number) : message.createdAt))
+    .filter((delta): delta is number => Number.isFinite(delta) && delta >= 0)
+  if (samples.length === 0) return null
+  return Math.round(samples.reduce((sum, value) => sum + value, 0) / samples.length)
+}
+
+function summarizeAgentControlDryRunRatio(messages: AgentControlMessageRecord[]): number | null {
+  const operatorMessages = messages.filter(message => message.direction === 'operator-to-agent')
+  if (operatorMessages.length === 0) return null
+  const dryRunCount = operatorMessages.filter(message => message.dryRun).length
+  return dryRunCount / operatorMessages.length
+}
+
+function summarizeAgentControlClosedLoopCoverage(messages: AgentControlMessageRecord[]): number | null {
+  const completed = messages.filter(message => message.status === 'completed')
+  if (completed.length === 0) return null
+  const executedLocally = completed.filter(message => typeof message.evidencePath === 'string' && message.evidencePath.length > 0).length
+  return executedLocally / completed.length
+}
+
+const LOCAL_EXECUTOR_TIMEOUT_MS = 30_000
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+function synthesizeLocalExecutorReply(report: AiOsRunReport): { result: 'completed' | 'failed'; text: string; evidencePath: string } {
+  const failed = report.status === 'blocked' || !report.verification.allPassed
+  const result: 'completed' | 'failed' = failed ? 'failed' : 'completed'
+  const passedSteps = report.steps.filter(step => step.status === 'passed').length
+  const blockedSteps = report.steps.filter(step => step.status === 'blocked').length
+  const verificationCommands = report.verification.commands
+  const passedVerification = verificationCommands.filter(command => command.status === 'passed').length
+  const lines: string[] = [
+    `[local-executor] ${result === 'completed' ? '已完成' : '失败'} · mode=${report.mode} · status=${report.status}`,
+    `任务：${report.plan.task.task ?? '(未命名)'}`,
+    `验证：${passedVerification}/${verificationCommands.length} 通过`,
+    `步骤：${passedSteps} 通过 / ${blockedSteps} 阻断 / 共 ${report.steps.length}`,
+  ]
+  const agentSummary = report.agentExecution?.summary
+  if (agentSummary) {
+    lines.push(`角色协作：${agentSummary.settledRoles}/${agentSummary.totalRoles} 已结算 · 评审门 ${agentSummary.settledReviewGates}/${agentSummary.reviewGates}`)
+  }
+  lines.push(
+    `证据：${report.evidence.produced.length} 已产出 / ${report.evidence.pending.length} 待补`,
+    `报告：${report.artifacts.runReport}`,
+  )
+  const nextActions = report.nextActions
+  if (nextActions.length) lines.push(`下一步：${nextActions.slice(0, 2).join('；')}`)
+  return { result, text: lines.join('\n'), evidencePath: report.artifacts.runReport }
 }
 
 function safeAgentControlSegment(value: string): string {

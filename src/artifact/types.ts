@@ -561,6 +561,7 @@ export type EventType =
   | 'agent.blocked'
   | 'agent.unblocked'
   | 'agent.subscribed'
+  | 'agent-control.message'
   | 'team.formed'
   | 'team.dissolved'
   | 'team.progress_updated'

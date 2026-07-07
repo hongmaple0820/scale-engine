@@ -497,14 +497,11 @@ button.platform-target:hover {
 .integration-workbench {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .integration-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
-  gap: 16px;
-  align-items: stretch;
+  display: block;
 }
 
 .integration-hero-main,
@@ -521,13 +518,16 @@ button.platform-target:hover {
 .integration-hero-main {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px;
+  gap: 14px;
+  padding: 20px;
+  background:
+    linear-gradient(180deg, rgba(24, 160, 88, 0.075), rgba(255, 255, 255, 0.018) 55%),
+    rgba(255, 255, 255, 0.024);
 }
 
 .integration-hero-main h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: 26px;
   line-height: 1.18;
   font-weight: 800;
   letter-spacing: 0;
@@ -541,6 +541,14 @@ button.platform-target:hover {
   line-height: 1.65;
 }
 
+.integration-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .closure-eyebrow {
   display: flex;
   align-items: center;
@@ -552,8 +560,9 @@ button.platform-target:hover {
 
 .closure-score-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 760px;
 }
 
 .closure-score-cell {
@@ -561,7 +570,7 @@ button.platform-target:hover {
   flex-direction: column;
   gap: 5px;
   min-width: 0;
-  padding: 11px;
+  padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
   background: rgba(148, 163, 184, 0.07);
@@ -582,6 +591,58 @@ button.platform-target:hover {
   color: #f0f6fc;
   font-size: 22px;
   line-height: 1.1;
+}
+
+.integration-focus-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, auto);
+  gap: 14px;
+  align-items: center;
+  max-width: 980px;
+  padding: 12px;
+  border: 1px solid rgba(240, 160, 32, 0.28);
+  border-radius: 8px;
+  background: rgba(240, 160, 32, 0.08);
+}
+
+.integration-focus-line span {
+  display: block;
+  color: #d4b36a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.integration-focus-line strong,
+.integration-focus-line p,
+.integration-focus-line code {
+  overflow-wrap: anywhere;
+}
+
+.integration-focus-line strong {
+  display: block;
+  margin-top: 4px;
+  color: #f0f6fc;
+  font-size: 15px;
+}
+
+.integration-focus-line p {
+  margin: 4px 0 0;
+  color: #b9c2cf;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.integration-focus-line code {
+  justify-self: end;
+  padding: 7px 9px;
+  border-radius: 6px;
+  color: #f0f6fc;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 12px;
+}
+
+.integration-primary-actions {
+  margin-top: 2px;
 }
 
 .integration-score-card {
@@ -687,8 +748,8 @@ button.platform-target:hover {
 
 .integration-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 18px;
   align-items: start;
 }
 
@@ -697,8 +758,10 @@ button.platform-target:hover {
   top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   padding: 14px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
 }
 
 .panel-heading {
@@ -719,10 +782,10 @@ button.platform-target:hover {
 .integration-step {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
-  padding: 11px;
+  padding: 10px;
   color: inherit;
   text-align: left;
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -771,8 +834,43 @@ button.platform-target:hover {
   line-height: 1.45;
 }
 
+.integration-rail-note,
+.integration-empty-state,
+.integration-completion-summary {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  color: #8b949e;
+  background: rgba(148, 163, 184, 0.07);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.integration-empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid rgba(24, 160, 88, 0.24);
+  color: #b9c2cf;
+  background: rgba(24, 160, 88, 0.07);
+}
+
+.integration-empty-state strong,
+.integration-completion-summary strong {
+  color: #f0f6fc;
+}
+
+.integration-completion-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .integration-task-board {
-  padding: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .integration-task-toolbar {
@@ -780,11 +878,13 @@ button.platform-target:hover {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .integration-tabs .n-tabs-nav {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .integration-tab-layout {
@@ -2073,6 +2173,7 @@ button.platform-target:hover {
 
   .integration-step-rail {
     position: static;
+    max-height: none;
   }
 
   .path-grid {
@@ -2133,6 +2234,7 @@ button.platform-target:hover {
   .integration-status-strip,
   .integration-stat-strip,
   .closure-mini-progress,
+  .integration-focus-line,
   .readiness-stage-grid,
   .agent-config-grid,
   .agent-quick-stats,
@@ -2144,6 +2246,11 @@ button.platform-target:hover {
 
   .closure-score-cell strong {
     font-size: 20px;
+  }
+
+  .integration-focus-line code {
+    justify-self: start;
+    max-width: 100%;
   }
 
   .integration-task-toolbar {

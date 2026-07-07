@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import Database from 'better-sqlite3'
 import type { ServerType } from '@hono/node-server'
-import type { EventBus } from '../core/eventBus.js'
-import type { Gate } from '../artifact/types.js'
+import { EventBus } from '../core/eventBus.js'
+import type { Gate, Event as BusEvent } from '../artifact/types.js'
 import type { IArtifactStore } from '../artifact/store.js'
 import type { IFSM } from '../artifact/fsm.js'
 import type { IEvolutionEvaluator, EvolutionMetrics } from '../evolution/EvolutionEvaluator.js'
@@ -864,6 +864,7 @@ export interface DashboardOptions {
 export class DashboardServer {
   private app: Hono
   private bus: EventBus | null
+  private agentControlBus: EventBus
   private store: IArtifactStore | null
   private fsm: IFSM | null
   private evaluator: IEvolutionEvaluator | null
@@ -891,6 +892,7 @@ export class DashboardServer {
     this.host = options.host ?? '0.0.0.0'
     this.projectDir = resolve(options.projectDir ?? process.cwd())
     this.scaleDir = resolve(options.scaleDir ?? join(this.projectDir, '.scale'))
+    this.agentControlBus = new EventBus({ eventsDir: join(this.scaleDir, 'events', 'agent-control') })
     this.currentProject = normalizeProjectSummary({
       id: options.currentProjectId,
       name: options.projectName,
@@ -984,7 +986,6 @@ export class DashboardServer {
         'sessions': 'session-timeline.html',
         'knowledge': 'knowledge-graph.html',
         'evolution': 'evolution-metrics.html',
-        'agents': 'agent-stats.html',
         'topology': 'topology.html',
       }
       const viewFile = viewMap[view]
@@ -1785,14 +1786,19 @@ export class DashboardServer {
       }
     })
     this.app.post('/api/agent-control/sessions/:sessionId/messages', async (c) => {
+      const sessionId = c.req.param('sessionId')
       const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
       try {
-        const message = this.getAgentControlPlane().sendMessage(c.req.param('sessionId'), body)
+        const plane = this.getAgentControlPlane()
+        const message = plane.sendMessage(sessionId, body)
+        const willExecute = plane.isLocalExecutorEnabled(sessionId) && !message.dryRun && message.status === 'queued'
+        const executed = willExecute ? await plane.executeLocallyIfEnabled(sessionId, message.id) : null
         this.invalidateDashboardReportCaches()
         return c.json({
           ok: true,
-          message,
-        } satisfies { ok: true; message: AgentControlMessageRecord })
+          message: executed ?? message,
+          willExecute,
+        } satisfies { ok: true; message: AgentControlMessageRecord; willExecute: boolean })
       } catch (error) {
         return c.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 400)
       }
@@ -1925,8 +1931,8 @@ export class DashboardServer {
           }
         }, 30000)
 
-        // Listen for events
-        const unsub = this.bus?.on('*', async (event) => {
+        // Listen for events (runtime bus + internal agent-control bus)
+        const forward = async (event: BusEvent): Promise<void> => {
           if (!alive) return
           try {
             await stream.writeSSE({
@@ -1936,6 +1942,7 @@ export class DashboardServer {
                   type: event.type,
                   timestamp: event.timestamp,
                   artifactId: event.artifactId,
+                  payload: event.payload,
                 },
               }),
               event: 'event',
@@ -1943,13 +1950,16 @@ export class DashboardServer {
           } catch {
             alive = false
           }
-        })
+        }
+        const unsubRuntime = this.bus?.on('*', forward)
+        const unsubAgent = this.agentControlBus.on('*', forward)
 
         // Wait until client disconnects
         stream.onAbort(() => {
           alive = false
           clearInterval(heartbeat)
-          unsub?.unsubscribe()
+          unsubRuntime?.unsubscribe()
+          unsubAgent.unsubscribe()
         })
 
         // Keep alive
@@ -2739,6 +2749,8 @@ export class DashboardServer {
           `ready=${agentControl.summary.ready}`,
           `queued=${agentControl.summary.queuedMessages}`,
           `failed=${agentControl.summary.failedMessages}`,
+          `cancelled=${agentControl.summary.cancelledMessages}`,
+          `successRate=${agentControl.summary.successRate == null ? 'n/a' : `${(agentControl.summary.successRate * 100).toFixed(1)}%`}`,
         ],
         blockers: [
           ...(!hasAgentSession ? ['No agent-control sessions exist.'] : []),
@@ -2843,6 +2855,7 @@ export class DashboardServer {
         targetLabel: route.targetLabel,
         commandPrefix: route.commandPrefix,
       })),
+      this.agentControlBus,
     )
   }
 
