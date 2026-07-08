@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^2.0.4
-        version: 2.0.5(hono@4.12.18)
+        version: 2.0.5(hono@4.12.27)
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@3.25.76)
@@ -37,7 +37,7 @@ importers:
         version: 9.6.1
       hono:
         specifier: ^4.5.0
-        version: 4.12.18
+        version: 4.12.27
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.0
@@ -1415,8 +1415,8 @@ packages:
     resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
     engines: {node: '>=12.0.0'}
 
-  hono@4.12.18:
-    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+  hono@4.12.27:
+    resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@2.0.2:
@@ -2451,13 +2451,13 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@hono/node-server@1.19.14(hono@4.12.18)':
+  '@hono/node-server@1.19.14(hono@4.12.27)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.12.27
 
-  '@hono/node-server@2.0.5(hono@4.12.18)':
+  '@hono/node-server@2.0.5(hono@4.12.27)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.12.27
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -2504,7 +2504,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.18)
+      '@hono/node-server': 1.19.14(hono@4.12.27)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -2514,7 +2514,7 @@ snapshots:
       eventsource-parser: 3.0.8
       express: 5.2.1
       express-rate-limit: 8.5.1(express@5.2.1)
-      hono: 4.12.18
+      hono: 4.12.27
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -3486,7 +3486,7 @@ snapshots:
 
   highlight.js@11.11.1: {}
 
-  hono@4.12.18: {}
+  hono@4.12.27: {}
 
   html-escaper@2.0.2: {}
 
