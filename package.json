@@ -76,7 +76,7 @@
     "@typescript-eslint/typescript-estree": "^8.59.3",
     "better-sqlite3": "^11.10.0",
     "chokidar": "^3.6.0",
-    "citty": "^0.1.6",
+    "citty": "^0.2.2",
     "content-type": "1.0.5",
     "echarts": "^6.1.0",
     "execa": "^9.3.0",
