@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^2.0.4
-        version: 2.0.5(hono@4.12.18)
+        version: 2.0.8(hono@4.12.18)
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@3.25.76)
@@ -478,8 +478,8 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hono/node-server@2.0.5':
-    resolution: {integrity: sha512-yQFvDmyDo3y6rEOJZDUYPJ49DIKTPpIk4kGvm40xx4Ejne0Pu9a1+exxPN+C1UppWK/WGZX9F++/Xs231tE86g==}
+  '@hono/node-server@2.0.8':
+    resolution: {integrity: sha512-GuCWzLxwg218fy1JaHculFsdcuY12hxit83V+algozTPnwhNjLrRL/Alg9OYjLZLoUZ1rw/S4CdTMsnkSKCmFA==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
@@ -2455,7 +2455,7 @@ snapshots:
     dependencies:
       hono: 4.12.18
 
-  '@hono/node-server@2.0.5(hono@4.12.18)':
+  '@hono/node-server@2.0.8(hono@4.12.18)':
     dependencies:
       hono: 4.12.18
 
