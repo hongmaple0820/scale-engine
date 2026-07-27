@@ -2,12 +2,12 @@ run,gate,duration_ms,status
 1,G0,0,pass
 1,G3,0,pass
 1,G4,7000,pass
-1,G5,384000,pass
+1,G5,394000,pass
 2,G0,0,pass
 2,G3,0,pass
-2,G4,6000,pass
-2,G5,373000,pass
+2,G4,7000,pass
+2,G5,385000,pass
 3,G0,0,pass
 3,G3,0,pass
-3,G4,6000,pass
-3,G5,375000,pass
+3,G4,7000,pass
+3,G5,387000,pass
