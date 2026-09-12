@@ -1466,6 +1466,14 @@ button.platform-target:hover {
   padding-right: 4px;
 }
 
+.agent-message-list-virtual {
+  padding-right: 4px;
+}
+
+.agent-message-list-virtual .agent-message {
+  margin-bottom: 10px;
+}
+
 .agent-compose-sticky {
   position: sticky;
   bottom: 0;

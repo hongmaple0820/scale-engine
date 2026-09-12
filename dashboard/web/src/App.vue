@@ -37,6 +37,7 @@ import {
   NTag,
   NText,
   NThing,
+  NVirtualList,
   zhCN,
   type DataTableColumns,
 } from 'naive-ui'
@@ -1259,6 +1260,9 @@ const selectedAgentMessages = computed(() => (agentControl.value?.messages || []
 const agentTimelineMessages = computed(() => [...(agentTranscript.value?.session.sessionId === selectedAgentSession.value?.sessionId
   ? agentTranscript.value.messages
   : selectedAgentMessages.value)].sort((left, right) => left.createdAt - right.createdAt))
+const AGENT_TIMELINE_VIRTUAL_THRESHOLD = 50
+const agentTimelineUseVirtualList = computed(() => agentTimelineMessages.value.length > AGENT_TIMELINE_VIRTUAL_THRESHOLD)
+const agentTimelineVirtualItems = computed(() => agentTimelineMessages.value.map(message => ({ ...message, key: message.id })))
 const agentConversationSummary = computed(() => agentTranscript.value?.session.sessionId === selectedAgentSession.value?.sessionId
   ? agentTranscript.value.summary
   : null)
@@ -6386,7 +6390,7 @@ const translations: Record<Lang, Record<string, string>> = {
                 <n-tabs v-model:value="agentWorkbenchTab" type="segment" animated>
                   <n-tab-pane name="chat" :tab="t('agents.chatConsole')">
                     <n-spin :show="agentTranscriptLoading">
-                      <div class="agent-message-list agent-message-list-large">
+                      <div v-if="!agentTimelineUseVirtualList" class="agent-message-list agent-message-list-large">
                         <n-empty v-if="agentTimelineMessages.length === 0" :description="t('agents.noMessages')" />
                         <article
                           v-for="message in agentTimelineMessages"
@@ -6432,6 +6436,59 @@ const translations: Record<Lang, Record<string, string>> = {
                           </div>
                         </article>
                       </div>
+                      <n-virtual-list
+                        v-else
+                        class="agent-message-list-virtual"
+                        :items="agentTimelineVirtualItems"
+                        :item-size="150"
+                        item-resizable
+                        style="height: min(58vh, 680px)"
+                      >
+                        <template #default="{ item }">
+                          <!-- keep in sync with the non-virtual agent-message block above -->
+                          <article
+                            class="agent-message"
+                            :class="[item.direction, item.status]"
+                          >
+                            <header>
+                              <strong>{{ item.direction === 'operator-to-agent' ? t('agents.operator') : t('agents.agent') }}</strong>
+                              <n-space align="center" size="small">
+                                <n-tag size="small" :type="agentMessageStatusTag(item.status)">{{ item.status }}</n-tag>
+                                <n-text depth="3">{{ formatTime(item.createdAt) }}</n-text>
+                              </n-space>
+                            </header>
+                            <p>{{ item.text }}</p>
+                            <n-text depth="3">{{ item.platformId }} / {{ item.modelId }} / {{ item.channelProvider }}{{ item.dryRun ? ` · ${t('agents.dryRun')}` : '' }}</n-text>
+                            <n-text v-if="item.claimedBy" depth="3">{{ t('agents.claimedBy') }} {{ item.claimedBy }} / {{ formatTime(item.claimedAt) }}</n-text>
+                            <n-text v-if="item.completedAt" depth="3">{{ t('agents.completedAt') }} {{ formatTime(item.completedAt) }}</n-text>
+                            <n-text v-if="item.evidencePath" depth="3">{{ item.evidencePath }}</n-text>
+                            <pre v-if="item.commandPlan" class="code-box compact">{{ commandPlanText(item.commandPlan) }}</pre>
+                            <div v-if="item.commandPlan || item.direction === 'operator-to-agent'" class="doc-actions">
+                              <n-button v-if="item.commandPlan" size="small" @click="copyText(commandPlanText(item.commandPlan))">{{ t('common.copy') }}</n-button>
+                              <n-button
+                                v-if="item.direction === 'operator-to-agent' && item.status === 'queued'"
+                                size="small"
+                                :loading="agentMessageActionLoading === `claim:${item.key}`"
+                                @click="claimAgentMessage(item)"
+                              >
+                                {{ t('agents.claimMessage') }}
+                              </n-button>
+                              <n-button
+                                v-if="item.direction === 'operator-to-agent' && ['queued', 'claimed'].includes(item.status)"
+                                size="small"
+                                type="primary"
+                                :loading="agentMessageActionLoading === `complete:${item.key}`"
+                                @click="completeAgentMessage(item)"
+                              >
+                                {{ t('agents.completeMessage') }}
+                              </n-button>
+                            </div>
+                            <div v-if="item.warnings.length" class="agent-warning-list">
+                              <n-alert v-for="warning in item.warnings" :key="warning" type="warning">{{ warning }}</n-alert>
+                            </div>
+                          </article>
+                        </template>
+                      </n-virtual-list>
                     </n-spin>
                     <div class="agent-compose agent-compose-sticky">
                       <n-input
