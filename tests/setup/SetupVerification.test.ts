@@ -603,6 +603,393 @@ describe('verifySetup', () => {
     expect(report.warnings).not.toContain('Memory provider is not initialized; full setup remains usable for installed non-memory capabilities.')
   })
 
+  it('blocks when built-in hrain memory needs initialization', async () => {
+    bootstrap.bootstrapDependencies.mockResolvedValue({
+      ok: true,
+      complete: false,
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      packIds: ['memory'],
+      includeIds: [],
+      apply: false,
+      runtimeChecks: [],
+      items: [
+        {
+          id: 'hrain',
+          name: 'Hrain Local Memory',
+          kind: 'cli',
+          packs: ['memory'],
+          source: 'https://github.com/hongmaple0820/scale-engine',
+          installed: true,
+          status: 'needs-init',
+          installSupported: false,
+          detectedBy: 'built-in:scale-memory-brain',
+          prerequisites: [],
+        },
+      ],
+      summary: {
+        total: 1,
+        installed: 0,
+        ready: 0,
+        manualReview: 0,
+        needsInit: 1,
+        versionDrift: 0,
+        installedNow: 0,
+        failed: 0,
+      },
+      postActions: [],
+      postChecks: [],
+      postCheckSummary: { total: 0, passed: 0, warned: 0, failed: 0 },
+      postCheckCommands: ['scale memory provider status --json'],
+      rollbackHints: [],
+      recommendations: [],
+    })
+
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: true,
+      status: 'healthy',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.13.1',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: {
+        defaultShell: 'powershell',
+        comspec: 'cmd.exe',
+        detected: [],
+      },
+      path: {
+        delimiter: ';',
+        entryCount: 1,
+        entriesPreview: ['C:\\tools'],
+      },
+      checks: [],
+      warnings: [],
+      recommendations: [],
+    })
+
+    memoryProviders.inspectMemoryProviders.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/memory-providers.json',
+      configExists: true,
+      routing: {
+        mode: 'local-only',
+        defaultOrder: ['hrain', 'gbrain'],
+        allowExternalWrite: false,
+        requireEvidence: true,
+        maxResultsPerProvider: 5,
+      },
+      providers: [
+        {
+          id: 'hrain',
+          kind: 'hrain',
+          enabled: true,
+          available: false,
+          selectedByDefault: true,
+          priority: 100,
+          capabilities: ['local-recall'],
+          safetyLevel: 'review-required',
+          writeMode: 'candidate-only',
+          reason: 'hrain local memory has not been initialized in this workspace',
+        },
+      ],
+      availableProviderCount: 0,
+      warnings: [],
+    })
+
+    toolCapabilities.inspectToolCapabilities.mockReturnValue({
+      ok: true,
+      summary: {
+        total: 0,
+        installed: 0,
+        missing: 0,
+      },
+      tools: [],
+    })
+
+    const report = await verifySetup({ packIds: ['memory'] })
+
+    expect(report.ok).toBe(false)
+    expect(report.summary.blockingIssues).toEqual(expect.arrayContaining([
+      'Initialization required: hrain',
+      'No memory provider is currently available',
+    ]))
+    expect(report.summary.dependencyStatus.needsInit).toEqual(['hrain'])
+  })
+
+  it('keeps local-only memory usable when gbrain falls back while hrain is unavailable', async () => {
+    bootstrap.bootstrapDependencies.mockResolvedValue({
+      ok: true,
+      complete: true,
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      packIds: ['memory'],
+      includeIds: [],
+      apply: false,
+      runtimeChecks: [],
+      items: [
+        {
+          id: 'hrain',
+          name: 'Hrain Local Memory',
+          kind: 'cli',
+          packs: ['memory'],
+          source: 'https://github.com/hongmaple0820/scale-engine',
+          installed: true,
+          status: 'installed',
+          installSupported: false,
+          detectedBy: 'built-in:scale-memory-brain',
+          prerequisites: [],
+        },
+        {
+          id: 'gbrain',
+          name: 'GBrain',
+          kind: 'cli',
+          packs: ['memory'],
+          source: 'https://github.com/garrytan/gbrain',
+          installed: true,
+          status: 'installed',
+          installSupported: false,
+          detectedBy: 'PATH:gbrain',
+          prerequisites: [],
+        },
+      ],
+      summary: {
+        total: 2,
+        installed: 2,
+        ready: 0,
+        manualReview: 0,
+        needsInit: 0,
+        versionDrift: 0,
+        installedNow: 0,
+        failed: 0,
+      },
+      postActions: [],
+      postChecks: [],
+      postCheckSummary: { total: 0, passed: 0, warned: 0, failed: 0 },
+      postCheckCommands: ['scale memory provider status --json'],
+      rollbackHints: [],
+      recommendations: [],
+    })
+
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: true,
+      status: 'healthy',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.13.1',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: {
+        defaultShell: 'powershell',
+        comspec: 'cmd.exe',
+        detected: [],
+      },
+      path: {
+        delimiter: ';',
+        entryCount: 1,
+        entriesPreview: ['C:\\tools'],
+      },
+      checks: [],
+      warnings: [],
+      recommendations: [],
+    })
+
+    memoryProviders.inspectMemoryProviders.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/memory-providers.json',
+      configExists: true,
+      routing: {
+        mode: 'local-only',
+        defaultOrder: ['hrain', 'gbrain'],
+        allowExternalWrite: false,
+        requireEvidence: true,
+        maxResultsPerProvider: 5,
+      },
+      providers: [
+        {
+          id: 'hrain',
+          kind: 'hrain',
+          enabled: true,
+          available: false,
+          selectedByDefault: true,
+          priority: 100,
+          capabilities: ['local-recall'],
+          safetyLevel: 'review-required',
+          writeMode: 'candidate-only',
+          reason: 'hrain local storage is temporarily unavailable',
+        },
+        {
+          id: 'gbrain',
+          kind: 'gbrain',
+          enabled: true,
+          available: true,
+          selectedByDefault: false,
+          priority: 95,
+          capabilities: ['semantic-recall'],
+          safetyLevel: 'review-required',
+          writeMode: 'disabled',
+          reason: 'gbrain core recall is available.',
+        },
+      ],
+      availableProviderCount: 1,
+      warnings: [],
+    })
+
+    toolCapabilities.inspectToolCapabilities.mockReturnValue({
+      ok: true,
+      summary: {
+        total: 1,
+        installed: 1,
+        missing: 0,
+      },
+      tools: [
+        {
+          id: 'gbrain',
+          name: 'GBrain',
+          category: 'cli',
+          checkedPaths: ['PATH:gbrain'],
+          installed: true,
+          status: 'installed',
+        },
+      ],
+    })
+
+    const report = await verifySetup({ packIds: ['memory'] })
+
+    expect(report.ok).toBe(true)
+    expect(report.summary.blockingIssues).toEqual([])
+    expect(report.summary.availableMemoryProviders).toBe(1)
+  })
+
+  it('surfaces memory provider warnings in the final report', async () => {
+    bootstrap.bootstrapDependencies.mockResolvedValue({
+      ok: true,
+      complete: true,
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      packIds: ['memory'],
+      includeIds: [],
+      apply: false,
+      runtimeChecks: [],
+      items: [
+        {
+          id: 'hrain',
+          name: 'Hrain Local Memory',
+          kind: 'cli',
+          packs: ['memory'],
+          source: 'https://github.com/hongmaple0820/scale-engine',
+          installed: true,
+          status: 'installed',
+          installSupported: false,
+          detectedBy: 'built-in:scale-memory-brain',
+          prerequisites: [],
+        },
+      ],
+      summary: {
+        total: 1,
+        installed: 1,
+        ready: 0,
+        manualReview: 0,
+        needsInit: 0,
+        versionDrift: 0,
+        installedNow: 0,
+        failed: 0,
+      },
+      postActions: [],
+      postChecks: [],
+      postCheckSummary: { total: 0, passed: 0, warned: 0, failed: 0 },
+      postCheckCommands: ['scale memory provider status --json'],
+      rollbackHints: [],
+      recommendations: [],
+    })
+
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: true,
+      status: 'healthy',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.13.1',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: {
+        defaultShell: 'powershell',
+        comspec: 'cmd.exe',
+        detected: [],
+      },
+      path: {
+        delimiter: ';',
+        entryCount: 1,
+        entriesPreview: ['C:\\tools'],
+      },
+      checks: [],
+      warnings: [],
+      recommendations: [],
+    })
+
+    memoryProviders.inspectMemoryProviders.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/memory-providers.json',
+      configExists: true,
+      routing: {
+        mode: 'local-only',
+        defaultOrder: ['hrain', 'gbrain'],
+        allowExternalWrite: false,
+        requireEvidence: true,
+        maxResultsPerProvider: 5,
+      },
+      providers: [
+        {
+          id: 'hrain',
+          kind: 'hrain',
+          enabled: true,
+          available: true,
+          selectedByDefault: true,
+          priority: 100,
+          capabilities: ['local-recall'],
+          safetyLevel: 'review-required',
+          writeMode: 'candidate-only',
+          reason: 'hrain local memory is available.',
+        },
+      ],
+      availableProviderCount: 1,
+      warnings: ['Memory provider config contains a stale gbrain entry without routing.'],
+    })
+
+    toolCapabilities.inspectToolCapabilities.mockReturnValue({
+      ok: true,
+      summary: {
+        total: 0,
+        installed: 0,
+        missing: 0,
+      },
+      tools: [],
+    })
+
+    const report = await verifySetup({ packIds: ['memory'] })
+
+    expect(report.ok).toBe(true)
+    expect(report.warnings).toContain('Memory provider config contains a stale gbrain entry without routing.')
+    expect(report.summary.warningCount).toBe(1)
+  })
+
   it('skips memory and code provider probes when their packs are not selected', async () => {
     bootstrap.bootstrapDependencies.mockResolvedValue({
       ok: true,
