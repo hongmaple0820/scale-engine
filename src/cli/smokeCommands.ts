@@ -29,6 +29,17 @@ export interface SmokeCommandOptions extends DashboardServiceOptions {
   healthTimeoutMs?: number
 }
 
+export interface SmokeCustomerSummary {
+  headline: string
+  total: number
+  passed: number
+  warned: number
+  failed: number
+  skipped: number
+  dashboardUrl?: string
+  fixFirst: string[]
+}
+
 export interface SmokeCommandReport {
   ok: boolean
   status: SmokeReportStatus
@@ -48,6 +59,7 @@ export interface SmokeCommandReport {
     reportPath?: string
   }
   nextActions: string[]
+  customerSummary: SmokeCustomerSummary
 }
 
 interface SmokeCommandDeps {
@@ -335,6 +347,7 @@ function finalizeSmokeReport(input: {
     dashboard: input.dashboard,
     checks: input.checks,
     artifacts: {},
+    customerSummary: summarizeForCustomer(status, input.checks, dashboardUrl),
     nextActions: status === 'failed'
       ? [
           `scale install --dir ${quotePathForDisplay(input.projectDir)}`,
@@ -345,6 +358,38 @@ function finalizeSmokeReport(input: {
           `scale open --dir ${quotePathForDisplay(input.projectDir)}${optionsHint}`,
           dashboardUrl,
         ],
+  }
+}
+
+function summarizeForCustomer(
+  status: SmokeReportStatus,
+  checks: SmokeCheck[],
+  dashboardUrl: string,
+): SmokeCustomerSummary {
+  const passed = checks.filter(check => check.status === 'pass').length
+  const warned = checks.filter(check => check.status === 'warn').length
+  const failed = checks.filter(check => check.status === 'fail').length
+  const skipped = checks.filter(check => check.status === 'skip').length
+  const total = checks.length
+  let headline: string
+  if (status === 'failed') {
+    headline = `${failed} of ${total} checks failed. Fix the items below before delivery.`
+  } else if (status === 'degraded') {
+    headline = `${passed} of ${total} checks passed, but ${warned} need attention before delivery.`
+  } else if (skipped > 0) {
+    headline = `All ${passed} checks passed (${skipped} skipped). The workspace is ready to use.`
+  } else {
+    headline = `All ${total} checks passed. The workspace is ready to use.`
+  }
+  return {
+    headline,
+    total,
+    passed,
+    warned,
+    failed,
+    skipped,
+    dashboardUrl,
+    fixFirst: checks.filter(check => check.status === 'fail').map(check => check.label),
   }
 }
 
@@ -402,6 +447,10 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<{ o
 function renderSmokeReport(report: SmokeCommandReport): void {
   console.log('SCALE Smoke')
   console.log(`  Result: ${report.status}`)
+  console.log(`  Summary: ${report.customerSummary.headline}`)
+  if (report.customerSummary.fixFirst.length > 0) {
+    console.log(`  Fix first: ${report.customerSummary.fixFirst.join(', ')}`)
+  }
   console.log(`  Project: ${report.projectDir}`)
   if (report.dashboard) console.log(`  Dashboard: ${report.dashboard.url}`)
   if (report.artifacts.reportPath) console.log(`  Report: ${report.artifacts.reportPath}`)
