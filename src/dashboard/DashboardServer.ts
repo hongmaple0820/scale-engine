@@ -2750,7 +2750,7 @@ export class DashboardServer {
           `queued=${agentControl.summary.queuedMessages}`,
           `failed=${agentControl.summary.failedMessages}`,
           `cancelled=${agentControl.summary.cancelledMessages}`,
-          `successRate=${agentControl.summary.successRate == null ? 'n/a' : `${(agentControl.summary.successRate * 100).toFixed(1)}%`}`,
+          `successRate=${agentControl.summary.successRate === null ? 'n/a' : `${(agentControl.summary.successRate * 100).toFixed(1)}%`}`,
         ],
         blockers: [
           ...(!hasAgentSession ? ['No agent-control sessions exist.'] : []),
