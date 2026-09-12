@@ -82,6 +82,11 @@ describe('open and smoke CLI helpers', () => {
     expect(smokeReport.status).toBe('passed')
     expect(smokeReport.dashboard?.url).toBe('http://127.0.0.1:43212/#agents')
     expect(smokeReport.nextActions).toContain(`scale open --dir ${projectDir} --port 43212`)
+    expect(smokeReport.customerSummary.headline).toBe('All 4 checks passed. The workspace is ready to use.')
+    expect(smokeReport.customerSummary.passed).toBe(4)
+    expect(smokeReport.customerSummary.failed).toBe(0)
+    expect(smokeReport.customerSummary.fixFirst).toEqual([])
+    expect(smokeReport.customerSummary.dashboardUrl).toBe('http://127.0.0.1:43212/#agents')
   }, 120_000)
 
   it('runs the local smoke message loop and writes an acceptance report', async () => {
@@ -109,7 +114,30 @@ describe('open and smoke CLI helpers', () => {
     expect(existsSync(report.artifacts.reportPath ?? '')).toBe(true)
     expect(report.nextActions).toContain(`scale open --dir ${projectDir} --port 43212`)
     expect(report.nextActions).toContain('http://127.0.0.1:43212/#agents')
+    expect(report.customerSummary.headline).toBe('All 3 checks passed (1 skipped). The workspace is ready to use.')
+    expect(report.customerSummary.skipped).toBe(1)
     expect(normalizeSmokeArgs({ dir: projectDir, dashboard: false }).startDashboard).toBe(false)
+  }, 120_000)
+
+  it('summarizes failures for the customer when the workspace is not initialized', async () => {
+    const projectDir = makeProject('scale-smoke-uninitialized-')
+    const scaleDir = join(projectDir, '.scale')
+
+    const report = await runSmokeChecks({
+      projectDir,
+      scaleDir,
+      startDashboard: false,
+      port: 43212,
+      sessionId: 'vitest-smoke-uninitialized',
+      agentId: 'vitest-agent',
+      messageText: 'Vitest uninitialized smoke.',
+    })
+
+    expect(report.status).toBe('failed')
+    expect(report.customerSummary.failed).toBe(1)
+    expect(report.customerSummary.headline).toBe('1 of 4 checks failed. Fix the items below before delivery.')
+    expect(report.customerSummary.fixFirst).toEqual(['SCALE install'])
+    expect(report.customerSummary.skipped).toBe(2)
   }, 120_000)
 })
 
