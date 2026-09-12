@@ -79,11 +79,10 @@ describe('WorkBuddyAdapter', () => {
   })
 
   it('isInstalled detects existing .workbuddy directory', async () => {
-    expect(adapter.isInstalled()).toBe(false)
     await adapter.init({ projectDir: TMP })
-    const sameAdapter = new WorkBuddyAdapter()
-    await sameAdapter.init({ projectDir: TMP })
-    expect(sameAdapter.isInstalled()).toBe(true)
+    expect(adapter.isInstalled()).toBe(true)
+    rmSync(join(TMP, '.workbuddy'), { recursive: true, force: true })
+    expect(adapter.isInstalled()).toBe(false)
   })
 })
 
