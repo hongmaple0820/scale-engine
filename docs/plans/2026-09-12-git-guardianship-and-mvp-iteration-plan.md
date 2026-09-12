@@ -173,6 +173,18 @@ slice: define(≤10min) → plan → build(含测试) → gate-delivery → comm
 
 > R1-R3 是当前分支（0.55.x 发布线）的收尾，优先做；R4-R6 是治理基建，按序推进。每个迭代即一个 commit 单元（问题 2 的粒度要求）。
 
+### 4.1.1 落地记录
+
+**R3 已落地。** D7 采用阈值混合渲染：≤50 条消息保持原 `v-for`（旧会话零影响），>50 条切换 `n-virtual-list`（`item-resizable` 处理变高条目）。验证由 `verify-dashboard-browser.mjs` 承担（新增 agents 页 + 阈值双侧断言），实测 60 条消息仅渲染 6 个 DOM 节点。KPI 核对结论：`successRate`/`avgLatencyMs`/`closedLoopCoverage` 均为服务端单源计算，UI 直读 `agentControl.summary` 不重算，且已有 `agentControlSuccessRate.test.ts`/`metricsAggregator.test.ts` 覆盖，无一致性缺口。
+
+R3 期间顺带修掉三个 S5（`d3a201c`）遗留的交付阻塞项：
+
+1. **SPA 完全无法挂载**：`const dark` 改名 `isDark` 后漏改 5 处引用，`setup` 阶段抛 `ReferenceError: dark is not defined`，`#app` 只剩 `<!---->`。根因是 `tsconfig.json` 的 `include` 仅覆盖 `src/**`，`dashboard/web/**` 既无类型检查也无测试覆盖，改名错误无门禁可拦。
+2. **lint 门禁红**：`DashboardServer.ts:2753` 的 `successRate == null` 违反 `eqeqeq`（字段类型为 `number | null`，改 `=== null` 语义等价）。
+3. **E2E 产物污染仓库根**：截图写到 `dashboard-overview.png` 触发 `root-artifact-placement` 门禁，已改到 `.agent/logs/dashboard-e2e/`。
+
+**新发现（未修，待排期）**：dashboard 首屏阻塞约 25-30s。`/api/v1/workbench` 在 bootstrap 快照内，构建时经 `inspectToolCapabilities` 对工具目录逐项执行 `where.exe <tool>` + `<tool> --version`，**每次请求都重跑且无缓存**；本机装了十余个 CLI，单次累计约 26s，同步阻塞 root HTML 响应。诊断方式与候选修复见 `docs/guides/DASHBOARD_DAEMON.md` 的「Known issue: slow first paint from capability probing」。
+
 ### 4.2 回滚预案
 
 - 每个 R 独立分支（`codex/` 前缀，遵循 `.scale/workspace.json` GitLab flow），独立 PR，可单独 revert。

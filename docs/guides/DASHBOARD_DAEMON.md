@@ -127,3 +127,34 @@ If the browser opens a blank page:
    ```
 
 The dashboard root page uses a lightweight bootstrap so the HTML can render even when heavy capability, topology, knowledge, or metrics endpoints are slow. Those panels load asynchronously after the app starts.
+
+## Browser Verification
+
+The SPA shell has no unit-test coverage, so behavioural changes to `dashboard/web/src/App.vue` must be verified in a real browser:
+
+```bash
+npm run build
+node verify-dashboard-browser.mjs
+```
+
+The script starts `DashboardServer` against a throwaway project directory (so seeded messages never touch the real `.scale`), loads the SPA shell once, then drives every page through the app's own `hashchange` routing. It asserts:
+
+- every page renders and produces no JavaScript errors;
+- the Agent Control console keeps the plain message list on a small session, and switches to the windowed `n-virtual-list` above the 50-message threshold.
+
+Two environment prerequisites are worth knowing:
+
+- Run it with the Node version in `.nvmrc` (24). `better-sqlite3` in `node_modules` is compiled for that ABI; a mismatched runtime turns the Agent OS workbench endpoint into a slow native-module failure instead of a clean result.
+- The script launches Chromium with `--no-proxy-server`. Dev boxes that export `http_proxy` would otherwise route `localhost` through the proxy and every navigation would time out.
+
+The screenshot is written to `.agent/logs/dashboard-e2e/dashboard-overview.png`. Keep runtime artifacts out of the repository root — the `root-artifact-placement` docs-health gate fails on any image or archive left there.
+
+### Known issue: slow first paint from capability probing
+
+`/api/v1/workbench` is part of the bootstrap snapshot, and building it calls `inspectToolCapabilities`, which shells out to `where.exe <tool>` plus `<tool> --version` for **every** entry in the tool catalog on **every** request, with no caching. On a machine with many CLIs installed this takes roughly 25-30 seconds and blocks the root HTML response, so the first page load is slow despite the lightweight-bootstrap design above. Diagnose it with:
+
+```bash
+node --cpu-prof --cpu-prof-dir=tmp/prof -e "import('./dist/dashboard/DashboardServer.js')"
+```
+
+Profile the workbench snapshot and look for `spawnSync` self-time. Candidate fixes: drop `agent-os-workbench` from the bootstrap and let the SPA fetch it asynchronously (it already does via `refreshAll`), and/or memoize the capability probe with a TTL.
