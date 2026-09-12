@@ -3469,14 +3469,14 @@ function renderKnowledgeGraphChart(reset = false) {
   if (activePage.value !== 'knowledge' || knowledgeTab.value !== 'graph') return
   void nextTick(() => {
     if (!graphChartEl.value || !activeKnowledgeGraphHasData.value) return
-    const themeName = dark.value ? 'dark' : 'light'
+    const themeName = isDark.value ? 'dark' : 'light'
     if (knowledgeGraphChart && knowledgeGraphChartTheme !== themeName) {
       knowledgeGraphChart.dispose()
       knowledgeGraphChart = null
       knowledgeGraphFingerprint = ''
     }
     if (!knowledgeGraphChart) {
-      knowledgeGraphChart = echarts.init(graphChartEl.value, dark.value ? 'dark' : undefined, { renderer: 'canvas' })
+      knowledgeGraphChart = echarts.init(graphChartEl.value, isDark.value ? 'dark' : undefined, { renderer: 'canvas' })
       knowledgeGraphChartTheme = themeName
       knowledgeGraphChart.on('click', handleKnowledgeGraphChartClick)
     }
@@ -3513,7 +3513,7 @@ function currentKnowledgeGraphFingerprint() {
   const graph = activeKnowledgeGraph.value
   return [
     activeGraphKey.value,
-    dark.value ? 'dark' : 'light',
+    isDark.value ? 'dark' : 'light',
     lang.value,
     graph?.nodeCount || 0,
     graph?.edgeCount || 0,
@@ -4003,7 +4003,7 @@ function buildKnowledgeGraphChartOption(graph: KnowledgeGraphReport | undefined,
     .sort((left, right) => left.localeCompare(right))
   const categoryIndex = new Map(groupNames.map((group, index) => [group, index]))
   const nodeIds = new Set(visibleNodes.map(node => node.id))
-  const darkMode = dark.value
+  const darkMode = isDark.value
   const chartNodes: KnowledgeGraphChartDatum[] = visibleNodes.map(node => {
     const group = node.group || node.kind || node.source || 'unknown'
     const nodeDegree = degree.get(node.id) || 0
@@ -4334,7 +4334,7 @@ function readinessStageAction(stage: AgentOsReadinessStage): string {
   return t(`agentOs.${stage.id}.action`)
 }
 
-watch([activePage, knowledgeTab, activeGraphKey, graphNodeLimit, graphFocusMode, knowledgeBase, dark, lang], () => {
+watch([activePage, knowledgeTab, activeGraphKey, graphNodeLimit, graphFocusMode, knowledgeBase, isDark, lang], () => {
   if (activePage.value !== 'knowledge' || knowledgeTab.value !== 'graph') return
   if (!activeKnowledgeGraphHasData.value) {
     disposeKnowledgeGraphChart()
