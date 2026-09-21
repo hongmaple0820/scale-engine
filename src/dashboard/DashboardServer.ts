@@ -1040,7 +1040,10 @@ export class DashboardServer {
         '/api/agent-control': await read('agentControl', () => this.getAgentControlReport(), null),
         '/api/dashboard/capabilities': await read('capabilities', () => this.getDashboardCapabilityReport(), null),
         '/api/capabilities': await read('capabilities-alias', () => this.getDashboardCapabilityReport(), null),
-        '/api/v1/workbench': await read('agent-os-workbench', () => this.agentOsWorkbench().snapshot({ limit: 25 }), null),
+        // The agent-os workbench is deliberately absent from the synchronous snapshot:
+        // building it probes every tool catalog entry (`where.exe` + `--version` each),
+        // which delayed first paint by tens of seconds. The SPA fetches it on demand
+        // when the Agent OS page opens.
         '/api/metrics': await read('metrics', () => aggregateGovernanceMetrics({
           projectDir: this.projectDir,
           scaleDir: this.scaleDir,

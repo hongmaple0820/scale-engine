@@ -183,7 +183,7 @@ R3 期间顺带修掉三个 S5（`d3a201c`）遗留的交付阻塞项：
 2. **lint 门禁红**：`DashboardServer.ts:2753` 的 `successRate == null` 违反 `eqeqeq`（字段类型为 `number | null`，改 `=== null` 语义等价）。
 3. **E2E 产物污染仓库根**：截图写到 `dashboard-overview.png` 触发 `root-artifact-placement` 门禁，已改到 `.agent/logs/dashboard-e2e/`。
 
-**新发现（未修，待排期）**：dashboard 首屏阻塞约 25-30s。`/api/v1/workbench` 在 bootstrap 快照内，构建时经 `inspectToolCapabilities` 对工具目录逐项执行 `where.exe <tool>` + `<tool> --version`，**每次请求都重跑且无缓存**；本机装了十余个 CLI，单次累计约 26s，同步阻塞 root HTML 响应。诊断方式与候选修复见 `docs/guides/DASHBOARD_DAEMON.md` 的「Known issue: slow first paint from capability probing」。
+**已修**：dashboard 首屏阻塞（原约 10-30s）。根因是 `/api/v1/workbench` 位于 bootstrap 快照内，构建时经 `inspectToolCapabilities` 对工具目录逐项执行 `where.exe <tool>` + `<tool> --version`，每次请求重跑且无缓存。现已把 workbench 移出同步快照（SPA 进入 Agent OS 页时按需拉取），并给探测加 60s TTL 缓存（`fresh: true` 可强制重探）。本机实测：服务器端首屏 10000ms → 540ms，浏览器首屏 6.2-30s → 790ms，`/api/v1/workbench` 二次调用 9500ms → 64ms；首次访问 Agent OS 仍付一次探测成本（页面显示加载态）。详细的失败尝试（启动期预热会阻塞事件循环，反而把首屏拖回 6.2s）见 `docs/guides/DASHBOARD_DAEMON.md`。
 
 ### 4.1.2 R4 实现与边界调整
 

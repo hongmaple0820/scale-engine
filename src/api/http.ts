@@ -28,7 +28,6 @@ async function main(): Promise<void> {
   }
 
   printDashboardUrls(plan.projects)
-
   const stop = (signal: NodeJS.Signals) => {
     logger.info({ signal }, 'Stopping dashboard server')
     for (const server of servers) server.stop()
@@ -55,3 +54,4 @@ function printDashboardUrls(projects: Array<{ name: string; url: string; project
   ]
   process.stdout.write(`${lines.join('\n')}\n`)
 }
+

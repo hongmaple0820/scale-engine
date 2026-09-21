@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { inspectToolCapabilities } from '../../src/tools/ToolCapabilityRegistry.js'
+import { clearToolCapabilityCache, inspectToolCapabilities } from '../../src/tools/ToolCapabilityRegistry.js'
+
+beforeEach(() => clearToolCapabilityCache())
 
 let dirs: string[] = []
 
@@ -183,10 +185,12 @@ describe('ToolCapabilityRegistry', () => {
     })
 
     writeSkill(homeDir, 'lark-task')
+    // fresh: the probe cache would otherwise return the pre-install report.
     const complete = inspectToolCapabilities({
       projectDir,
       homeDir,
       toolIds: ['lark-skills'],
+      fresh: true,
     })
 
     expect(complete.ok).toBe(true)
