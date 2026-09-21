@@ -1,4 +1,4 @@
-.PHONY: help preflight preflight-ci new-task plan explore checkpoint gate gate-workflow gate-quality gate-fast-lane resume status lint-scaffold verify verify-list verify-docs-health validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt setup-smoke scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
+.PHONY: help preflight preflight-ci new-task plan explore checkpoint gate gate-workflow gate-quality gate-fast-lane gate-delivery verify-dashboard resume status lint-scaffold verify verify-list verify-docs-health validate bootstrap-scale bootstrap-scale-install bootstrap-scale-latest workflow-upgrade-check workflow-upgrade-plan workflow-upgrade-apply workflow-upgrade-rollback workflow-upgrade-verify workflow-aios-adopt setup-smoke scale-version scale-mode scale-context scale-codegraph scale-eval scale-radar scale-dashboard scale-smoke
 
 SCALE ?= scale
 SCALE_SMOKE ?= node --import tsx src/api/cli.ts
@@ -14,6 +14,7 @@ BUDGET ?= 2400
 help:
 	@echo "make preflight | make new-task NAME=x LEVEL=M | make explore FILES='...' MSG='...'"
 	@echo "make plan NAME=x LEVEL=M | make gate-workflow | make gate-quality | make gate-fast-lane | make verify PROFILE=default"
+	@echo "make gate-delivery (交付前: quality gates + dashboard acceptance) | make verify-dashboard"
 	@echo "make bootstrap-scale | make workflow-upgrade-check | make workflow-upgrade-plan | make workflow-aios-adopt"
 	@echo "make preflight-ci | make setup-smoke | make scale-smoke"
 
@@ -28,6 +29,17 @@ gate-quality:
 
 gate-fast-lane:
 	bash scripts/gates/all.sh --fast-lane
+
+verify-dashboard:
+	node verify-dashboard.mjs
+	node verify-dashboard-browser.mjs
+
+gate-delivery:
+	@echo "[DELIVERY] quality gates (G0 G3 G4-G8 G17-G20; G5 runs verify --profile default)"
+	bash scripts/gates/all.sh --quality
+	@echo "[DELIVERY] dashboard browser acceptance"
+	node verify-dashboard-browser.mjs
+	@echo "[DELIVERY] all pre-delivery checks passed"
 
 new-task:
 	@if [ -z "$(NAME)" ]; then echo "usage: make new-task NAME=x LEVEL=M"; exit 1; fi

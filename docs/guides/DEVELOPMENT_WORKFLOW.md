@@ -167,6 +167,13 @@ scale shield test
 npx vitest run tests/shield tests/workflow/commitSuggest.test.ts
 ```
 
+## 改动必带测试与交付门禁（R6）
+
+- **G3 强制测试耦合**：改 `src/`/`packages/` 下的 `.ts`/`.tsx` 而改动集内没有 `tests/`、`*.test.ts`、`*.spec.ts`，G3 直接失败。G3 已纳入 `--quality` 链，因此 `make gate-quality`（也是 Shield 允许 commit 的前置条件）会强制执行。
+- **显式豁免**：注释级改动、纯类型/格式化重构等确实无需测试更新时，用 `SCALE_GATE_SKIP_TESTS_REASON="<理由>"` 放行；命令会打印理由并提示把豁免依据写入任务 `verification.md`（G8）。
+- **交付前单一入口**：`make gate-delivery` = quality 全门禁（G0/G3/G4-G8/G17-G20，其中 G5 触发 `verify --profile default`，覆盖 docs-health、learning-health、lint、typecheck、全量测试与 build）+ dashboard 浏览器验收（`make verify-dashboard` 可单独运行）。
+- **既有环境缺口**：G4/G7 曾因 Windows Git Bash 下 `python3` 不可用而失败；现已降级为警告/`none`（G4 仍会拦截真实 `SyntaxError`）。G18 仍需 `.scale/evidence/` 运行时证据，由任务作用域的 `scale verify <task-id>` 产出。
+
 ## 长任务检查点模式
 
 跨多次会话、或步骤很多的任务，用检查点把进度落到状态文件，避免上下文丢失后从头再来：

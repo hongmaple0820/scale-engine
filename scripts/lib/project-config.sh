@@ -41,7 +41,7 @@ detect_stack() {
     fi
 
     if ! command -v jq >/dev/null 2>&1; then
-        python3 - "$PROJECT_CONFIG_FILE" "$PROJECT_ROOT" <<'PY'
+        detected="$(python3 - "$PROJECT_CONFIG_FILE" "$PROJECT_ROOT" <<'PY'
 import json
 import pathlib
 import sys
@@ -55,6 +55,15 @@ for stack, cfg in (data.get("stacks") or {}).items():
             raise SystemExit(0)
 print("none")
 PY
+)"
+        # python3 may be present but unusable (Windows App Execution Alias stub,
+        # missing interpreter). Report "none" rather than an empty stack, which
+        # downstream gates would misread as an unknown stack.
+        if [ -n "$detected" ] && [ "$detected" != "null" ]; then
+            echo "$detected"
+        else
+            echo "none"
+        fi
         return 0
     fi
 
