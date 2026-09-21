@@ -89,6 +89,79 @@ describe('open and smoke CLI helpers', () => {
     expect(smokeReport.customerSummary.dashboardUrl).toBe('http://127.0.0.1:43212/#agents')
   }, 120_000)
 
+  it('waits past the health timeout so a port fallback can complete before reporting', () => {
+    const projectDir = makeProject('scale-open-readiness-')
+    const scaleDir = join(projectDir, '.scale')
+    writeScaleInstallFiles(scaleDir)
+    const observed: Array<number | undefined> = []
+
+    const report = createOpenCommandReport({
+      projectDir,
+      scaleDir,
+      host: '127.0.0.1',
+      port: 3210,
+      page: 'agents',
+      openBrowser: false,
+    }, {
+      ensureService: () => fakeDashboardStatus(projectDir, scaleDir, 3210, { status: 'starting', serverAlive: false }),
+      waitForService: (_options, timeoutMs) => {
+        observed.push(timeoutMs)
+        return fakeDashboardStatus(projectDir, scaleDir, 3220)
+      },
+    })
+
+    // The deadline must cover the daemon's fallback sequence (health interval + restart
+    // delay), not just the 8s health-check timeout it used before.
+    expect(observed[0]).toBeGreaterThanOrEqual(20_000)
+    expect(report.url).toBe('http://127.0.0.1:3220/#agents')
+    expect(report.nextActions[0]).toContain('--port 3220')
+  })
+
+  it('honors an explicit readiness timeout', () => {
+    const projectDir = makeProject('scale-open-readiness-override-')
+    const scaleDir = join(projectDir, '.scale')
+    writeScaleInstallFiles(scaleDir)
+    const observed: Array<number | undefined> = []
+
+    createOpenCommandReport({
+      projectDir,
+      scaleDir,
+      host: '127.0.0.1',
+      port: 3210,
+      page: 'agents',
+      openBrowser: false,
+      readinessTimeoutMs: 3000,
+    }, {
+      ensureService: () => fakeDashboardStatus(projectDir, scaleDir, 3210, { status: 'starting', serverAlive: false }),
+      waitForService: (_options, timeoutMs) => {
+        observed.push(timeoutMs)
+        return fakeDashboardStatus(projectDir, scaleDir, 3210, { status: 'starting', serverAlive: false })
+      },
+    })
+
+    expect(observed[0]).toBe(3000)
+  })
+
+  it('warns that the reported port may change when the daemon is not live yet', () => {
+    const projectDir = makeProject('scale-open-unready-warning-')
+    const scaleDir = join(projectDir, '.scale')
+    writeScaleInstallFiles(scaleDir)
+
+    const report = createOpenCommandReport({
+      projectDir,
+      scaleDir,
+      host: '127.0.0.1',
+      port: 3210,
+      page: 'agents',
+      openBrowser: false,
+    }, {
+      ensureService: () => fakeDashboardStatus(projectDir, scaleDir, 3210, { status: 'starting', serverAlive: false }),
+      waitForService: () => fakeDashboardStatus(projectDir, scaleDir, 3210, { status: 'starting', serverAlive: false }),
+    })
+
+    expect(report.warnings.some(warning => warning.includes('may change') || warning.includes('is taken'))).toBe(true)
+  })
+
   it('runs the local smoke message loop and writes an acceptance report', async () => {
     const projectDir = makeProject('scale-smoke-cli-')
     const scaleDir = join(projectDir, '.scale')
