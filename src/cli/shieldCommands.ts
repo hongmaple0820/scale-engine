@@ -1,7 +1,9 @@
 import { defineCommand } from 'citty'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { PolicyCompiler } from '../shield/PolicyCompiler.js'
+import { PolicyCompiler, evaluateDirtyTree } from '../shield/PolicyCompiler.js'
 import { verifyScaleIntegrity, checkCommand } from '../shield/ProtectedPaths.js'
 import { logger } from '../core/logger.js'
 
@@ -207,11 +209,24 @@ export const shieldTestCommand = defineCommand({
       { label: 'Safe: npm test', tool: 'Bash', input: { command: 'npm test' }, expect: 'allow' },
       { label: 'Safe: git status', tool: 'Bash', input: { command: 'git status' }, expect: 'allow' },
       { label: 'Safe: Read file', tool: 'Read', input: { file_path: 'src/index.ts' }, expect: 'allow' },
+      { label: 'Stop: dirty worktree warns', tool: 'Stop', input: { mode: 'dirty' }, expect: 'warn' },
+      { label: 'Stop: allowlisted artifacts only', tool: 'Stop', input: { mode: 'allowlisted' }, expect: 'allow' },
     ]
 
     const results = testCases.map(tc => {
       let blocked = false
       let reason = ''
+
+      if (tc.tool === 'Stop') {
+        const evaluated = evaluateStopDirtyTree(tc.input.mode)
+        return {
+          test: tc.label,
+          expect: tc.expect,
+          actual: evaluated.dirty ? 'warn' : 'allow',
+          passed: (evaluated.dirty ? 'warn' : 'allow') === tc.expect,
+          reason: evaluated.reason,
+        }
+      }
 
       if (tc.tool === 'Write' || tc.tool === 'Edit') {
         const fp = String(tc.input.file_path ?? tc.input.path ?? '')
@@ -252,7 +267,6 @@ export const shieldTestCommand = defineCommand({
 // ---------------------------------------------------------------------------
 // scale shield (parent command)
 // ---------------------------------------------------------------------------
-
 export const shieldCommand = defineCommand({
   meta: {
     name: 'shield',
@@ -264,3 +278,32 @@ export const shieldCommand = defineCommand({
     test: shieldTestCommand,
   },
 })
+
+/**
+ * Exercise the Stop dirty-tree check against a real temporary repository so
+ * `scale shield test` verifies the same logic the compiled hook runs.
+ */
+function evaluateStopDirtyTree(mode: string): { dirty: boolean; reason: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'scale-shield-stop-'))
+  try {
+    const git = (args: string[]) => spawnSync('git', args, { cwd: dir, encoding: 'utf-8' })
+    git(['init', '-q'])
+    git(['config', 'user.email', 'shield@example.com'])
+    git(['config', 'user.name', 'Shield'])
+    writeFileSync(join(dir, 'README.md'), '# repo\n', 'utf-8')
+    git(['add', 'README.md'])
+    git(['commit', '-qm', 'chore: init'])
+
+    if (mode === 'dirty') {
+      writeFileSync(join(dir, 'README.md'), '# changed\n', 'utf-8')
+    } else if (mode === 'allowlisted') {
+      mkdirSync(join(dir, 'output'), { recursive: true })
+      writeFileSync(join(dir, 'output', 'artifact.json'), '{}\n', 'utf-8')
+    }
+
+    const evaluation = evaluateDirtyTree(dir)
+    return { dirty: evaluation.dirty, reason: evaluation.reason }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}

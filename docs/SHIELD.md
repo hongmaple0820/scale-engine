@@ -117,6 +117,22 @@ SessionStart → 写入 session.json  →  Stop 验证合规
 
 文件系统为管道，无内存依赖，crash-safe。
 
+## 会话收尾：脏工作区提醒 (Stop hook)
+
+`require-clean-worktree` 规则在会话结束时检查 `git status --porcelain`，有未提交改动时以 **warn 模式**输出提醒（不阻断会话，exit 0）：
+
+```
+[SCALE SHIELD WARN] Uncommitted changes detected: 2 changed entries (e.g. src/app.ts).
+Commit your changes or run: scale commit-suggest
+```
+
+- 随 `scale shield compile` 自动注册到 settings 的 `Stop` 段（幂等，重复编译不重复注册）。
+- 默认豁免工具产物：`.workbuddy/`、`.workbuddy-ai/`、`output/`、`tmp/`、`.scale-test-session/`、`.hook-state/`、`.planning/cache/`、`*.timestamp-<ts>-<hash>.mjs`。
+- 非 git 目录、`git` 不可用时静默跳过（fail-open）。
+- 只有显式把规则的 `action` 改成 `block` 才会以 exit 2 拦截。
+
+配套命令 `scale commit-suggest` 依据改动生成符合规范的提交信息，可 `--execute` 直接暂存（精确到文件，绝不 `git add -A`）并提交。
+
 ## CLI 命令
 
 ```bash
@@ -129,7 +145,11 @@ scale shield status
 
 # 运行测试用例
 scale shield test
-# 运行 18 个 allow/block 测试用例验证策略正确性
+# 运行 20 个 allow/warn/block 测试用例验证策略正确性
+
+# 生成提交建议（可选直接提交）
+scale commit-suggest
+scale commit-suggest --execute
 ```
 
 ## 安全保证
@@ -141,8 +161,10 @@ scale shield test
 
 ## 相关文件
 
-- `src/shield/PolicyCompiler.ts` — 策略编译器
+- `src/shield/PolicyCompiler.ts` — 策略编译器 + `evaluateDirtyTree` 共享评估
 - `src/shield/ShieldProtocol.ts` — stdin/stdout JSON 协议
 - `src/shield/ProtectedPaths.ts` — 受保护路径 + 命令阻断表
 - `src/cli/shieldCommands.ts` — CLI 入口
+- `src/workflow/CommitSuggest.ts` — 提交建议与暂存执行
+- `src/cli/commitSuggestCommands.ts` — `scale commit-suggest` 入口
 - `.scale/policy.yaml` — 声明式策略模板
