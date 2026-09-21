@@ -149,12 +149,22 @@ Two environment prerequisites are worth knowing:
 
 The screenshot is written to `.agent/logs/dashboard-e2e/dashboard-overview.png`. Keep runtime artifacts out of the repository root — the `root-artifact-placement` docs-health gate fails on any image or archive left there.
 
-### Known issue: slow first paint from capability probing
+### Fixed: slow first paint from capability probing
 
-`/api/v1/workbench` is part of the bootstrap snapshot, and building it calls `inspectToolCapabilities`, which shells out to `where.exe <tool>` plus `<tool> --version` for **every** entry in the tool catalog on **every** request, with no caching. On a machine with many CLIs installed this takes roughly 25-30 seconds and blocks the root HTML response, so the first page load is slow despite the lightweight-bootstrap design above. Diagnose it with:
+`/api/v1/workbench` used to sit in the bootstrap snapshot, and building it called `inspectToolCapabilities`, which shells out to `where.exe <tool>` plus `<tool> --version` for **every** catalog entry on **every** request with no caching. On a machine with many CLIs installed that cost roughly 10 seconds and blocked the root HTML response.
 
-```bash
-node --cpu-prof --cpu-prof-dir=tmp/prof -e "import('./dist/dashboard/DashboardServer.js')"
-```
+Both fixes are in place:
 
-Profile the workbench snapshot and look for `spawnSync` self-time. Candidate fixes: drop `agent-os-workbench` from the bootstrap and let the SPA fetch it asynchronously (it already does via `refreshAll`), and/or memoize the capability probe with a TTL.
+- `/api/v1/workbench` is no longer part of the synchronous bootstrap snapshot; the SPA fetches it when the Agent OS page opens.
+- `inspectToolCapabilities` is memoized per input signature with a 60s TTL. A caller that must observe a tool installed moments ago passes `fresh: true` (or calls `clearToolCapabilityCache()`).
+
+Measured on the development machine (Windows, ~20 catalog entries, 13 installed CLIs):
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| Root HTML first paint (server) | ~10000 ms | ~540 ms |
+| Root HTML first paint (browser, domcontentloaded) | 6200-30000 ms | ~790 ms |
+| `/api/v1/workbench` first call | ~9500 ms | ~9500 ms (unchanged; the probe is genuinely slow) |
+| `/api/v1/workbench` repeat call | ~9500 ms | ~64 ms |
+
+The first Agent OS page visit still pays one probe pass, so the page shows its loading state while the data arrives. Do not "fix" that by warming the cache eagerly at server start: the probe is `spawnSync`-based, so warming blocks the event loop for the same duration and pushes the stall onto every request during startup (measured: browser first paint regressed from 787 ms to 6209 ms with an eager `setImmediate` warm-up).

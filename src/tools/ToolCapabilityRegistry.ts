@@ -54,7 +54,22 @@ export interface ToolCapabilityRegistryOptions {
   env?: Record<string, string | undefined>
   commandExists?: (command: string) => boolean
   runVersion?: (command: string, args: string[]) => { ok: boolean; stdout?: string; stderr?: string }
+  /** Bypass the probe cache and re-inspect every tool. */
+  fresh?: boolean
+  /** Cache lifetime in milliseconds; defaults to 60_000. */
+  cacheTtlMs?: number
 }
+
+/**
+ * Probing shells out to `where.exe <tool>` plus `<tool> --version` per catalog entry,
+ * roughly half a second per tool on Windows. The dashboard builds this into its
+ * bootstrap snapshot, so an uncached probe made the first page load take tens of
+ * seconds. Results are cached per input signature; callers that must observe a tool
+ * installed moments ago pass `fresh: true`.
+ */
+const probeCache = new Map<string, { at: number; report: ToolCapabilityReport }>()
+const DEFAULT_PROBE_CACHE_TTL_MS = 60_000
+const PROBE_CACHE_MAX_ENTRIES = 32
 
 export const TOOL_CAPABILITY_CATALOG: ToolCatalogEntry[] = [
   {
@@ -277,6 +292,17 @@ export function inspectToolCapabilities(options: ToolCapabilityRegistryOptions =
   const projectDir = resolve(options.projectDir ?? process.cwd())
   const homeDir = options.homeDir ?? homedir()
   const env = options.env ?? process.env
+  // Custom probes (injected by tests or callers with their own detection) stay uncached:
+  // their results are cheap to compute and caching them would hide fixture changes.
+  const cacheable = !options.fresh && !options.commandExists && !options.runVersion
+  const cacheKey = cacheable
+    ? JSON.stringify([projectDir, homeDir, (options.toolIds ?? []).slice().sort()])
+    : ''
+  const ttlMs = options.cacheTtlMs ?? DEFAULT_PROBE_CACHE_TTL_MS
+  if (cacheable && ttlMs > 0) {
+    const cached = probeCache.get(cacheKey)
+    if (cached && Date.now() - cached.at < ttlMs) return cached.report
+  }
   const tools = resolveCatalogSelection(options.toolIds)
     .map(tool => inspectToolCapability(tool, {
       projectDir,
@@ -287,7 +313,7 @@ export function inspectToolCapabilities(options: ToolCapabilityRegistryOptions =
     }))
   const installed = tools.filter(tool => tool.installed).length
   const missing = tools.length - installed
-  return {
+  const report: ToolCapabilityReport = {
     ok: missing === 0,
     summary: {
       total: tools.length,
@@ -296,6 +322,19 @@ export function inspectToolCapabilities(options: ToolCapabilityRegistryOptions =
     },
     tools,
   }
+  if (cacheable && ttlMs > 0) {
+    probeCache.set(cacheKey, { at: Date.now(), report })
+    if (probeCache.size > PROBE_CACHE_MAX_ENTRIES) {
+      const oldest = [...probeCache.entries()].sort((left, right) => left[1].at - right[1].at)[0]
+      if (oldest) probeCache.delete(oldest[0])
+    }
+  }
+  return report
+}
+
+/** Drop cached capability probes (tests, or after installing a tool in-process). */
+export function clearToolCapabilityCache(): void {
+  probeCache.clear()
 }
 
 function resolveCatalogSelection(toolIds: string[] | undefined): ToolCatalogEntry[] {
