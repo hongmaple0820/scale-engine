@@ -185,6 +185,20 @@ R3 期间顺带修掉三个 S5（`d3a201c`）遗留的交付阻塞项：
 
 **新发现（未修，待排期）**：dashboard 首屏阻塞约 25-30s。`/api/v1/workbench` 在 bootstrap 快照内，构建时经 `inspectToolCapabilities` 对工具目录逐项执行 `where.exe <tool>` + `<tool> --version`，**每次请求都重跑且无缓存**；本机装了十余个 CLI，单次累计约 26s，同步阻塞 root HTML 响应。诊断方式与候选修复见 `docs/guides/DASHBOARD_DAEMON.md` 的「Known issue: slow first paint from capability probing」。
 
+### 4.1.2 R4 实现与边界调整
+
+R4 已补齐 GitGuardian 核心、`scale git status/init/subrepo add`、install 与 setup 接线及回归测试，验收结果以实际执行记录为准，不沿用 R1/R2 的历史全绿结论。
+
+相对 §1 初稿的安全收敛：
+
+- 新仓在安装产物生成后才尝试初始提交，范围限定 `.gitignore` 与安装器明确生成的普通文件；不使用 `git add -A`，不纳入用户已有代码或环境秘密。
+- 已有仓库、父仓复用、子模块和 worktree 只读检查 Git 状态。嵌套初始化必须显式选择，不自动写父 `.gitignore`；默认忽略规则不排除版本化的 `.scale/artifacts/`。
+- 缺少身份或 hook/签名失败不生成备用身份、不跳过保护、不回滚现场；通过独立的 `git.committed` 和警告区分“安装成功”与“提交成功”。
+- setup 默认计划只读检查 Git，显式 `--apply/--yes` 才准备仓库，`--verify/--no-git` 不触发 GitGuardian 写入。
+- 子仓库 MVP 拒绝越界、链接、非法协议、损坏 JSON、冲突登记和覆盖已有路径；支持登记/状态查询，真实远端克隆的网络认证不由单元测试模拟成成功。
+
+相关验证入口及使用说明已同步至 README 和 `docs/guides/DEVELOPMENT_WORKFLOW.md`。R3 千条消息验收与全仓库测试仍有未完成项，不应因 R4 定向通过自动销账。
+
 ### 4.2 回滚预案
 
 - 每个 R 独立分支（`codex/` 前缀，遵循 `.scale/workspace.json` GitLab flow），独立 PR，可单独 revert。

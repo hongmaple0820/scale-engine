@@ -109,6 +109,41 @@ git diff --check
 - **行为改动配测试**：改 `src/` 行为原则上同步改 `tests/`，否则 G3 阻断。
 - **规则优先落到物理层**：重要约定要落到脚本、门禁、配置、模板，不只停留在口头或文档；改模板前先读 [模板选择指南](../workflow/TEMPLATE_GUIDE.md) 的双源说明，避免改错一套。
 
+## GitGuardian 仓库准备与子仓库
+
+R4 新增 GitGuardian（`src/setup/GitGuardian.ts`），提供 `none / repo / nested / submodule / broken` 五种状态检测，并区分关联工作树与独立 gitdir。要求 Git 2.28+。
+
+- `scale git status --dir . --json`：只读汇总主仓和 `.scale/subrepos.json` 中已登记的子仓库，包含分支、脏文件、gitlink 偏移和冲突状态。没有登记的子仓不自动发现。
+- `scale install`：生成工作流文件前准备 Git；只有本次新建的仓库在安装结束后尝试初始提交。提交范围是 `.gitignore` 和安装器明确报告的普通文件，不扫描/暂存整个项目，不强加被忽略的运行时文件。
+- `scale install --no-git`：完全跳过 GitGuardian；`--git-init-nested` 显式创建独立嵌套仓库，不自动修改父仓库 `.gitignore`。默认沿用父仓库。
+- `scale git init --dry-run`：只预览；不带该开关时，新仓初始提交仅包含 `.gitignore`。已有仓库、子模块和关联工作树仅检查，不修改它们的 `.gitignore`、暂存区、Git 配置或提交。
+- `scale setup`：计划阶段只检查 Git；仅显式 `--apply` 或 `--yes` 才准备 Git，新仓只提交 `.gitignore`，第三方安装产物留待人工审阅。`--verify` 不调用 GitGuardian，`--no-git` 可跳过。
+- 提交不成功不会伪造作者、跳过 hook/签名或自动清理；安装报告通过 `git.committed=false`、`warnings` 和 `nextSteps` 提示人工处理。`git.ok` 表示初始化/复用成功，不等于已提交；独立 `scale git init` 在初始提交失败时返回非零退出码。
+- 初始化遇到损坏仓库会停止，不覆盖 `.git`；新提交必须确认仓库归属、初始 HEAD、空暂存区和明确文件清单，禁止目录、链接、越界路径和环境秘密文件。Git 调用清理继承的 `GIT_*` 仓库重定向变量，不修改运行环境的安全保护。
+
+子仓库最小用法：
+
+```bash
+# 登记但不联网；重复相同配置幂等，不同配置冲突拒绝覆盖
+scale git subrepo add packages/app https://example.com/team/app.git --no-clone --dir .
+# 执行真实子模块添加（网络、认证和原有 Git hooks 仍需可用）
+scale git subrepo add packages/api git@example.com:team/api.git --dir .
+# standalone 仅登记，不克隆；MVP 不支持混合模式或 subtree
+scale git subrepo add packages/local https://example.com/team/local.git --strategy standalone --dir .
+```
+
+以上为不同配置模式的示例，不应在同一份配置中混用。`--no-clone` 登记后再次执行相同 `add` 不会补做克隆；需要克隆时一开始不加 `--no-clone`。现有目标路径不被覆盖或接管。远端仅允许 HTTPS、SSH、`git@host:path`，拒绝 file/ext 协议、选项注入和秘密 URL 参数。JSON 配置损坏时拒绝写入；部分 Git 操作失败仅报告现场，不自动回滚或删除。
+
+R4 定向验证：
+
+```bash
+node node_modules/vitest/vitest.mjs run tests/setup --pool=forks --maxWorkers=1 --minWorkers=1 --testTimeout=120000
+npm run typecheck
+npm run docs:health
+```
+
+测试创建专用系统临时根，并在后续 Git 写入前验证临时仓库的所有权；安全清理拦截必须报告，不得关闭保护器或提高删除阈值。定向通过不代替全仓库 `npm test`、覆盖率或发布门禁。
+
 ## 长任务检查点模式
 
 跨多次会话、或步骤很多的任务，用检查点把进度落到状态文件，避免上下文丢失后从头再来：

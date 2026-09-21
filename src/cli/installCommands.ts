@@ -25,6 +25,8 @@ export const installCommand = defineCommand({
     interactive: { type: 'boolean', default: true, description: 'Use standardized prompts when values are omitted' },
     'no-deps': { type: 'boolean', default: false, description: 'Install core workflow only, without dependency planning' },
     'skip-verify': { type: 'boolean', default: false, description: 'Skip setup verification' },
+    git: { type: 'boolean', default: true, description: 'Prepare Git before install; --no-git skips all Git operations' },
+    'git-init-nested': { type: 'boolean', default: false, description: 'Create an independent nested repository without changing the parent' },
     lang: { type: 'string', description: 'Output language zh/en' },
     'memory-provider': { type: 'string', description: 'Memory provider to configure during install. Supported defaults: hrain, gbrain' },
     'memory-mode': { type: 'string', description: 'Memory routing mode: auto, local-only, external-first' },
@@ -52,6 +54,8 @@ export const installCommand = defineCommand({
         interactive: isTruthyFlag(args.interactive) && !isTruthyFlag(args.json) && Boolean(process.stdin.isTTY),
         skipDeps: isTruthyFlag(args['no-deps']),
         skipVerify: isTruthyFlag(args['skip-verify']),
+        noGit: !isTruthyFlag(args.git),
+        gitInitNested: isTruthyFlag(args['git-init-nested']),
         lang: explicitLang ? normalizeLanguage(lang) : undefined,
         memoryProvider: optionalString(args['memory-provider']),
         memoryMode: normalizeMemoryModeArg(args['memory-mode']),
@@ -99,6 +103,7 @@ function renderInstallReport(report: CustomerInstallReport): void {
     console.log(`  规则: ${report.init.knowledgeDocPath}`)
     console.log(`  语言规范: ${report.init.languagePolicyPath}`)
     console.log(`  数据目录: ${report.init.scaleDir}`)
+    console.log(`  Git: ${report.git ? `${report.git.message}${report.git.commit ? ` (${report.git.commit})` : ''}` : '已跳过 (--no-git)'}`)
     if (report.warnings.length > 0) {
       console.log(`\n需要关注 (${Math.min(report.warnings.length, 8)}/${report.warnings.length}):`)
       for (const warning of report.warnings.slice(0, 8)) console.log(`  - ${warning}`)
@@ -124,6 +129,7 @@ function renderInstallReport(report: CustomerInstallReport): void {
   console.log(`  Rules: ${report.init.knowledgeDocPath}`)
   console.log(`  Language policy: ${report.init.languagePolicyPath}`)
   console.log(`  Data dir: ${report.init.scaleDir}`)
+  console.log(`  Git: ${report.git ? `${report.git.message}${report.git.commit ? ` (${report.git.commit})` : ''}` : 'skipped (--no-git)'}`)
   if (report.warnings.length > 0) {
     console.log(`\nAttention (${Math.min(report.warnings.length, 8)}/${report.warnings.length}):`)
     for (const warning of report.warnings.slice(0, 8)) console.log(`  - ${warning}`)
