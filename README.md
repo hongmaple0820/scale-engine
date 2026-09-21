@@ -26,7 +26,17 @@ cd your-project
 scale install --dir .
 ```
 
-`scale install` 会统一完成项目检测、标准化编号选择、工作流初始化、第三方能力规划/确认、安装进度显示、异常反馈和验收摘要。底层的 `scale init`、`scale setup`、`scale setup --verify` 仍保留给高级维护和 CI 拆分步骤。
+`scale install` 会统一完成项目检测、标准化编号选择、Git 仓库准备、工作流初始化、第三方能力规划/确认、安装进度显示、异常反馈和验收摘要。新建仓库在安装结束后只提交 `.gitignore` 和明确生成的配置文件，不自动纳入用户已有文件；已有仓库和父仓库的暂存区、提交及忽略规则保持不变。缺少 Git 身份时保留安装结果并提示手工提交，不伪造身份。CI/临时环境可用 `--no-git` 跳过 Git 操作。底层的 `scale init`、`scale setup`、`scale setup --verify` 仍保留给高级维护和 CI 拆分步骤。
+
+Git 治理入口（要求 Git 2.28+）：
+
+```bash
+scale git status --dir . --json
+scale git init --dir . --dry-run --json
+scale git subrepo add packages/app https://example.com/team/app.git --no-clone --dir .
+```
+
+`--no-clone` 只登记，不访问远端；去掉该参数会执行 `git submodule add`。详细边界和首次提交规则见 [开发工作流的 GitGuardian 说明](docs/guides/DEVELOPMENT_WORKFLOW.md#gitguardian-仓库准备与子仓库)。
 
 CI 或团队模板推荐显式参数：
 

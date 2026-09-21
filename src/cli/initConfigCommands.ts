@@ -20,6 +20,7 @@ import { quickStart, detectPlatform, governanceNextSteps } from '../api/quicksta
 import { bootstrapDependencies } from '../bootstrap/DependencyBootstrap.js'
 import { renderDependencyBootstrapReport } from '../bootstrap/DependencyBootstrapRenderer.js'
 import { runSetupWizard } from '../setup/SetupWizard.js'
+import { ensureGitInitialized, finalizeGitInitialization, inspectGitGuardian } from '../setup/GitGuardian.js'
 import { verifySetup } from '../setup/SetupVerification.js'
 import { normalizeLanguage, resolveCliLanguage } from '../i18n/Language.js'
 import {
@@ -507,6 +508,8 @@ export const setupCommand = defineCommand({
     apply: { type: 'boolean', default: false, description: 'Run install commands for ready dependencies' },
     yes: { type: 'boolean', default: false, description: 'Confirm installation without prompting' },
     verify: { type: 'boolean', default: false, description: 'Verify governed setup and dependency readiness instead of running the setup wizard' },
+    git: { type: 'boolean', default: true, description: 'Inspect Git; prepare on explicit --apply/--yes only. --no-git skips it' },
+    'git-init-nested': { type: 'boolean', default: false, description: 'Explicitly create a nested repository without modifying the parent' },
     interactive: { type: 'boolean', default: true, description: 'Prompt before installation when dependencies are ready' },
     lang: { type: 'string', description: 'Output language zh/en. Defaults to zh, then SCALE_LANG, then .scale/config.yaml locale.' },
     'memory-provider': { type: 'string', description: 'Switch memory provider during setup. Supported defaults: hrain, gbrain' },
@@ -536,7 +539,18 @@ export const setupCommand = defineCommand({
       if (!verification.ok) process.exitCode = 1
       return
     }
-    const report = await runSetupWizard({
+    const applyGit = isTruthyFlag(args.git) && (isTruthyFlag(args.apply) || isTruthyFlag(args.yes))
+    const git = applyGit ? ensureGitInitialized(projectDir, {
+      commit: false, nestedStrategy: isTruthyFlag(args['git-init-nested']) ? 'init' : 'reuse',
+    }) : undefined
+    const gitPreview = isTruthyFlag(args.git) && !applyGit ? inspectGitGuardian(projectDir) : undefined
+    if (git && !git.ok) {
+      if (args.json) console.log(JSON.stringify({ ok: false, git }, null, 2))
+      else console.error(git.warnings.join('\n') || git.message)
+      process.exitCode = 1
+      return
+    }
+    const report = { ...await runSetupWizard({
       projectDir,
       scaleDir: SCALE_DIR,
       packIds: explicitPacks.length > 0 ? uniqueStrings([...recommendedPacks, ...explicitPacks]) : recommendedPacks,
@@ -553,8 +567,14 @@ export const setupCommand = defineCommand({
       memoryWriteMode: normalizeMemoryWriteModeArg(args['memory-write-mode']),
       allowExternalWrite: isTruthyFlag(args['allow-external-write']) ? true : undefined,
       promptLanguage: isTruthyFlag(args.interactive) && !args.lang,
-    })
+    }), git: git ? finalizeGitInitialization(projectDir, git, []) : gitPreview }
     if (!args.json) {
+      if (report.git) {
+        if ('initialized' in report.git) {
+          console.log(`Git: ${report.git.message}`)
+          for (const warning of report.git.warnings) console.log(`  ! ${warning}`)
+        } else console.log(`Git (read-only): ${report.git.repository.message}`)
+      }
       renderSetupWizardSummary(report, lang)
       console.log(renderDependencyBootstrapReport(report.final, lang))
       if (!report.ok) process.exitCode = 1

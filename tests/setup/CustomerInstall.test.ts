@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,10 +27,11 @@ describe('customer install', () => {
       governancePack: 'frontend-app',
       interactive: false,
       skipDeps: true,
+      noGit: true,
       lang: 'en',
     })
 
-    expect(report.ok).toBe(true)
+    expect(report.ok, JSON.stringify(report.verification?.summary ?? report.warnings)).toBe(true)
     expect(report.selection).toMatchObject({
       agent: 'codex',
       profile: 'standard',
@@ -48,6 +50,35 @@ describe('customer install', () => {
     ])
   })
 
+  it('creates a real initial install commit without staging pre-existing user files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'scale-install-git-e2e-'))
+    tempDirs.push(root)
+    const projectDir = join(root, 'project')
+    const home = join(root, 'home')
+    mkdirSync(projectDir)
+    mkdirSync(home)
+    writeFileSync(join(home, '.gitconfig'), '[user]\n name = SCALE Test\n email = scale@example.test\n')
+    writeFileSync(join(projectDir, 'private-user.txt'), 'must stay untracked\n')
+    const previous = new Map(['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME'].map(key => [key, process.env[key]]))
+    try {
+      for (const key of previous.keys()) process.env[key] = home
+      const report = await runCustomerInstall({ projectDir, agent: 'codex', profile: 'standard', governancePack: 'standard', interactive: false, skipDeps: true, skipVerify: true, lang: 'en' })
+      expect(report.git?.initialized).toBe(true)
+      expect(report.git?.committed, report.git?.warnings.join('\n')).toBe(true)
+      const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)))
+      const files = execFileSync('git', ['-C', projectDir, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf8', env }).split(/\r?\n/)
+      expect(files).toContain('AGENTS.md')
+      expect(files).toContain('.scale/config.yaml')
+      expect(files).not.toContain('private-user.txt')
+      expect(existsSync(join(projectDir, '.scale', 'scale.db'))).toBe(false)
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+    }
+  }, 120_000)
+
   it('initializes multiple agent adapters and writes the language policy', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-install-multi-agent-'))
     tempDirs.push(projectDir)
@@ -63,10 +94,11 @@ describe('customer install', () => {
       governancePack: 'frontend-app',
       interactive: false,
       skipDeps: true,
+      noGit: true,
       lang: 'zh',
     })
 
-    expect(report.ok).toBe(true)
+    expect(report.ok, JSON.stringify(report.verification?.summary ?? report.warnings)).toBe(true)
     expect(report.selection.agents).toEqual(['codex', 'claude-code'])
     expect(existsSync(join(projectDir, '.codex', 'hooks.json'))).toBe(true)
     expect(existsSync(join(projectDir, '.claude', 'settings.json'))).toBe(true)

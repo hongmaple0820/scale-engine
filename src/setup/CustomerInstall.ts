@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, relative, resolve, sep } from 'node:path'
 import { createAdapter, SUPPORTED_AGENTS } from '../adapters/index.js'
 import type { AgentPlatform } from '../artifact/types.js'
 import { autoDetectGovernancePack, classifyProject, detectPlatform } from '../api/quickstart.js'
@@ -12,6 +12,7 @@ import type { ScaleLanguage } from '../i18n/Language.js'
 import { writeGovernanceTemplates } from '../workflow/GovernanceTemplates.js'
 import { verifySetup, type SetupVerificationReport } from './SetupVerification.js'
 import { runSetupWizard, type SetupWizardReport } from './SetupWizard.js'
+import { ensureGitInitialized, finalizeGitInitialization, type GitInitReport } from './GitGuardian.js'
 import {
   askCliConfirm,
   askCliSelect,
@@ -40,6 +41,10 @@ export interface CustomerInstallOptions {
   interactive?: boolean
   skipDeps?: boolean
   skipVerify?: boolean
+  /** Disable all GitGuardian operations, for ephemeral workspaces/CI. */
+  noGit?: boolean
+  /** Explicitly create an independent repository; never modify the parent. */
+  gitInitNested?: boolean
   lang?: ScaleLanguage
   memoryProvider?: string
   memoryMode?: 'auto' | 'local-only' | 'external-first'
@@ -81,6 +86,7 @@ export interface CustomerInstallReport {
   init: CustomerInstallInitReport
   setup?: SetupWizardReport
   verification?: SetupVerificationReport
+  git?: GitInitReport
   steps: CliProgressEvent[]
   warnings: string[]
   nextSteps: string[]
@@ -98,7 +104,7 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
   const interactive = options.interactive ?? Boolean(process.stdin.isTTY)
   const steps: CliProgressEvent[] = []
   const warnings: string[] = []
-  const totalSteps = 6
+  const totalSteps = 8
   let stepIndex = 0
   let promptSession: CliPromptSession | undefined
 
@@ -205,6 +211,21 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
     }
     emit('ok', lang === 'zh' ? '安装配置已确认' : 'Install choices resolved', `${formatAgents(agents)}, ${profile}, ${governancePack}, deps=${dependencyPackLabel}`)
 
+    // Git comes before installation writes, but the first commit comes after them.
+    // Existing repositories (including a parent's repository) are never staged.
+    let git: GitInitReport | undefined
+    if (options.noGit) {
+      emit('skip', lang === 'zh' ? 'Git 仓库准备' : 'Prepare Git repository', '--no-git')
+    } else {
+      emit('run', lang === 'zh' ? 'Git 仓库准备' : 'Prepare Git repository')
+      git = ensureGitInitialized(projectDir, {
+        commit: false,
+        nestedStrategy: options.gitInitNested ? 'init' : 'reuse',
+      })
+      if (!git.ok) throw new Error(git.warnings.join('; ') || git.message)
+      emit('ok', lang === 'zh' ? 'Git 仓库已检查' : 'Git repository checked', git.message)
+    }
+
     emit('run', lang === 'zh' ? '初始化工作流' : 'Initialize workflow')
     const init = await initializeProject({
       projectDir,
@@ -256,6 +277,20 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
       emit(verification.ok ? 'ok' : 'warn', lang === 'zh' ? '安装验收完成' : 'Verification finished', verification.ok ? 'passed' : `${verification.summary.blockingIssues.length} blocker(s)`)
     }
 
+    if (git?.initialized) {
+      emit('run', lang === 'zh' ? '保存安装初始提交' : 'Save initial install commit')
+      // Adapter reports also contain directories. Never pass a directory to git add:
+      // only explicit generated regular files belong in the initial snapshot.
+      const files = init.created.filter(path => {
+        try { return lstatSync(path).isFile() } catch { return false }
+      }).map(path => relative(projectDir, path).split(sep).join('/'))
+      git = finalizeGitInitialization(projectDir, git, files)
+      emit(git.committed ? 'ok' : 'warn', lang === 'zh' ? '安装初始提交' : 'Initial install commit', git.commit || git.message)
+    } else {
+      emit('skip', lang === 'zh' ? '保存安装初始提交' : 'Save initial install commit', options.noGit ? '--no-git' : 'existing repository')
+    }
+    if (git) warnings.push(...git.warnings)
+
     const selection = {
       agent: formatAgents(agents),
       agents,
@@ -274,9 +309,10 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
       init,
       setup,
       verification,
+      git,
       steps,
       warnings: uniqueStrings(warnings),
-      nextSteps: buildCustomerNextSteps(selection),
+      nextSteps: uniqueStrings([...(git?.nextSteps ?? []), ...buildCustomerNextSteps(selection)]),
     }
   } finally {
     promptSession?.rl.close()
@@ -291,6 +327,14 @@ async function initializeProject(options: {
   governancePack: string
   lang: ScaleLanguage
 }): Promise<CustomerInstallInitReport> {
+  // These writers may return an existing file as "created". Do not let that
+  // reporting convention turn a pre-existing config into an automatic commit.
+  const existingConfigs = new Set([
+    join(options.projectDir, '.scale', 'config.yaml'),
+    join(options.projectDir, '.scale', 'governance.lock.json'),
+    join(options.scaleDir, 'thresholds.json'),
+    join(options.scaleDir, 'agent-language.md'),
+  ].filter(path => existsSync(path)))
   ensureDir(options.scaleDir)
   const scenario = getProfile(options.profile).defaults.scenario
   const created: string[] = []
