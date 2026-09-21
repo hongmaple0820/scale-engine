@@ -144,6 +144,29 @@ npm run docs:health
 
 测试创建专用系统临时根，并在后续 Git 写入前验证临时仓库的所有权；安全清理拦截必须报告，不得关闭保护器或提高删除阈值。定向通过不代替全仓库 `npm test`、覆盖率或发布门禁。
 
+## 改动落盘：脏工作区提醒与提交建议（R5）
+
+「一次逻辑改动一个 commit」从口头约定升级为可执行机制：
+
+- **Stop hook 提醒**：`scale shield compile` 会在 settings 的 `Stop` 段注册 `require-clean-worktree`，会话结束时若 `git status --porcelain` 存在非豁免改动，输出提醒并继续（warn 模式，exit 0，不阻断会话）：
+
+  ```
+  [SCALE SHIELD WARN] Uncommitted changes detected: 2 changed entries (e.g. src/app.ts).
+  Commit your changes or run: scale commit-suggest
+  ```
+
+- **默认豁免工具产物**：`.workbuddy/`、`.workbuddy-ai/`、`output/`、`tmp/`、`.scale-test-session/`、`.hook-state/`、`.planning/cache/`、`*.timestamp-<ts>-<hash>.mjs`。这些路径长期未跟踪也不会触发提醒。调整豁免范围改 `PolicyCompiler.DEFAULT_DIRTY_TREE_ALLOW_PATTERN` 后重新 `scale shield compile`。
+- **提交建议**：`scale commit-suggest` 按改动推断类型（`docs` / `test` / `chore` / `feat`）与范围，生成 `<type>: <描述>` 草案；`--execute` 精确暂存计划内文件（绝不 `git add -A`）后提交，失败时保留暂存区供重试，不伪造作者、不跳过 hook。
+- **提交前门禁**：Shield 仍要求 `scale gate-quality` 通过后才允许 `git commit`；两条规则配合形成「先过门禁、再落 commit」的闭环。
+- **强制拦截可选**：把 `require-clean-worktree` 的 `action` 改为 `block` 可让脏工作区以 exit 2 直接拦截收尾；默认保持 warn，先观察误报率再决定是否收紧。
+
+验证入口：
+
+```bash
+scale shield test
+npx vitest run tests/shield tests/workflow/commitSuggest.test.ts
+```
+
 ## 长任务检查点模式
 
 跨多次会话、或步骤很多的任务，用检查点把进度落到状态文件，避免上下文丢失后从头再来：

@@ -317,3 +317,109 @@ settings:
     expect(content).toContain('strict')
   })
 })
+
+describe('Shield Stop hook — dirty worktree', () => {
+  function makeGitRepo(prefix: string): string {
+    const dir = makeDir(prefix)
+    mkdirSync(join(dir, '.scale'), { recursive: true })
+    const git = (args: string[]) => spawnSync('git', args, { cwd: dir, encoding: 'utf-8' })
+    git(['init', '-q'])
+    git(['config', 'user.email', 'test@example.com'])
+    git(['config', 'user.name', 'Test'])
+    writeFileSync(join(dir, 'README.md'), '# repo\n', 'utf-8')
+    git(['add', 'README.md'])
+    git(['commit', '-qm', 'chore: init'])
+    return dir
+  }
+
+  /** Commit the compiled .scale/.claude baseline so only the change under test stays dirty. */
+  function commitBaseline(dir: string): void {
+    spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf-8' })
+    spawnSync('git', ['commit', '-qm', 'chore: baseline'], { cwd: dir, encoding: 'utf-8' })
+  }
+
+  function runStopHook(projectDir: string, cwd = projectDir) {
+    const hookPath = join(projectDir, '.claude', 'hooks', 'shield-require-clean-worktree.js')
+    return runHookScript(hookPath, { tool_name: 'Stop', cwd })
+  }
+
+  it('registers the Stop hook in settings while keeping PreToolUse intact', () => {
+    const dir = makeGitRepo('shield-stop-register-')
+    mkdirSync(join(dir, '.claude'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: {} }, null, 2), 'utf-8')
+    const compiler = new PolicyCompiler()
+    compiler.writeSettingsPatches(compiler.compile(dir))
+
+    const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
+    expect(Array.isArray(settings.hooks.PreToolUse)).toBe(true)
+    expect(settings.hooks.PreToolUse[0].command).toContain('shield-pre-tool.js')
+    expect(Array.isArray(settings.hooks.Stop)).toBe(true)
+    expect(settings.hooks.Stop[0].command).toContain('shield-require-clean-worktree.js')
+
+    // Idempotent: compiling again must not duplicate the Stop entries.
+    compiler.writeSettingsPatches(compiler.compile(dir))
+    const again = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
+    expect(again.hooks.Stop).toHaveLength(1)
+  })
+
+  it('warns on a dirty worktree without failing the session (warn mode)', () => {
+    const dir = makeGitRepo('shield-stop-dirty-')
+    new PolicyCompiler().compile(dir)
+    commitBaseline(dir)
+    writeFileSync(join(dir, 'README.md'), '# changed\n', 'utf-8')
+
+    const result = runStopHook(dir)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toContain('[SCALE SHIELD WARN]')
+    expect(result.stderr).toContain('Uncommitted changes detected')
+    expect(result.stderr).toContain('README.md')
+    expect(result.stderr).not.toContain('[SCALE SHIELD BLOCKED]')
+  })
+
+  it('stays silent once the worktree is committed', () => {
+    const dir = makeGitRepo('shield-stop-clean-')
+    new PolicyCompiler().compile(dir)
+    writeFileSync(join(dir, 'README.md'), '# changed\n', 'utf-8')
+    commitBaseline(dir)
+
+    const result = runStopHook(dir)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr.trim()).toBe('')
+  })
+
+  it('ignores allowlisted tool artifacts so they never block session end', () => {
+    const dir = makeGitRepo('shield-stop-allow-')
+    new PolicyCompiler().compile(dir)
+    commitBaseline(dir)
+    mkdirSync(join(dir, 'output'), { recursive: true })
+    writeFileSync(join(dir, 'output', 'report.json'), '{}\n', 'utf-8')
+    mkdirSync(join(dir, '.workbuddy'), { recursive: true })
+    writeFileSync(join(dir, '.workbuddy', 'state.json'), '{}\n', 'utf-8')
+
+    const result = runStopHook(dir)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr.trim()).toBe('')
+  })
+
+  it('reports staged-but-uncommitted changes as dirty', () => {
+    const dir = makeGitRepo('shield-stop-staged-')
+    new PolicyCompiler().compile(dir)
+    commitBaseline(dir)
+    writeFileSync(join(dir, 'README.md'), '# staged change\n', 'utf-8')
+    spawnSync('git', ['add', 'README.md'], { cwd: dir, encoding: 'utf-8' })
+
+    const result = runStopHook(dir)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toContain('Uncommitted changes detected')
+  })
+
+  it('fails open outside a git repository', () => {
+    const dir = makeDir('shield-stop-nogit-')
+    mkdirSync(join(dir, '.scale'), { recursive: true })
+    new PolicyCompiler().compile(dir)
+
+    const result = runStopHook(dir)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).not.toContain('Uncommitted changes detected')
+  })
+})
