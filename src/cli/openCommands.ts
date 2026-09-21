@@ -11,6 +11,8 @@ import {
 export interface OpenCommandOptions extends DashboardServiceOptions {
   page?: string
   openBrowser?: boolean
+  /** Override how long to wait for a live service; defaults to 25s to cover port fallback. */
+  readinessTimeoutMs?: number
 }
 
 export interface BrowserOpenResult {
@@ -61,6 +63,7 @@ export const openCommand = defineCommand({
 
 export function normalizeOpenArgs(args: Record<string, unknown>, jsonMode = false): OpenCommandOptions {
   const projectDir = resolve(String(args.dir ?? DEFAULT_PROJECT_DIR))
+  const readinessTimeoutMs = Number(args['readiness-timeout-ms'] ?? Number.NaN)
   return {
     projectDir,
     scaleDir: args['scale-dir'] ? resolve(String(args['scale-dir'])) : undefined,
@@ -68,8 +71,20 @@ export function normalizeOpenArgs(args: Record<string, unknown>, jsonMode = fals
     port: parsePort(args.port, 3210),
     page: String(args.page ?? DEFAULT_PAGE),
     openBrowser: !jsonMode && args.browser !== false && args['no-browser'] !== true,
+    readinessTimeoutMs: Number.isFinite(readinessTimeoutMs) && readinessTimeoutMs > 0 ? readinessTimeoutMs : undefined,
   }
 }
+
+/**
+ * How long `scale open` waits for a usable service before reporting.
+ *
+ * This must cover the daemon's port-fallback sequence, not just a healthy start: the
+ * worker only notices an occupied port on its next health check (intervalMs, 10s by
+ * default) and then waits 1.5s before starting the replacement server. The previous
+ * 8s deadline expired first, so the command printed the pre-fallback URL while the
+ * dashboard actually served a later port.
+ */
+const DEFAULT_READINESS_TIMEOUT_MS = 25_000
 
 export function createOpenCommandReport(options: OpenCommandOptions, deps: OpenCommandDeps = {}): OpenCommandReport {
   const ensureService = deps.ensureService ?? ensureDashboardService
@@ -85,7 +100,8 @@ export function createOpenCommandReport(options: OpenCommandOptions, deps: OpenC
   }
   let dashboard = ensureService(serviceOptions)
   if (!deps.ensureService || deps.waitForService) {
-    dashboard = waitForService(serviceOptions, options.timeoutMs)
+    // Wait on a readiness deadline, not the health-check timeout: they bound different things.
+    dashboard = waitForService(serviceOptions, options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS)
   }
   const url = buildDashboardPageUrl(dashboard.url, options.page)
   const warnings: string[] = []
@@ -99,9 +115,12 @@ export function createOpenCommandReport(options: OpenCommandOptions, deps: OpenC
     if (!result.ok) warnings.push(result.error ?? 'Browser could not be opened automatically.')
   }
 
-  if (!dashboard.supervisorAlive && !dashboard.serverAlive) {
+  // Warn whenever the service is not serving yet, not only when no process is alive:
+  // during a port fallback the supervisor is alive while the status is still 'starting'
+  // and the URL about to be printed can still move to another port.
+  if (dashboard.status !== 'running' && !dashboard.serverAlive) {
     const optionsHint = dashboardCliOptions({ host: dashboard.host, port: dashboard.port })
-    warnings.push(`Dashboard daemon is starting or not yet reporting a live process. Run scale smoke --dir .${optionsHint} if the page does not load.`)
+    warnings.push(`Dashboard daemon is still starting; if port ${dashboard.port} is taken it moves to the next free port, so re-run scale open or check scale dashboard daemon status --dir .${optionsHint} before sharing this URL.`)
   }
   const optionsHint = dashboardCliOptions({ host: dashboard.host, port: dashboard.port })
 
