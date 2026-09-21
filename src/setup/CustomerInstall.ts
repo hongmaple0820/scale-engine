@@ -13,6 +13,7 @@ import { writeGovernanceTemplates } from '../workflow/GovernanceTemplates.js'
 import { verifySetup, type SetupVerificationReport } from './SetupVerification.js'
 import { runSetupWizard, type SetupWizardReport } from './SetupWizard.js'
 import { ensureGitInitialized, finalizeGitInitialization, type GitInitReport } from './GitGuardian.js'
+import { activateShield, type ShieldActivationReport } from '../shield/ShieldActivation.js'
 import {
   askCliConfirm,
   askCliSelect,
@@ -45,6 +46,8 @@ export interface CustomerInstallOptions {
   noGit?: boolean
   /** Explicitly create an independent repository; never modify the parent. */
   gitInitNested?: boolean
+  /** Skip Shield policy compilation and hook registration. */
+  noShield?: boolean
   lang?: ScaleLanguage
   memoryProvider?: string
   memoryMode?: 'auto' | 'local-only' | 'external-first'
@@ -87,6 +90,7 @@ export interface CustomerInstallReport {
   setup?: SetupWizardReport
   verification?: SetupVerificationReport
   git?: GitInitReport
+  shield?: ShieldActivationReport
   steps: CliProgressEvent[]
   warnings: string[]
   nextSteps: string[]
@@ -237,6 +241,18 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
     })
     emit('ok', lang === 'zh' ? '工作流初始化完成' : 'Workflow initialized', `${init.created.length} created, ${init.skipped.length} skipped`)
 
+    // Compile Shield before the initial commit so the generated hook scripts land in
+    // the same snapshot; otherwise a fresh install starts out as a dirty worktree.
+    let shield: ShieldActivationReport | undefined
+    if (options.noShield) {
+      emit('skip', lang === 'zh' ? 'Shield 策略编译' : 'Compile Shield policy', '--no-shield')
+    } else {
+      emit('run', lang === 'zh' ? 'Shield 策略编译' : 'Compile Shield policy')
+      shield = activateShield(projectDir, { scaleDir })
+      warnings.push(...shield.warnings)
+      emit(shield.ok ? 'ok' : 'warn', lang === 'zh' ? 'Shield 策略已就绪' : 'Shield policy ready', shield.message)
+    }
+
     let setup: SetupWizardReport | undefined
     if (options.skipDeps || dependencyPacks.length === 0) {
       emit('skip', lang === 'zh' ? '第三方能力安装' : 'Third-party capabilities', lang === 'zh' ? '使用核心工作流模式' : 'core workflow mode')
@@ -281,7 +297,7 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
       emit('run', lang === 'zh' ? '保存安装初始提交' : 'Save initial install commit')
       // Adapter reports also contain directories. Never pass a directory to git add:
       // only explicit generated regular files belong in the initial snapshot.
-      const files = init.created.filter(path => {
+      const files = [...init.created, ...(shield?.hooks ?? []), ...(shield?.policyPath ? [shield.policyPath] : [])].filter(path => {
         try { return lstatSync(path).isFile() } catch { return false }
       }).map(path => relative(projectDir, path).split(sep).join('/'))
       git = finalizeGitInitialization(projectDir, git, files)
@@ -310,6 +326,7 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
       setup,
       verification,
       git,
+      shield,
       steps,
       warnings: uniqueStrings(warnings),
       nextSteps: uniqueStrings([...(git?.nextSteps ?? []), ...buildCustomerNextSteps(selection)]),

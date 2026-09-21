@@ -27,6 +27,7 @@ export const installCommand = defineCommand({
     'skip-verify': { type: 'boolean', default: false, description: 'Skip setup verification' },
     git: { type: 'boolean', default: true, description: 'Prepare Git before install; --no-git skips all Git operations' },
     'git-init-nested': { type: 'boolean', default: false, description: 'Create an independent nested repository without changing the parent' },
+    shield: { type: 'boolean', default: true, description: 'Compile Shield policy and register hooks; --no-shield skips it' },
     lang: { type: 'string', description: 'Output language zh/en' },
     'memory-provider': { type: 'string', description: 'Memory provider to configure during install. Supported defaults: hrain, gbrain' },
     'memory-mode': { type: 'string', description: 'Memory routing mode: auto, local-only, external-first' },
@@ -56,6 +57,7 @@ export const installCommand = defineCommand({
         skipVerify: isTruthyFlag(args['skip-verify']),
         noGit: !isTruthyFlag(args.git),
         gitInitNested: isTruthyFlag(args['git-init-nested']),
+        noShield: !isTruthyFlag(args.shield),
         lang: explicitLang ? normalizeLanguage(lang) : undefined,
         memoryProvider: optionalString(args['memory-provider']),
         memoryMode: normalizeMemoryModeArg(args['memory-mode']),
@@ -104,6 +106,7 @@ function renderInstallReport(report: CustomerInstallReport): void {
     console.log(`  语言规范: ${report.init.languagePolicyPath}`)
     console.log(`  数据目录: ${report.init.scaleDir}`)
     console.log(`  Git: ${report.git ? `${report.git.message}${report.git.commit ? ` (${report.git.commit})` : ''}` : '已跳过 (--no-git)'}`)
+    console.log(`  Shield: ${report.shield ? report.shield.message : '已跳过 (--no-shield)'}`)
     if (report.warnings.length > 0) {
       console.log(`\n需要关注 (${Math.min(report.warnings.length, 8)}/${report.warnings.length}):`)
       for (const warning of report.warnings.slice(0, 8)) console.log(`  - ${warning}`)
@@ -130,6 +133,7 @@ function renderInstallReport(report: CustomerInstallReport): void {
   console.log(`  Language policy: ${report.init.languagePolicyPath}`)
   console.log(`  Data dir: ${report.init.scaleDir}`)
   console.log(`  Git: ${report.git ? `${report.git.message}${report.git.commit ? ` (${report.git.commit})` : ''}` : 'skipped (--no-git)'}`)
+  console.log(`  Shield: ${report.shield ? report.shield.message : 'skipped (--no-shield)'}`)
   if (report.warnings.length > 0) {
     console.log(`\nAttention (${Math.min(report.warnings.length, 8)}/${report.warnings.length}):`)
     for (const warning of report.warnings.slice(0, 8)) console.log(`  - ${warning}`)

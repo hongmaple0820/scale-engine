@@ -148,6 +148,8 @@ npm run docs:health
 
 「一次逻辑改动一个 commit」从口头约定升级为可执行机制：
 
+- **Shield 随安装自动启用**：`scale install` / `scale init` 会编译策略并在 Agent settings 中注册 hook（PreToolUse + Stop），生成的 `.scale/policy.yaml` 可编辑，改后重跑 `scale shield compile` 生效。`--no-shield` 可跳过。已完成安装的项目若此前未编译过，需手动跑一次 `scale shield compile` 才会获得该能力。
+
 - **Stop hook 提醒**：`scale shield compile` 会在 settings 的 `Stop` 段注册 `require-clean-worktree`，会话结束时若 `git status --porcelain` 存在非豁免改动，输出提醒并继续（warn 模式，exit 0，不阻断会话）：
 
   ```

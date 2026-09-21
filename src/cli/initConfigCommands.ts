@@ -16,6 +16,7 @@ import {
   writeConfigYaml,
 } from './engineBootstrap.js'
 import { createAdapter, SUPPORTED_AGENTS } from '../adapters/index.js'
+import { activateShield } from '../shield/ShieldActivation.js'
 import { quickStart, detectPlatform, governanceNextSteps } from '../api/quickstart.js'
 import { bootstrapDependencies } from '../bootstrap/DependencyBootstrap.js'
 import { renderDependencyBootstrapReport } from '../bootstrap/DependencyBootstrapRenderer.js'
@@ -183,6 +184,7 @@ export const initCommand = defineCommand({
     'retry-threshold': { type: 'string', default: '3', description: 'Brute retry threshold (default 3)' },
     'block-severity': { type: 'string', default: 'CRITICAL', description: 'Block severity level (CRITICAL/HIGH/MEDIUM)' },
     'with-deps': { type: 'boolean', default: false, description: 'Also install third-party skills, CLIs, memory, and knowledge providers after governance init' },
+    shield: { type: 'boolean', default: true, description: 'Compile Shield policy and register hooks; --no-shield skips it' },
   },
   async run({ args }) {
     // Interactive configuration mode
@@ -256,6 +258,15 @@ export const initCommand = defineCommand({
       const profileId = args.profile || profileFromScenario(scenarioMode)
       const configPath = writeConfigYaml(args.dir, profileId, projectName, [agentType])
       result.created.push(configPath)
+
+      const shield = isTruthyFlag(args.shield)
+        ? activateShield(resolve(args.dir))
+        : undefined
+      if (shield) {
+        result.created.push(...shield.hooks)
+        if (shield.policyPath) result.created.push(shield.policyPath)
+        for (const warning of shield.warnings) console.error(`   ⚠ ${warning}`)
+      }
 
       console.log(`\n✅ SCALE Engine initialized for ${agentType} (interactive mode, profile: ${profileId})`)
       console.log(`\n📁 Created:`)
@@ -387,6 +398,15 @@ export const initCommand = defineCommand({
     const configPath = writeConfigYaml(args.dir, profileId, projectName, [args.agent])
     result.created.push(configPath)
 
+    const shield = isTruthyFlag(args.shield)
+      ? activateShield(resolve(args.dir))
+      : undefined
+    if (shield) {
+      result.created.push(...shield.hooks)
+      if (shield.policyPath) result.created.push(shield.policyPath)
+      for (const warning of shield.warnings) console.error(`   ⚠ ${warning}`)
+    }
+
     if (args.json) {
       console.log(JSON.stringify({
         ok: true,
@@ -399,6 +419,7 @@ export const initCommand = defineCommand({
         knowledgeDocPath: result.knowledgeDocPath,
         configPath,
         scaleDir: result.scaleDir,
+        shield: shield ? { ok: shield.ok, hooks: shield.hooks.length, registered: shield.registered, policyHash: shield.policyHash, message: shield.message, warnings: shield.warnings } : null,
         created: result.created,
         skipped: result.skipped,
         nextSteps: governanceNextSteps({
