@@ -33,7 +33,19 @@ for script in "${SCRIPTS[@]}"; do
   [ -f "$script" ] && bash -n "$script"
 done
 
-[ -f "$ROOT/scripts/lib/workflow_state.py" ] && python3 -m py_compile "$ROOT/scripts/lib/workflow_state.py"
+[ -f "$ROOT/scripts/lib/workflow_state.py" ] && {
+  if py_output=$(python3 -m py_compile "$ROOT/scripts/lib/workflow_state.py" 2>&1); then
+    :
+  elif printf '%s' "$py_output" | grep -q 'SyntaxError'; then
+    echo "  [BLOCK] python3 syntax error in scripts/lib/workflow_state.py"
+    printf '%s\n' "$py_output"
+    exit 1
+  else
+    # python3 present but unusable in this shell (Windows App Execution Alias stub,
+    # missing interpreter). Non-blocking, same policy as the missing .ps1 helpers below.
+    echo "  [WARN] python3 unavailable for py_compile (non-blocking)"
+  fi
+}
 
 for script in \
   "$ROOT/scripts/workflow/check-reality.ps1" \

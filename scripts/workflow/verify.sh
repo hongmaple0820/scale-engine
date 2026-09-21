@@ -58,18 +58,16 @@ run_check_command() {
 }
 
 if [ "$LIST" = true ]; then
-  python3 - "$CONFIG" <<'PY'
-import json
-import sys
-with open(sys.argv[1], encoding="utf-8") as f:
-    cfg = json.load(f)
-print("profiles:")
-for name in sorted((cfg.get("profiles") or {}).keys()):
-    print(f"  - {name}")
-print("services:")
-for name, service in sorted((cfg.get("services") or {}).items()):
-    print(f"  - {name}: {service.get('path', '.')}")
-PY
+  node - "$CONFIG" <<'JS'
+const { readFileSync } = require('node:fs')
+const cfg = JSON.parse(readFileSync(process.argv[2], 'utf-8'))
+console.log('profiles:')
+for (const name of Object.keys(cfg.profiles ?? {}).sort()) console.log(`  - ${name}`)
+console.log('services:')
+for (const [name, service] of Object.entries(cfg.services ?? {}).sort()) {
+  console.log(`  - ${name}: ${service.path ?? '.'}`)
+}
+JS
   exit 0
 fi
 
@@ -82,57 +80,7 @@ if [ "$PROFILE" = "scaffold" ] && [ -z "$SERVICE" ]; then
   exit 0
 fi
 
-PLAN="$(
-python3 - "$CONFIG" "$PROFILE" "$SERVICE" <<'PY'
-import json
-import sys
-
-config_path, profile_name, selected_service = sys.argv[1:4]
-with open(config_path, encoding="utf-8") as f:
-    cfg = json.load(f)
-
-profiles = cfg.get("profiles") or {}
-services = cfg.get("services") or {}
-stacks = cfg.get("stacks") or {}
-
-if selected_service:
-    service_names = [selected_service]
-    checks = (profiles.get(profile_name) or {}).get("checks") or ["lint", "test"]
-else:
-    profile = profiles.get(profile_name)
-    if profile is None:
-        print(f"ERROR\tunknown profile: {profile_name}")
-        raise SystemExit(0)
-    service_names = profile.get("services") or []
-    checks = profile.get("checks") or ["lint", "test"]
-    if service_names == "*":
-        service_names = sorted(services.keys())
-
-if not service_names:
-    print(f"ERROR\tprofile has no services: {profile_name}")
-    raise SystemExit(0)
-
-for name in service_names:
-    service = services.get(name)
-    if not service:
-        print(f"ERROR\tunknown service: {name}")
-        continue
-    stack_name = service.get("stack") or "custom"
-    stack = stacks.get(stack_name) or {}
-    commands = dict(stack.get("commands") or {})
-    commands.update(service.get("commands") or {})
-    required_tools = dict(stack.get("required_tools") or {})
-    required_tools.update(service.get("required_tools") or {})
-    path = service.get("path") or "."
-    for check in checks:
-        command = commands.get(check)
-        if not command:
-            print(f"SKIP\t{name}\t{path}\t{check}\tno command configured")
-            continue
-        tools = ",".join(required_tools.get(check) or []) or "-"
-        print(f"RUN\t{name}\t{path}\t{check}\t{tools}\t{command}")
-PY
-)"
+PLAN="$(node "$ROOT/scripts/workflow/verify-plan.mjs" "$CONFIG" "$PROFILE" "$SERVICE")"
 
 STATUS=0
 while IFS=$'\t' read -r kind name path check tools command; do

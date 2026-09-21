@@ -66,7 +66,7 @@ done
 
 case "$MODE" in
   workflow) GATES=(G1 G2 G3 G16) ;;
-  quality) GATES=(G0 G4 G5 G6 G7 G8 G17 G18 G19 G20) ;;
+  quality) GATES=(G0 G3 G4 G5 G6 G7 G8 G17 G18 G19 G20) ;;
   fast-lane) GATES=(G0 G3 G4 G5) ;;
   meta) GATES=(G9 G10 G11 G12 G13 G14 G15 G21 G22) ;;
   all) GATES=(G0 G1 G2 G3 G4 G5 G6 G7 G8 G16 G17 G18 G19 G20 G21 G22) ;;

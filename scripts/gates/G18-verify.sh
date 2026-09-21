@@ -26,19 +26,25 @@ if [ "$EVIDENCE_COUNT" -eq 0 ]; then
   exit 1
 fi
 
-# Check freshness (most recent file within 24h)
+# Check freshness (most recent file within 24h).
+# Node, not python3: Node >= 22 is required by this repository, whereas python3
+# may be missing or an unusable launcher stub, which silently disabled this check.
 LATEST_HOURS=$(
-  python3 - "$EVIDENCE_DIR" <<'PY'
-from pathlib import Path
-import sys
-import time
-
-root = Path(sys.argv[1])
-files = [path for path in root.rglob("*.json") if path.is_file()]
-if files:
-    latest = max(files, key=lambda path: path.stat().st_mtime)
-    print(int((time.time() - latest.stat().st_mtime) // 3600))
-PY
+  node -e '
+const { readdirSync, statSync } = require("node:fs")
+const { join } = require("node:path")
+const root = process.argv[1]
+const files = []
+const walk = dir => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) walk(full)
+    else if (entry.name.endsWith(".json")) files.push(statSync(full).mtimeMs)
+  }
+}
+walk(root)
+if (files.length > 0) process.stdout.write(String(Math.floor((Date.now() - Math.max(...files)) / 3600000)))
+' "$EVIDENCE_DIR" 2>/dev/null || true
 )
 if [ -n "$LATEST_HOURS" ]; then
   if [ "$LATEST_HOURS" -lt 24 ]; then
@@ -46,6 +52,8 @@ if [ -n "$LATEST_HOURS" ]; then
   else
     echo "  [WARN] Latest evidence ${LATEST_HOURS}h ago (>= 24h, stale)"
   fi
+else
+  echo "  [WARN] Could not determine evidence freshness (non-blocking)"
 fi
 
 echo "  PASSED"

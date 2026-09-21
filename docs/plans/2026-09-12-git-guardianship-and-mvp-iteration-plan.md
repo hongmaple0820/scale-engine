@@ -199,6 +199,24 @@ R4 已补齐 GitGuardian 核心、`scale git status/init/subrepo add`、install 
 
 相关验证入口及使用说明已同步至 README 和 `docs/guides/DEVELOPMENT_WORKFLOW.md`。R3 千条消息验收与全仓库测试仍有未完成项，不应因 R4 定向通过自动销账。
 
+### 4.1.3 R5 / R6 实现与实际落地差异
+
+**R5（改动后必须 commit）** 已按 §2 落地，两处工程调整：
+
+- Stop 检查以 **warn 模式**实现（`action: warn`），会话结束输出提醒但 exit 0，不阻断收尾；切 block 只需改策略 `action` 并重新 `scale shield compile`。
+- 豁免路径列表固化为 `DEFAULT_DIRTY_TREE_ALLOW_PATTERN`（`.workbuddy/`、`.workbuddy-ai/`、`output/`、`tmp/`、`.scale-test-session/`、`.hook-state/`、`.planning/cache/`、`*.timestamp-<ts>-<hash>.mjs`），随策略编译进 hook，改后需重新编译。
+- 脏树判定与 `scale shield test` 共用 `evaluateDirtyTree`（`src/shield/PolicyCompiler.ts`），避免 hook 与 CLI 两套逻辑漂移；`shield test` 用例从 18 增至 20。
+
+**R6（改动必带测试）** 未新增 G23，改为强化既有 G3 —— 现状优先：G3 已实现「src 改动必须伴随测试改动」，缺口是它不在 quality 链、且无豁免通道。调整如下：
+
+- G3 重写：用 `git diff --name-only HEAD` + `git ls-files --others --exclude-standard` 取代带状态前缀的 porcelain 解析（含空格路径不再截断），路径匹配覆盖任意深度并识别 `*.test.ts`/`*.spec.ts`/`tests/*`。
+- 新增显式豁免 `SCALE_GATE_SKIP_TESTS_REASON="<理由>"`，命中时打印理由并放行，理由需落到任务 `verification.md`（G8）。
+- G3 纳入 `--quality` 链：`make gate-quality`（也是 Shield 拦截 commit 所要求的前置）现在会强制测试耦合。
+- 新增 `make gate-delivery`：交付前单一入口 = quality 全门禁（含 G3、G5 触发 `verify --profile default`）+ dashboard 浏览器验收；`make verify-dashboard` 单独暴露两个 dashboard 校验脚本。
+- 顺带修掉两个既有环境阻塞（HEAD 基线同样失败的 G4/G7）：`python3` 在 Windows Git Bash 不可用时，G4 的 `py_compile` 与 stack 检测降级为警告/`none`，不再误判为语法错误或未知 stack。
+
+**尚未关闭**：G18（Runtime Evidence）在 HEAD 基线即失败，要求 `.scale/evidence/` 存在运行时 gate 证据；该目录被 `.scale/.gitignore` 忽略，属本地运行时状态。合法产出路径是任务作用域的 `scale verify <task-id>`（经 `EvidenceStore` 落盘）。本次未创建任务，故 G18 保持红色，不以伪造证据销账。
+
 ### 4.2 回滚预案
 
 - 每个 R 独立分支（`codex/` 前缀，遵循 `.scale/workspace.json` GitLab flow），独立 PR，可单独 revert。
