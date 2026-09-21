@@ -121,7 +121,7 @@ export interface CompilerOutput {
 // Default policy
 // ---------------------------------------------------------------------------
 
-const DEFAULT_POLICY: ShieldPolicy = {
+export const DEFAULT_POLICY: ShieldPolicy = {
   version: 1,
   rules: [
     {
