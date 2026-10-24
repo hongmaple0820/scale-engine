@@ -20,7 +20,7 @@ afterEach(() => {
 })
 
 function runHook(projectDir: string, input: object): { exitCode: number; stderr: string; stdout: string } {
-  const hookPath = join(projectDir, '.claude', 'hooks', 'shield-pre-tool.js')
+  const hookPath = join(projectDir, '.claude', 'hooks', 'shield-pre-tool.cjs')
   return runHookScript(hookPath, input)
 }
 
@@ -49,7 +49,7 @@ describe('Shield E2E', () => {
     expect(output.policyHash).toBeTruthy()
 
     // Combined hook must exist
-    const combinedPath = join(dir, '.claude', 'hooks', 'shield-pre-tool.js')
+    const combinedPath = join(dir, '.claude', 'hooks', 'shield-pre-tool.cjs')
     expect(existsSync(combinedPath)).toBe(true)
 
     // Hook content must contain policy hash
@@ -213,7 +213,7 @@ settings:
     const compiler = new PolicyCompiler()
     compiler.compile(dir)
 
-    const result = runHookScript(join(dir, '.claude', 'hooks', 'shield-custom-invalid.js'), {
+    const result = runHookScript(join(dir, '.claude', 'hooks', 'shield-custom-invalid.cjs'), {
       session_id: 'test',
       cwd: dir,
       tool_name: 'Bash',
@@ -233,7 +233,7 @@ settings:
     const output = compiler.compile(dir)
 
     // Tamper with the hook — replace the policy hash to simulate tampering
-    const hookPath = join(dir, '.claude', 'hooks', 'shield-pre-tool.js')
+    const hookPath = join(dir, '.claude', 'hooks', 'shield-pre-tool.cjs')
     const original = readFileSync(hookPath, 'utf-8')
     writeFileSync(hookPath, original.replace(output.policyHash, 'TAMPERED0000'), 'utf-8')
 
@@ -262,8 +262,8 @@ settings:
       hooks: {
         PreToolUse: [
           { matcher: 'Write|Edit', command: 'bash scripts/hooks/check-tdd.sh', timeout: 3000 },
-          { type: 'command', command: 'node .claude/hooks/shield-pre-tool.js', timeout: 5000 },
-          { type: 'command', command: 'node .claude/hooks/shield-pre-tool.js', timeout: 5000 },
+          { type: 'command', command: 'node .claude/hooks/shield-pre-tool.cjs', timeout: 5000 },
+          { type: 'command', command: 'node .claude/hooks/shield-pre-tool.cjs', timeout: 5000 },
         ],
       },
     }, null, 2), 'utf-8')
@@ -312,7 +312,7 @@ settings:
 
     expect(output.hooks.length).toBeGreaterThan(0)
     // The combined hook should include the custom rule's condition
-    const combinedPath = join(dir, '.claude', 'hooks', 'shield-pre-tool.js')
+    const combinedPath = join(dir, '.claude', 'hooks', 'shield-pre-tool.cjs')
     const content = readFileSync(combinedPath, 'utf-8')
     expect(content).toContain('strict')
   })
@@ -339,7 +339,7 @@ describe('Shield Stop hook — dirty worktree', () => {
   }
 
   function runStopHook(projectDir: string, cwd = projectDir) {
-    const hookPath = join(projectDir, '.claude', 'hooks', 'shield-require-clean-worktree.js')
+    const hookPath = join(projectDir, '.claude', 'hooks', 'shield-require-clean-worktree.cjs')
     return runHookScript(hookPath, { tool_name: 'Stop', cwd })
   }
 
@@ -352,9 +352,9 @@ describe('Shield Stop hook — dirty worktree', () => {
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
     expect(Array.isArray(settings.hooks.PreToolUse)).toBe(true)
-    expect(settings.hooks.PreToolUse[0].command).toContain('shield-pre-tool.js')
+    expect(settings.hooks.PreToolUse[0].command).toContain('shield-pre-tool.cjs')
     expect(Array.isArray(settings.hooks.Stop)).toBe(true)
-    expect(settings.hooks.Stop[0].command).toContain('shield-require-clean-worktree.js')
+    expect(settings.hooks.Stop[0].command).toContain('shield-require-clean-worktree.cjs')
 
     // Idempotent: compiling again must not duplicate the Stop entries.
     compiler.writeSettingsPatches(compiler.compile(dir))

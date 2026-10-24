@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -111,5 +111,66 @@ describe('AgentControl local executor', () => {
     const stored = plane.getTranscript('s1').messages.find(m => m.id === record.id)
     expect(stored!.claimedBy).toBe('runtime-X')
     expect(stored!.status).toBe('claimed')
+  })
+})
+
+describe('AgentControl enableLocalExecution (one-click gate)', () => {
+  // 前面用例设置的 blocked mockImplementation 会跨用例泄漏，这里重置为默认 ready 报告
+  beforeEach(async () => {
+    const { createAiOsRun } = await import('../../src/runtime/AiOsRuntime.js')
+    ;(createAiOsRun as unknown as { mockImplementation: (fn: unknown) => void }).mockImplementation(
+      async (input: { task?: string }) => mockRunReport(input.task ?? 'task'),
+    )
+  })
+
+  function buildDefaultPlane(): AgentControlPlane {
+    const projectDir = makeTempDir('scale-agent-enable-')
+    const scaleDir = join(projectDir, '.scale')
+    const plane = new AgentControlPlane(
+      { id: 'p1', name: 'Test', projectDir, scaleDir },
+      [{ id: 'codex', name: 'Codex', status: 'ready' }],
+      [],
+    )
+    const configPath = join(scaleDir, 'agents', 'control-plane.json')
+    mkdirSync(dirname(configPath), { recursive: true })
+    writeFileSync(configPath, JSON.stringify({
+      version: 1,
+      sessions: [{
+        version: 1, sessionId: 's1', name: 'Ops Session', platformId: 'codex', modelId: 'balanced',
+        channelProvider: 'dashboard', channelRouteId: 'dashboard-local', commandPrefix: '/scale',
+        mode: 'dry-run', autoImportKnowledge: true, updatedAt: Date.now(),
+      }],
+    }), 'utf-8')
+    return plane
+  }
+
+  it('flips a dry-run session to live-guarded + localExecutor and preserves other fields', () => {
+    const plane = buildDefaultPlane()
+    const session = plane.enableLocalExecution('s1')
+    expect(session.mode).toBe('live-guarded')
+    expect(session.localExecutor).toBe(true)
+    expect(session.name).toBe('Ops Session')
+    expect(session.commandPrefix).toBe('/scale')
+    expect(plane.isLocalExecutorEnabled('s1')).toBe(true)
+  })
+
+  it('persists the gate so a later live message executes end-to-end with a reply', async () => {
+    const plane = buildDefaultPlane()
+    plane.enableLocalExecution('s1')
+    const record = plane.sendMessage('s1', { text: 'do the thing', dryRun: false, from: 'dashboard' })
+    expect(record.dryRun).toBe(false)
+    const final = await plane.executeLocallyIfEnabled('s1', record.id)
+    expect(final).not.toBeNull()
+    expect(final!.status).toBe('completed')
+    const reply = plane.getTranscript('s1').messages.find(m => m.direction === 'agent-to-operator')
+    expect(reply).toBeDefined()
+    expect(reply!.text).toContain('[local-executor]')
+  })
+
+  it('still treats a message as dry-run when the caller does not explicitly opt out', () => {
+    const plane = buildDefaultPlane()
+    plane.enableLocalExecution('s1')
+    const record = plane.sendMessage('s1', { text: 'x' })
+    expect(record.dryRun).toBe(true)
   })
 })

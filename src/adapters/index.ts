@@ -11,6 +11,7 @@ import { OpenClawAdapter } from './OpenClawAdapter.js'
 import { HermesAdapter } from './HermesAdapter.js'
 import { TraeAdapter } from './TraeAdapter.js'
 import { WorkBuddyAdapter } from './WorkBuddyAdapter.js'
+import { ZCodeAdapter } from './ZCodeAdapter.js'
 import { VSCAdapter } from './VSCAdapter.js'
 import { QCoderAdapter } from './QCoderAdapter.js'
 import { DeepSeekTuiAdapter } from './DeepSeekTuiAdapter.js'
@@ -37,6 +38,7 @@ export { OpenClawAdapter } from './OpenClawAdapter.js'
 export { HermesAdapter } from './HermesAdapter.js'
 export { TraeAdapter } from './TraeAdapter.js'
 export { WorkBuddyAdapter } from './WorkBuddyAdapter.js'
+export { ZCodeAdapter } from './ZCodeAdapter.js'
 export { VSCAdapter } from './VSCAdapter.js'
 export { QCoderAdapter } from './QCoderAdapter.js'
 export { DeepSeekTuiAdapter } from './DeepSeekTuiAdapter.js'
@@ -65,6 +67,7 @@ const ADAPTER_MAP: Record<AgentPlatform, new () => IAgentAdapter> = {
   'hermes': HermesAdapter,
   'trae': TraeAdapter,
   'workbuddy': WorkBuddyAdapter,
+  'zcode': ZCodeAdapter,
   'vsc': VSCAdapter,
   'qcoder': QCoderAdapter,
   'deepseek-tui': DeepSeekTuiAdapter,

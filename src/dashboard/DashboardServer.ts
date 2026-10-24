@@ -9,6 +9,8 @@ import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, mkdirSy
 import { basename, join, dirname, extname, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import yaml from 'js-yaml'
 import Database from 'better-sqlite3'
 import type { ServerType } from '@hono/node-server'
 import { EventBus } from '../core/eventBus.js'
@@ -41,7 +43,9 @@ import { PhasePromptRegistry, type PromptTemplate } from '../prompts/PhasePrompt
 import { listVisualVibePacks, listVisualVibeTemplates, type VisualVibeTemplate } from '../prompts/VibeTemplateGallery.js'
 import { createAiOsPlan, type AiOsRuntimePlan } from '../runtime/AiOsRuntime.js'
 import type { SkillTaskLevel } from '../skills/routing/index.js'
-import { externalCommandExists, resolveExternalCommandPath, runExternalCommandSync } from '../core/ExternalCommand.js'
+import { externalCommandExists, resolveExternalCommandPath, runExternalCommandSync, buildSpawnInvocation } from '../core/ExternalCommand.js'
+import { PolicyCompiler } from '../shield/PolicyCompiler.js'
+import { FeishuBridge, describeFeishuBridgeReadiness } from '../communication/FeishuBridge.js'
 import { SUPPORTED_AGENTS } from '../adapters/index.js'
 import {
   buildFeishuEventConsumeCommand,
@@ -434,6 +438,54 @@ export interface DashboardIntegrationActionResult {
   stdout?: string
   stderr?: string
   error?: string
+}
+
+/** T2-P5：面板内 scale setup 异步运行状态（POST 启动，GET 轮询） */
+export interface IntegrationSetupRunState {
+  status: 'running' | 'completed' | 'failed'
+  command: string
+  startedAt: number
+  finishedAt?: number
+  exitCode?: number | null
+  stdout: string
+  stderr: string
+}
+
+/** 面板内 lark-cli 交互式命令（config init / auth login）的后台运行状态 */
+export interface FeishuCliJobState {
+  kind: 'config-init' | 'auth-complete'
+  status: 'running' | 'completed' | 'failed'
+  command: string
+  startedAt: number
+  finishedAt?: number
+  exitCode?: number | null
+  stdout: string
+  stderr: string
+  /** 从输出中提取的授权链接，供面板渲染为可点击按钮 */
+  verificationUrl?: string
+  error?: string
+}
+
+/** 从命令输出里抓第一个 http(s) 链接（lark-cli 会把授权地址打在输出里） */
+function extractFirstUrl(text: string): string | undefined {
+  const match = text.match(/https?:\/\/[^\s"'<>）)]+/)
+  return match ? match[0] : undefined
+}
+
+/** T3-配置管理：治理配置读取/保存的状态结构 */
+export interface GovernanceConfigReport {
+  policy: { path: string; exists: boolean; yaml: string; ruleCount: number }
+  thresholds: { path: string; exists: boolean; data: Record<string, unknown> | null }
+  memoryProviders: { path: string; exists: boolean; data: Record<string, unknown> | null }
+}
+
+export interface GovernanceSaveResult {
+  ok: boolean
+  error?: string
+  ruleCount?: number
+  thresholds?: Record<string, unknown>
+  memoryProviders?: Record<string, unknown>
+  shield?: { recompiled: boolean; registered: string[] }
 }
 
 export interface DashboardAgentOsAcceptanceStep {
@@ -1646,6 +1698,9 @@ export class DashboardServer {
           commandPrefix: body.commandPrefix ?? existing?.commandPrefix,
           mode: body.mode ?? existing?.mode,
           autoImportKnowledge: typeof body.autoImportKnowledge === 'boolean' ? body.autoImportKnowledge : existing?.autoImportKnowledge,
+          localExecutor: typeof body.localExecutor === 'boolean' ? body.localExecutor : existing?.localExecutor,
+          executor: body.executor ?? existing?.executor,
+          agentCommand: typeof body.agentCommand === 'string' ? body.agentCommand : existing?.agentCommand,
         })
         this.invalidateDashboardReportCaches()
         return c.json({
@@ -1748,6 +1803,50 @@ export class DashboardServer {
     this.app.post('/api/integrations/feishu/config/start', (c) => {
       return c.json(this.startFeishuConfigInit())
     })
+    this.app.post('/api/integrations/feishu/auth/complete', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const result = this.completeFeishuAuthLogin(typeof body.deviceCode === 'string' ? body.deviceCode : undefined)
+      return c.json(result, result.ok ? 200 : 400)
+    })
+    this.app.get('/api/integrations/feishu/cli-job', (c) => c.json({ ok: true, job: this.getFeishuCliJobReport() }))
+
+    this.app.post('/api/integrations/setup/run', (c) => {
+      const result = this.startIntegrationSetupRun()
+      return c.json(result, result.ok ? 200 : 409)
+    })
+    this.app.get('/api/integrations/setup/run', (c) => c.json({ ok: true, run: this.integrationSetupRun }))
+
+    this.app.get('/api/integrations/feishu/bridge', (c) => c.json({ ok: true, ...this.getFeishuBridgeReport() }))
+    this.app.post('/api/integrations/feishu/bridge/start', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const result = this.startFeishuBridge(typeof body.sessionId === 'string' ? body.sessionId : undefined)
+      return c.json(result, result.ok ? 200 : 400)
+    })
+    this.app.post('/api/integrations/feishu/bridge/stop', (c) => {
+      this.feishuBridge?.stop()
+      this.invalidateDashboardReportCaches()
+      return c.json({ ok: true, ...this.getFeishuBridgeReport() })
+    })
+
+    this.app.get('/api/v1/governance/config', (c) => c.json(this.getGovernanceConfig()))
+    this.app.put('/api/v1/governance/config/policy', async (c) => {
+      const body = await c.req.json<{ yaml?: string }>().catch((): { yaml?: string } => ({}))
+      const result = this.saveGovernancePolicy(body.yaml)
+      if (result.ok) this.invalidateDashboardReportCaches()
+      return c.json(result, result.ok ? 200 : 400)
+    })
+    this.app.put('/api/v1/governance/config/thresholds', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const result = this.saveGovernanceThresholds(body)
+      if (result.ok) this.invalidateDashboardReportCaches()
+      return c.json(result, result.ok ? 200 : 400)
+    })
+    this.app.put('/api/v1/governance/config/memory-providers', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const result = this.saveGovernanceMemoryProviders(body)
+      if (result.ok) this.invalidateDashboardReportCaches()
+      return c.json(result, result.ok ? 200 : 400)
+    })
 
     this.app.get('/api/agent-control', (c) => c.json(this.getAgentControlReport()))
     this.app.get('/api/agent-control/transcripts', (c) => c.json(
@@ -1847,6 +1946,15 @@ export class DashboardServer {
           ok: true,
           message,
         } satisfies { ok: true; message: AgentControlMessageRecord })
+      } catch (error) {
+        return c.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 400)
+      }
+    })
+    this.app.post('/api/agent-control/sessions/:sessionId/enable-local-executor', (c) => {
+      try {
+        const session = this.getAgentControlPlane().enableLocalExecution(c.req.param('sessionId'))
+        this.invalidateDashboardReportCaches()
+        return c.json({ ok: true, session })
       } catch (error) {
         return c.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 400)
       }
@@ -3963,9 +4071,9 @@ export class DashboardServer {
       ],
       nextAction: commandAvailable
         ? routeConfig.configured
-          ? 'Run lark-cli doctor and consume one event before enabling live command routing.'
-          : 'Save a project Feishu route target in the dashboard, then run lark-cli doctor.'
-        : 'Install with scale setup --pack full --apply --yes, then run lark-cli config init --new --lang zh.',
+          ? '运行 lark-cli doctor 并消费一条事件，再启用实时命令路由。'
+          : '在面板保存项目飞书路由目标，然后运行 lark-cli doctor。'
+        : '先执行 scale setup --pack full --apply --yes，再点面板的「启动飞书初始化」。',
       warnings: [...warnings, ...providerWarnings, ...routeConfig.warnings],
     }
   }
@@ -4087,6 +4195,383 @@ export class DashboardServer {
     }
   }
 
+  private feishuBridge: FeishuBridge | null = null
+
+  private getFeishuBridgeReport(): { status: ReturnType<FeishuBridge['status']> | null; readiness: { ready: boolean; blockers: string[] } } {
+    const provider = this.getFeishuIntegrationProvider()
+    const sessionId = this.feishuBridgeSessionId ?? this.getAgentControlReport().sessions[0]?.sessionId ?? 'default'
+    const session = this.getAgentControlReport().sessions.find(candidate => candidate.sessionId === sessionId)
+    const readiness = describeFeishuBridgeReadiness({
+      bridgeRunning: this.feishuBridge?.status().running ?? false,
+      sessionMode: session?.mode ?? 'dry-run',
+      localExecutor: Boolean(session?.localExecutor),
+      commandAvailable: provider.commandAvailable,
+      routeConfigured: Boolean(provider.routeConfig?.configured),
+    })
+    return { status: this.feishuBridge?.status() ?? null, readiness }
+  }
+
+  private feishuBridgeSessionId?: string
+
+  private startFeishuBridge(sessionIdInput?: string): { ok: boolean; error?: string; status?: ReturnType<FeishuBridge['status']> } {
+    const provider = this.getFeishuIntegrationProvider()
+    if (!provider.commandAvailable) {
+      return { ok: false, error: 'lark-cli is not available on PATH.' }
+    }
+    const sessionId = sessionIdInput?.trim() || this.getAgentControlReport().sessions[0]?.sessionId || 'default'
+    if (this.feishuBridge?.status().running) {
+      if (this.feishuBridgeSessionId === sessionId) return { ok: true, status: this.feishuBridge.status() }
+      this.feishuBridge.stop()
+    }
+    this.feishuBridgeSessionId = sessionId
+    this.feishuBridge = new FeishuBridge({
+      projectDir: this.projectDir,
+      sessionId,
+      plane: () => this.getAgentControlPlane(),
+      bus: this.agentControlBus,
+    })
+    const status = this.feishuBridge.start()
+    this.invalidateDashboardReportCaches()
+    return { ok: true, status }
+  }
+
+  private feishuCliJob: FeishuCliJobState | null = null
+
+  /**
+   * 后台运行 lark-cli 的交互式命令（config init / auth login 会阻塞等待用户在浏览器完成操作）。
+   * lark-cli 官方指引：这类命令应后台运行，并从其输出中取出 verification URL 交给用户。
+   * 旧实现只把命令文本丢给用户去终端复制，在设置了 HERMES_HOME 的环境里 config init 会被直接拒绝，
+   * 形成永远走不通的死循环。
+   */
+  private startFeishuCliJob(kind: FeishuCliJobState['kind'], args: string[]): FeishuCliJobState {
+    if (this.feishuCliJob?.status === 'running') return this.feishuCliJob
+    const job: FeishuCliJobState = {
+      kind,
+      status: 'running',
+      command: `lark-cli ${args.join(' ')}`,
+      startedAt: Date.now(),
+      stdout: '',
+      stderr: '',
+    }
+    this.feishuCliJob = job
+    if (!externalCommandExists('lark-cli')) {
+      job.status = 'failed'
+      job.finishedAt = Date.now()
+      job.error = 'lark-cli is not available on PATH.'
+      return job
+    }
+    // Windows 上 npm 全局 CLI 是 .cmd 垫片，必须走 cmd.exe 包装，否则 spawn ENOENT
+    const invocation = buildSpawnInvocation('lark-cli', args)
+    const child = spawn(invocation.executable, invocation.args, { cwd: this.projectDir, windowsHide: true })
+    const append = (channel: 'stdout' | 'stderr', chunk: Buffer | string) => {
+      if (job[channel].length > 16000) return
+      job[channel] += chunk.toString('utf8')
+      const url = extractFirstUrl(job.stdout) ?? extractFirstUrl(job.stderr)
+      if (url) job.verificationUrl = url
+    }
+    child.stdout?.on('data', chunk => append('stdout', chunk))
+    child.stderr?.on('data', chunk => append('stderr', chunk))
+    child.on('error', error => {
+      job.status = 'failed'
+      job.finishedAt = Date.now()
+      job.error = error.message
+    })
+    child.on('close', code => {
+      job.status = code === 0 ? 'completed' : 'failed'
+      job.finishedAt = Date.now()
+      job.exitCode = code
+      if (code !== 0 && !job.error) {
+        job.error = job.stderr.trim().split('\n').slice(-3).join(' ').slice(0, 300) || `lark-cli exited with code ${code}`
+      }
+    })
+    return job
+  }
+
+  private runFeishuAuthLogin(): DashboardFeishuAuthStartResult {
+    const startedAt = Date.now()
+    const args = ['auth', 'login', '--recommend', '--no-wait', '--json']
+    const base = {
+      provider: 'feishu' as const,
+      command: 'lark-cli',
+      args,
+      startedAt,
+    }
+    if (!externalCommandExists('lark-cli')) {
+      return {
+        ...base,
+        ok: false,
+        status: 'blocked',
+        finishedAt: startedAt,
+        durationMs: 0,
+        error: 'lark-cli is not available on PATH.',
+      }
+    }
+    try {
+      const output = String(runExternalCommandSync('lark-cli', args, {
+        cwd: this.projectDir,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30000,
+        windowsHide: true,
+      }))
+      const parsed = parseJsonObject(output)
+      const verificationUrl = firstString(
+        parsed.verification_uri_complete,
+        parsed.verificationUriComplete,
+        parsed.verification_url,
+        parsed.verificationUrl,
+        parsed.verification_uri,
+        parsed.verificationUri,
+        parsed.url,
+      ) ?? extractFirstUrl(output)
+      const finishedAt = Date.now()
+      return {
+        ...base,
+        ok: Boolean(verificationUrl),
+        status: verificationUrl ? 'started' : 'failed',
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        verificationUrl,
+        userCode: firstString(parsed.user_code, parsed.userCode),
+        deviceCode: firstString(parsed.device_code, parsed.deviceCode),
+        expiresIn: parseNonNegativeIntFromUnknown(parsed.expires_in ?? parsed.expiresIn, 0) || undefined,
+        stdout: output.slice(0, 4000),
+        error: verificationUrl ? undefined : 'lark-cli did not return a verification URL; verify the installed version supports --no-wait --json.',
+      }
+    } catch (error) {
+      const finishedAt = Date.now()
+      const typed = error as Error & { stdout?: string | Buffer | null; stderr?: string | Buffer | null }
+      return {
+        ...base,
+        ok: false,
+        status: 'failed',
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        stdout: String(typed.stdout ?? '').slice(0, 2000),
+        stderr: String(typed.stderr ?? '').slice(0, 2000),
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  private startFeishuConfigInit(): DashboardFeishuAuthStartResult {
+    const startedAt = Date.now()
+    // --force-init：环境里设置了 HERMES_HOME/OPENCLAW_HOME 时，lark-cli 默认拒绝 config init
+    const args = ['config', 'init', '--new', '--force-init', '--lang', 'zh']
+    if (!externalCommandExists('lark-cli')) {
+      return {
+        provider: 'feishu',
+        ok: false,
+        status: 'blocked',
+        startedAt,
+        finishedAt: startedAt,
+        durationMs: 0,
+        command: 'lark-cli',
+        args,
+        error: 'lark-cli is not available on PATH.',
+      }
+    }
+    // 该命令会阻塞等待用户在浏览器完成应用创建，因此后台运行并轮询输出里的授权 URL
+    const job = this.startFeishuCliJob('config-init', args)
+    return {
+      provider: 'feishu',
+      ok: true,
+      status: 'started',
+      startedAt,
+      finishedAt: Date.now(),
+      durationMs: Date.now() - startedAt,
+      command: 'lark-cli',
+      args,
+      verificationUrl: job.verificationUrl,
+      stdout: job.stdout.slice(0, 4000),
+    }
+  }
+
+  private getFeishuCliJobReport(): FeishuCliJobState | null {
+    return this.feishuCliJob
+  }
+
+  private integrationSetupRun: IntegrationSetupRunState | null = null
+
+  /**
+   * T2-P5：面板内一键执行 `scale setup --pack full --apply --yes`。
+   * 异步 spawn + 状态轮询（GET /api/integrations/setup/run），不阻塞请求线程——
+   * runExternalCommandSync 是 spawnSync，跑 setup 会卡死整个面板，故不可复用。
+   */
+  private startIntegrationSetupRun(): { ok: boolean; run?: IntegrationSetupRunState; error?: string } {
+    if (this.integrationSetupRun?.status === 'running') {
+      return { ok: false, error: 'A setup run is already in progress.' }
+    }
+    const args = ['setup', '--pack', 'full', '--memory-provider', 'hrain', '--memory-mode', 'local-only', '--apply', '--yes']
+    const run: IntegrationSetupRunState = {
+      status: 'running',
+      command: `scale ${args.join(' ')}`,
+      startedAt: Date.now(),
+      stdout: '',
+      stderr: '',
+    }
+    this.integrationSetupRun = run
+    const invocation = buildSpawnInvocation('scale', args)
+    const child = spawn(invocation.executable, invocation.args, { cwd: this.projectDir, windowsHide: true })
+    const append = (channel: 'stdout' | 'stderr', chunk: Buffer | string) => {
+      if (run[channel].length < 24000) run[channel] += chunk.toString('utf8')
+    }
+    child.stdout?.on('data', (chunk) => append('stdout', chunk))
+    child.stderr?.on('data', (chunk) => append('stderr', chunk))
+    child.on('error', (error) => {
+      run.status = 'failed'
+      run.finishedAt = Date.now()
+      run.stderr += `\n${error.message}`
+    })
+    child.on('close', (code) => {
+      run.status = code === 0 ? 'completed' : 'failed'
+      run.finishedAt = Date.now()
+      run.exitCode = code
+    })
+    return { ok: true, run }
+  }
+
+  private governanceFilePath(name: string): string {
+    return join(this.projectDir, '.scale', name)
+  }
+
+  private getGovernanceConfig(): GovernanceConfigReport {
+    const policyPath = this.governanceFilePath('policy.yaml')
+    const thresholdsPath = this.governanceFilePath('thresholds.json')
+    const memoryPath = this.governanceFilePath('memory-providers.json')
+    const readJson = (path: string): Record<string, unknown> | null => {
+      if (!existsSync(path)) return null
+      try {
+        return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+      } catch {
+        return null
+      }
+    }
+    let policyYaml = ''
+    let ruleCount = 0
+    if (existsSync(policyPath)) {
+      policyYaml = readFileSync(policyPath, 'utf-8')
+      try {
+        const parsed = yaml.load(policyYaml) as { rules?: unknown[] } | null
+        ruleCount = Array.isArray(parsed?.rules) ? parsed.rules.length : 0
+      } catch {
+        ruleCount = 0
+      }
+    }
+    return {
+      policy: { path: policyPath, exists: existsSync(policyPath), yaml: policyYaml, ruleCount },
+      thresholds: { path: thresholdsPath, exists: existsSync(thresholdsPath), data: readJson(thresholdsPath) },
+      memoryProviders: { path: memoryPath, exists: existsSync(memoryPath), data: readJson(memoryPath) },
+    }
+  }
+
+  private saveGovernancePolicy(input: unknown): GovernanceSaveResult {
+    const text = typeof input === 'string' ? input : ''
+    if (!text.trim()) return { ok: false, error: 'Policy YAML content is required.' }
+    let parsed: unknown
+    try {
+      parsed = yaml.load(text)
+    } catch (error) {
+      return { ok: false, error: `Invalid YAML: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    if (!parsed || typeof parsed !== 'object') return { ok: false, error: 'Policy must be a YAML object.' }
+    const ruleCount = Array.isArray((parsed as { rules?: unknown[] }).rules) ? (parsed as { rules?: unknown[] }).rules!.length : 0
+    writeFileSync(this.governanceFilePath('policy.yaml'), text, 'utf-8')
+    let shield: GovernanceSaveResult['shield']
+    try {
+      const compiler = new PolicyCompiler()
+      const output = compiler.compile(this.projectDir)
+      compiler.writeSettingsPatches(output)
+      shield = {
+        recompiled: true,
+        registered: [output.settingsPatches.claude, output.settingsPatches.codex, output.settingsPatches.cursor, output.settingsPatches.zcode]
+          .filter(path => existsSync(path)),
+      }
+    } catch (error) {
+      // 策略已保存；重编译失败只告警，用户可修正后再次保存
+      return { ok: true, ruleCount, shield: { recompiled: false, registered: [] }, error: `Policy saved but Shield recompile failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    return { ok: true, ruleCount, shield }
+  }
+
+  private saveGovernanceThresholds(body: Record<string, unknown>): GovernanceSaveResult {
+    const thresholdsPath = this.governanceFilePath('thresholds.json')
+    let data: Record<string, unknown> = {}
+    if (existsSync(thresholdsPath)) {
+      try {
+        data = JSON.parse(readFileSync(thresholdsPath, 'utf-8')) as Record<string, unknown>
+      } catch {
+        data = {}
+      }
+    }
+    if (body.coverage !== undefined) {
+      const value = Number(body.coverage)
+      if (!Number.isFinite(value) || value < 0 || value > 100) return { ok: false, error: 'coverage must be a number between 0 and 100.' }
+      const coverageEntry = (data.coverage && typeof data.coverage === 'object' ? data.coverage : {}) as Record<string, unknown>
+      data.coverage = { ...coverageEntry, minimum: value, unit: 'percent' }
+      const gates = (data.gates && typeof data.gates === 'object' ? data.gates : {}) as Record<string, unknown>
+      const g6 = (gates.G6_coverage && typeof gates.G6_coverage === 'object' ? gates.G6_coverage : {}) as Record<string, unknown>
+      gates.G6_coverage = { ...g6, minimum: value }
+      data.gates = gates
+    }
+    if (body.retry !== undefined) {
+      const value = Number(body.retry)
+      if (!Number.isInteger(value) || value < 1 || value > 20) return { ok: false, error: 'retry must be an integer between 1 and 20.' }
+      const retryEntry = (data.retry && typeof data.retry === 'object' ? data.retry : {}) as Record<string, unknown>
+      data.retry = { ...retryEntry, bruteMaximum: value, unit: 'count' }
+    }
+    if (body.severity !== undefined) {
+      const value = String(body.severity).toUpperCase()
+      if (!['CRITICAL', 'HIGH', 'MEDIUM'].includes(value)) return { ok: false, error: 'severity must be CRITICAL, HIGH, or MEDIUM.' }
+      const severityEntry = (data.severity && typeof data.severity === 'object' ? data.severity : {}) as Record<string, unknown>
+      data.severity = { ...severityEntry, blockLevel: value }
+    }
+    if (!existsSync(thresholdsPath) && Object.keys(data).length === 0) {
+      return { ok: false, error: 'No threshold fields provided.' }
+    }
+    writeFileSync(thresholdsPath, JSON.stringify(data, null, 2), 'utf-8')
+    return { ok: true, thresholds: data }
+  }
+
+  private saveGovernanceMemoryProviders(body: Record<string, unknown>): GovernanceSaveResult {
+    const memoryPath = this.governanceFilePath('memory-providers.json')
+    if (!existsSync(memoryPath)) {
+      return { ok: false, error: 'memory-providers.json not found; run scale setup first.' }
+    }
+    let data: Record<string, unknown>
+    try {
+      data = JSON.parse(readFileSync(memoryPath, 'utf-8')) as Record<string, unknown>
+    } catch (error) {
+      return { ok: false, error: `memory-providers.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    const routing = (data.routing && typeof data.routing === 'object' ? data.routing : {}) as Record<string, unknown>
+    if (body.mode !== undefined) {
+      const value = String(body.mode)
+      if (!['auto', 'local-only', 'external-first'].includes(value)) {
+        return { ok: false, error: 'mode must be auto, local-only, or external-first.' }
+      }
+      routing.mode = value
+    }
+    if (body.defaultOrder !== undefined) {
+      const order = Array.isArray(body.defaultOrder)
+        ? body.defaultOrder.map(item => String(item))
+        : String(body.defaultOrder).split(',').map(item => item.trim()).filter(Boolean)
+      if (order.length === 0) return { ok: false, error: 'defaultOrder must contain at least one provider id.' }
+      routing.defaultOrder = order
+    }
+    if (body.allowExternalWrite !== undefined) routing.allowExternalWrite = Boolean(body.allowExternalWrite)
+    if (body.requireEvidence !== undefined) routing.requireEvidence = Boolean(body.requireEvidence)
+    if (body.maxResultsPerProvider !== undefined) {
+      const value = Number(body.maxResultsPerProvider)
+      if (!Number.isInteger(value) || value < 1 || value > 50) return { ok: false, error: 'maxResultsPerProvider must be an integer between 1 and 50.' }
+      routing.maxResultsPerProvider = value
+    }
+    data.routing = routing
+    writeFileSync(memoryPath, JSON.stringify(data, null, 2), 'utf-8')
+    return { ok: true, memoryProviders: data }
+  }
+
   private runFeishuIntegrationAction(action: string): DashboardIntegrationActionResult {
     const provider = this.getFeishuIntegrationProvider()
     const selected = provider.actions.find(candidate => candidate.id === action)
@@ -4183,10 +4668,8 @@ export class DashboardServer {
   }
 
   private startFeishuAuthLogin(): DashboardFeishuAuthStartResult {
-    const startedAt = Date.now()
-    const command = 'lark-cli'
-    const args = ['auth', 'login', '--recommend', '--no-wait', '--json']
-    if (!externalCommandExists(command)) {
+    if (!externalCommandExists('lark-cli')) {
+      const startedAt = Date.now()
       return {
         provider: 'feishu',
         ok: false,
@@ -4194,121 +4677,23 @@ export class DashboardServer {
         startedAt,
         finishedAt: startedAt,
         durationMs: 0,
-        command,
-        args,
+        command: 'lark-cli',
+        args: ['auth', 'login', '--recommend', '--no-wait', '--json'],
         error: 'lark-cli is not available on PATH.',
       }
     }
-    if (this.latestAcceptanceHasMissingLarkConfig()) {
-      return {
-        provider: 'feishu',
-        ok: false,
-        status: 'blocked',
-        startedAt,
-        finishedAt: Date.now(),
-        durationMs: Date.now() - startedAt,
-        command,
-        args,
-        setupCommand: 'lark-cli config init --new --lang zh',
-        error: 'lark-cli is installed but not configured. Run config init, finish browser/mobile setup, then start auth again.',
-      }
-    }
-    try {
-      const output = runExternalCommandSync(command, args, {
-        cwd: this.projectDir,
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 15000,
-        windowsHide: true,
-      })
-      const stdout = String(output).slice(0, 12000)
-      const parsed = parseJsonObject(stdout)
-      const finishedAt = Date.now()
-      const verificationUrl = firstString(
-        parsed.verification_uri_complete,
-        parsed.verificationUriComplete,
-        parsed.verification_url,
-        parsed.verificationUrl,
-        parsed.verification_uri,
-        parsed.verificationUri,
-        parsed.url,
-      )
-      return {
-        provider: 'feishu',
-        ok: Boolean(verificationUrl),
-        status: verificationUrl ? 'started' : 'failed',
-        startedAt,
-        finishedAt,
-        durationMs: finishedAt - startedAt,
-        command,
-        args,
-        verificationUrl,
-        userCode: firstString(parsed.user_code, parsed.userCode),
-        deviceCode: firstString(parsed.device_code, parsed.deviceCode),
-        expiresIn: parseNonNegativeIntFromUnknown(parsed.expires_in ?? parsed.expiresIn, 0) || undefined,
-        stdout,
-        error: verificationUrl ? undefined : 'lark-cli auth login did not return a verification URL.',
-      }
-    } catch (error) {
-      const finishedAt = Date.now()
-      const typed = error as Error & { stdout?: string | Buffer | null; stderr?: string | Buffer | null }
-      const stdout = stringifyCommandOutput(typed.stdout).slice(0, 12000)
-      const stderr = stringifyCommandOutput(typed.stderr).slice(0, 12000)
-      const text = `${typed.message}\n${stdout}\n${stderr}`.toLowerCase()
-      const needsConfig = text.includes('not configured') || text.includes('config init')
-      return {
-        provider: 'feishu',
-        ok: false,
-        status: needsConfig ? 'blocked' : 'failed',
-        startedAt,
-        finishedAt,
-        durationMs: finishedAt - startedAt,
-        command,
-        args,
-        setupCommand: needsConfig ? 'lark-cli config init --new --lang zh' : undefined,
-        stdout,
-        stderr,
-        error: needsConfig
-          ? 'lark-cli is installed but not configured. Run config init, finish browser/mobile setup, then start auth again.'
-          : typed.message,
-      }
-    }
+    // 真正启动设备码授权并返回可点击的 verification URL（旧实现只返回"先去跑 config init"的提示）
+    return this.runFeishuAuthLogin()
   }
 
-  private startFeishuConfigInit(): DashboardFeishuAuthStartResult {
-    const startedAt = Date.now()
-    const command = 'lark-cli'
-    const args = ['config', 'init', '--new', '--lang', 'zh']
-    const setupCommand = argsToCommand(command, args)
-    if (!externalCommandExists(command)) {
-      return {
-        provider: 'feishu',
-        ok: false,
-        status: 'blocked',
-        startedAt,
-        finishedAt: startedAt,
-        durationMs: 0,
-        command,
-        args,
-        setupCommand,
-        error: 'lark-cli is not available on PATH.',
-      }
-    }
-    return {
-      provider: 'feishu',
-      ok: false,
-      status: 'blocked',
-      startedAt,
-      finishedAt: Date.now(),
-      durationMs: Date.now() - startedAt,
-      command,
-      args,
-      setupCommand,
-      error: 'lark-cli config init is interactive. Run the setup command in a terminal, complete browser/mobile authorization, then rerun acceptance.',
-    }
+  /** 设备码授权第二步：用户在浏览器完成确认后，用 device_code 换取登录态 */
+  private completeFeishuAuthLogin(deviceCodeInput?: string): { ok: boolean; job: FeishuCliJobState | null; error?: string } {
+    const deviceCode = deviceCodeInput?.trim()
+    if (!deviceCode) return { ok: false, job: this.feishuCliJob, error: 'deviceCode is required to complete Feishu authorization.' }
+    if (!externalCommandExists('lark-cli')) return { ok: false, job: this.feishuCliJob, error: 'lark-cli is not available on PATH.' }
+    const job = this.startFeishuCliJob('auth-complete', ['auth', 'login', '--device-code', deviceCode, '--json'])
+    return { ok: true, job }
   }
-
   private latestAcceptanceHasMissingLarkConfig(): boolean {
     const report = this.getAgentOsAcceptanceReport()
     const doctor = report.steps.find(step => step.id === 'lark-cli-doctor')
@@ -5093,6 +5478,7 @@ function agentPlatformName(id: string): string {
     hermes: 'Hermes',
     trae: 'Trae',
     workbuddy: 'WorkBuddy',
+    zcode: 'ZCode',
     vsc: 'VS Code/VSC',
     qcoder: 'QCoder',
     'deepseek-tui': 'DeepSeek TUI',
@@ -5127,6 +5513,7 @@ function agentPlatformPaths(projectDir: string, id: string): Array<{ kind: 'sett
     hermes: pair('.hermes/settings.json', '.hermes.md'),
     trae: pair('.trae/settings.json', 'TRAE.md'),
     workbuddy: pair('.workbuddy/settings.json', 'WORKBUDDY.md'),
+    zcode: pair('.zcode/config.json', 'AGENTS.md'),
     vsc: pair('.vscode/scale.json', 'VSC.md'),
     qcoder: pair('.qwen/settings.json', 'QWEN.md'),
     'deepseek-tui': pair('.deepseek/config.toml', '.deepseek/instructions.md'),

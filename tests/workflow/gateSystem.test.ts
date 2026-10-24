@@ -660,7 +660,7 @@ describe('SecurityGate', () => {
   it('does not block generated Shield hook rule literals as executed commands', async () => {
     const rootDir = createSecurityFixture({
       'src/index.ts': 'export const ok = true\n',
-      '.claude/hooks/shield-pre-tool.js': [
+      '.claude/hooks/shield-pre-tool.cjs': [
         '// SCALE Shield Combined PreToolUse Hook',
         '// Policy hash: test | Rules: 8 | Mode: strict',
         'const BLOCKED_COMMANDS = [',
@@ -675,7 +675,7 @@ describe('SecurityGate', () => {
     })
     const gate = new SecurityGate({
       rootDir,
-      changedFiles: ['.claude/hooks/shield-pre-tool.js'],
+      changedFiles: ['.claude/hooks/shield-pre-tool.cjs'],
       dependencyAudit: false,
     })
 

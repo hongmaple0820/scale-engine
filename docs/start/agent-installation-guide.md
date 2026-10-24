@@ -1,10 +1,10 @@
-# 22 种 Agent 安装与使用教程
+# 23 种 Agent 安装与使用教程
 
 目标：让用户知道 SCALE 工作流如何接入不同 AI Coding Agent，以及接入后应该如何验证、看效果、开面板和持续维护。
 
 SCALE 不替代 Codex、Claude Code、Cursor、Cline、Windsurf 这类 Agent。SCALE 是一层 repo-native 工作流治理系统：把需求澄清、计划、实现、验证、评审、记忆、知识库、token 统计和发版门禁落到可执行命令、项目文件和证据记录里。
 
-如果用户只想开始远程 coding 或让 Agent 自动检查第三方能力，先使用 [Agent 满血工作流一键接入](agent-full-workflow.md)。这份安装教程保留给需要逐项理解 22 个 adapter 的维护者。
+如果用户只想开始远程 coding 或让 Agent 自动检查第三方能力，先使用 [Agent 满血工作流一键接入](agent-full-workflow.md)。这份安装教程保留给需要逐项理解 23 个 adapter 的维护者。
 
 ## 先理解接入模型
 
@@ -67,7 +67,7 @@ scale install --agent claude-code,cursor,cline --pack core --dir .
 
 每次都应看 `git diff`。SCALE 会尽量合并已存在配置，但团队自定义规则仍需要人工确认。
 
-## 3. 22 个 Agent 接入表
+## 3. 23 个 Agent 接入表
 
 统一命令模板：
 
@@ -90,6 +90,7 @@ scale smoke --dir .
 | `hermes` | Hermes | `scale init --agent hermes --dir .` | `.hermes/settings.json`、`.hermes.md`、`.hermes/skills` | 在 Hermes 会话里使用项目规则 |
 | `trae` | Trae | `scale init --agent trae --dir .` | `.trae/settings.json`、`TRAE.md`、`.trae/skills` | 用 Trae 打开项目工作区 |
 | `workbuddy` | WorkBuddy | `scale init --agent workbuddy --dir .` | `.workbuddy/settings.json`、`WORKBUDDY.md`、`.workbuddy/skills` | 用 WorkBuddy 打开项目工作区 |
+| `zcode` | ZCode | `scale init --agent zcode --dir .` | `.zcode/config.json`、`AGENTS.md`、`.zcode/skills` | 用 ZCode 打开项目并重启会话以加载 hooks（含 PermissionRequest/PostToolUseFailure 独有事件） |
 | `vsc` | VS Code/通用 VSC 入口 | `scale init --agent vsc --dir .` | `.vscode/scale.json`、`VSC.md`、`.vscode/skills` | 适合 VS Code 侧插件或通用编辑器规则承载 |
 | `qcoder` | Qwen/QCoder | `scale init --agent qcoder --dir .` | `.qwen/settings.json`、`QWEN.md`、`.qwen/skills` | 在 Qwen/QCoder 工具中打开项目 |
 | `deepseek-tui` | DeepSeek TUI | `scale init --agent deepseek-tui --dir .` | `.deepseek/config.toml`、`.deepseek/instructions.md`、`~/.deepseek/skills` | 在项目目录运行 DeepSeek TUI |

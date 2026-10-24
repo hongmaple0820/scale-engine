@@ -104,7 +104,7 @@ export interface ISkillDiscovery {
 const GLOBAL_PLATFORMS: AgentPlatform[] = ['claude-code', 'codex', 'opencode', 'deepseek-tui']
 
 /** 项目级平台：skills 目录在项目目录下 */
-const PROJECT_PLATFORMS: AgentPlatform[] = ['cursor', 'gemini', 'openclaw', 'hermes', 'trae', 'workbuddy', 'vsc', 'qcoder', 'qoder', 'jcode', 'aider', 'windsurf', 'kimi', 'doubao', 'kiro', 'cline', 'kilocode', 'antigravity']
+const PROJECT_PLATFORMS: AgentPlatform[] = ['cursor', 'gemini', 'openclaw', 'hermes', 'trae', 'workbuddy', 'vsc', 'qcoder', 'qoder', 'jcode', 'aider', 'windsurf', 'kimi', 'doubao', 'kiro', 'cline', 'kilocode', 'antigravity', 'zcode']
 
 const PLATFORM_SKILLS_DIRS: Record<AgentPlatform, string> = {
   // 全局级（homedir）
@@ -131,6 +131,7 @@ const PLATFORM_SKILLS_DIRS: Record<AgentPlatform, string> = {
   'cline': join('.cline', 'skills'),
   'kilocode': join('.kilocode', 'skills'),
   'antigravity': join('.agents', 'skills'),
+  'zcode': join('.zcode', 'skills'),
 }
 
 export class SkillDiscovery implements ISkillDiscovery {
@@ -248,6 +249,7 @@ export class SkillDiscovery implements ISkillDiscovery {
       { platform: 'hermes', paths: [join(this.projectDir, '.hermes', 'settings.json')] },
       { platform: 'trae', paths: [join(this.projectDir, '.trae', 'settings.json')] },
       { platform: 'workbuddy', paths: [join(this.projectDir, '.workbuddy', 'settings.json')] },
+      { platform: 'zcode', paths: [join(this.projectDir, '.zcode', 'config.json')] },
       { platform: 'vsc', paths: [join(this.projectDir, '.vscode', 'scale.json')] },
       { platform: 'qcoder', paths: [join(this.projectDir, '.qwen', 'settings.json')] },
       { platform: 'qoder', paths: [join(this.projectDir, '.qoder', 'settings.json')] },

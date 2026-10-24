@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { dirname, join, relative } from 'node:path'
 import { DEFAULT_MODELS, LOCAL_MODELS, type ModelConfig } from '../routing/ModelRouter.js'
+import { buildSpawnInvocation } from '../core/ExternalCommand.js'
 import { buildFeishuSendMessageCommand, type FeishuCommandPlan } from '../communication/FeishuChannelProvider.js'
 import type { EventBus } from '../core/eventBus.js'
 import type { AiOsRunReport } from '../runtime/AiOsRuntime.js'
@@ -49,6 +51,10 @@ export interface AgentControlSessionConfig {
   mode: AgentControlMode
   autoImportKnowledge: boolean
   localExecutor?: boolean
+  /** T1-agent-cli：'governed'=进程内治理规划（默认）；'agent-cli'=spawn 本机真实 agent CLI 执行 */
+  executor?: 'governed' | 'agent-cli'
+  /** 覆盖平台默认 CLI 的命令模板，{prompt} 占位符替换为任务文本，如 "claude -p {prompt} --output-format text" */
+  agentCommand?: string
   updatedAt: number
 }
 
@@ -223,6 +229,9 @@ export interface AgentControlSessionUpdateInput {
   commandPrefix?: unknown
   mode?: unknown
   autoImportKnowledge?: unknown
+  localExecutor?: unknown
+  executor?: unknown
+  agentCommand?: unknown
 }
 
 export interface AgentControlTranscriptQueryInput {
@@ -397,11 +406,24 @@ export class AgentControlPlane {
     }
   }
 
+  /**
+   * 一键开闸：切换到 live-guarded 模式并启用本地执行器。
+   * 其余会话字段经 saveSession 的 existing 合并语义原样保留。
+   */
+  enableLocalExecution(sessionId: string): AgentControlSessionSummary {
+    return this.saveSession(sessionId, { mode: 'live-guarded', localExecutor: true })
+  }
+
   async executeLocallyIfEnabled(sessionId: string, messageId: string): Promise<AgentControlMessageRecord | null> {
     const session = this.getSessionConfig(sessionId)
     if (!session.localExecutor) return null
     const message = this.readMessages(sessionId).find(candidate => candidate.id === messageId)
     if (!message || message.dryRun || message.status !== 'queued') return null
+    if (session.executor === 'agent-cli') {
+      // 真实 agent CLI 模式：后台异步执行，立即返回 claimed 记录；
+      // 完成/失败经 completeMessage 自动回帖并 emit SSE 事件。
+      return this.executeViaAgentCli(sessionId, messageId)
+    }
     return this.executeLocally(sessionId, messageId)
   }
 
@@ -449,6 +471,159 @@ export class AgentControlPlane {
       evidencePath,
       agentId: AgentControlPlane.LOCAL_AGENT_ID,
     }).message
+  }
+
+  // =====================================================================
+  // agent-cli 执行器：把消息真正派给本机 agent CLI（cc-connect 模式）。
+  // 平台默认命令映射；session.agentCommand 可覆盖，{prompt} 替换为任务文本。
+  // =====================================================================
+
+  private static readonly AGENT_CLI_COMMANDS: Record<string, string> = {
+    'claude-code': 'claude -p {prompt} --output-format text',
+    'codex': 'codex exec {prompt}',
+    'gemini': 'gemini -p {prompt}',
+    'opencode': 'opencode run {prompt}',
+    'qcoder': 'qwen -p {prompt}',
+  }
+
+  private static readonly AGENT_CLI_TIMEOUT_MS = 600_000
+
+  private readonly runningAgentCliChildren = new Map<string, ChildProcess>()
+
+  /**
+   * Windows 上 claude CLI 需要 git-bash（CLAUDE_CODE_GIT_BASH_PATH），否则直接报错退出。
+   * 若环境未设置则探测常见安装位置注入，避免面板派发的 claude 命令在 Windows 上必失败。
+   */
+  private agentCliEnv(executable: string): NodeJS.ProcessEnv {
+    const env = { ...process.env }
+    if (process.platform === 'win32' && /^claude(\.cmd|\.exe)?$/i.test(executable) && !env.CLAUDE_CODE_GIT_BASH_PATH) {
+      for (const candidate of [
+        'D:\\Program Files\\Git\\bin\\bash.exe',
+        'C:\\Program Files\\Git\\bin\\bash.exe',
+        'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+      ]) {
+        if (existsSync(candidate)) {
+          env.CLAUDE_CODE_GIT_BASH_PATH = candidate
+          break
+        }
+      }
+    }
+    return env
+  }
+
+  private resolveAgentCliCommand(session: AgentControlSessionConfig, prompt: string, continueSession: boolean): { executable: string; args: string[] } | null {
+    let template = (session.agentCommand?.trim() || AgentControlPlane.AGENT_CLI_COMMANDS[session.platformId] || '').trim()
+    if (!template || !template.includes('{prompt}')) return null
+    // 会话续接：同一会话非首条消息时注入续接参数，保持对话上下文（cc-connect 的默认工作方式）
+    if (continueSession) {
+      if (/^claude\b/.test(template) && !template.includes('--continue') && !template.includes('--resume')) {
+        template = template.replace(/\{prompt\}/, '{prompt} --continue')
+      } else if (/^codex\b/.test(template) && !template.includes('resume')) {
+        template = template.replace(/^codex\s+exec/, 'codex exec resume').replace(/\{prompt\}/, '{prompt} --last')
+      } else if (/^gemini\b/.test(template) && !template.includes('--checkpoint')) {
+        template += ' --checkpoint'
+      }
+    }
+    const segments = template.split(/\s+/).map(segment => segment === '{prompt}' ? prompt : segment)
+    const [executable] = segments
+    if (!executable) return null
+    return { executable, args: segments.slice(1) }
+  }
+
+  /** 会话内是否已有成功的 agent-cli 运行：有则下一条带续接参数（--continue 等） */
+  private hasPriorAgentCliRun(sessionId: string): boolean {
+    try {
+      return this.getTranscript(sessionId, { limit: 200 }).messages
+        .some(message => message.direction === 'agent-to-operator' && message.text.startsWith('[agent-cli] 已完成'))
+    } catch {
+      return false
+    }
+  }
+
+  private executeViaAgentCli(sessionId: string, messageId: string): AgentControlMessageRecord {
+    const session = this.getSessionConfig(sessionId)
+    const claimed = this.claimMessage(sessionId, messageId, {
+      agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      note: 'Claimed by agent-cli executor.',
+    })
+    if (claimed.claimedBy && claimed.claimedBy !== AgentControlPlane.LOCAL_AGENT_ID) {
+      return claimed
+    }
+    if (this.runningAgentCliChildren.has(sessionId)) {
+      return this.completeMessage(sessionId, messageId, {
+        status: 'failed',
+        text: '[agent-cli] 该会话已有一个 agent 正在执行，请等待完成后再发下一条。',
+        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      }).message
+    }
+
+    const resolved = this.resolveAgentCliCommand(session, claimed.text, this.hasPriorAgentCliRun(sessionId))
+    if (!resolved) {
+      return this.completeMessage(sessionId, messageId, {
+        status: 'failed',
+        text: `[agent-cli] 平台 "${session.platformId}" 没有可用的 CLI 命令映射，也没有配置 agentCommand。可在会话配置里填 agentCommand，例如：claude -p {prompt} --output-format text`,
+        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      }).message
+    }
+
+    const startedAt = Date.now()
+    let stdout = ''
+    let stderr = ''
+    let child: ChildProcess
+    try {
+      // Windows 上 npm 全局 CLI（claude/codex 等）是 .cmd 垫片，必须走 cmd.exe 包装
+      const invocation = buildSpawnInvocation(resolved.executable, resolved.args)
+      child = spawn(invocation.executable, invocation.args, {
+        cwd: this.project.projectDir,
+        windowsHide: true,
+        env: this.agentCliEnv(resolved.executable),
+      })
+    } catch (error) {
+      return this.completeMessage(sessionId, messageId, {
+        status: 'failed',
+        text: `[agent-cli] 启动失败：${error instanceof Error ? error.message : String(error)}`,
+        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      }).message
+    }
+    this.runningAgentCliChildren.set(sessionId, child)
+    child.stdout?.on('data', chunk => { if (stdout.length < 24000) stdout += chunk.toString('utf8') })
+    child.stderr?.on('data', chunk => { if (stderr.length < 8000) stderr += chunk.toString('utf8') })
+
+    const finish = (status: 'completed' | 'failed') => {
+      this.runningAgentCliChildren.delete(sessionId)
+      const durationS = Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+      const tail = (text: string, limit: number) => text.length > limit ? `…${text.slice(-limit)}` : text
+      const body = status === 'completed'
+        ? tail(stdout.trim(), 2000)
+        : [tail(stderr.trim(), 1200), stdout.trim() ? `---- stdout ----\n${tail(stdout.trim(), 800)}` : ''].filter(Boolean).join('\n')
+      // 显示真实执行的命令（而非平台名），便于排查是哪个 CLI 跑的
+      const ran = [resolved.executable, ...resolved.args.slice(0, -1)].join(' ')
+      const text = `[agent-cli] ${status === 'completed' ? '已完成' : '执行失败'}（exit ${child.exitCode ?? 'n/a'}，${durationS}s · ${ran}）\n${body || '（无输出）'}`
+      // 完成回调是 fire-and-forget（子进程 close 可能在消息存储被清理后才到达），
+      // 必须吞掉异常：否则会变成未处理拒绝，在生产里可能打挂面板进程。
+      void Promise.resolve()
+        .then(() => this.completeMessage(sessionId, messageId, {
+          status,
+          text,
+          agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        }))
+        .catch(() => { /* 消息已被清理或会话已结束：忽略 */ })
+    }
+
+    child.on('error', error => {
+      stderr += `\n${error.message}`
+      finish('failed')
+    })
+    child.on('close', code => finish(code === 0 ? 'completed' : 'failed'))
+    const timer = setTimeout(() => {
+      if (this.runningAgentCliChildren.has(sessionId)) {
+        // 先写入原因再 kill：kill 会同步触发 close → finish，顺序反了提示就丢了
+        stderr += `\n[agent-cli] 超时（${AgentControlPlane.AGENT_CLI_TIMEOUT_MS / 1000}s）被终止`
+        child.kill()
+      }
+    }, AgentControlPlane.AGENT_CLI_TIMEOUT_MS)
+    timer.unref?.()
+    return claimed
   }
 
   getInbox(sessionId: string, options: { includeClaimed?: boolean } = {}): AgentControlMessageRecord[] {
@@ -874,6 +1049,8 @@ function normalizeAgentControlSession(
     mode: normalizeMode(record.mode, fallback.mode),
     autoImportKnowledge: typeof record.autoImportKnowledge === 'boolean' ? record.autoImportKnowledge : fallback.autoImportKnowledge,
     localExecutor: typeof record.localExecutor === 'boolean' ? record.localExecutor : fallback.localExecutor,
+    executor: record.executor === 'agent-cli' ? 'agent-cli' : 'governed',
+    agentCommand: typeof record.agentCommand === 'string' && record.agentCommand.trim() ? record.agentCommand.trim() : undefined,
     updatedAt: Date.now(),
   }
 }

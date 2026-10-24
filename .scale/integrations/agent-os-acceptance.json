@@ -2,53 +2,53 @@
   "ok": false,
   "status": "failed",
   "score": 63,
-  "generatedAt": 1782560356957,
+  "generatedAt": 1790018583896,
   "path": "E:\\project\\scale-engine\\.scale\\integrations\\agent-os-acceptance.json",
   "steps": [
     {
       "id": "integrations-api",
       "label": "Integrations API returns Agent OS readiness",
       "status": "passed",
-      "startedAt": 1782560355090,
-      "finishedAt": 1782560355090,
+      "startedAt": 1790018581719,
+      "finishedAt": 1790018581719,
       "durationMs": 0
     },
     {
       "id": "agent-control-ready",
       "label": "At least one Agent Control session is ready",
       "status": "passed",
-      "startedAt": 1782560355090,
-      "finishedAt": 1782560355090,
+      "startedAt": 1790018581719,
+      "finishedAt": 1790018581719,
       "durationMs": 0
     },
     {
       "id": "dashboard-daemon",
       "label": "Dashboard daemon is resident and serving",
       "status": "passed",
-      "startedAt": 1782560355090,
-      "finishedAt": 1782560355090,
+      "startedAt": 1790018581719,
+      "finishedAt": 1790018581719,
       "durationMs": 0
     },
     {
       "id": "lark-cli-version",
       "label": "lark-cli is installed",
       "status": "passed",
-      "startedAt": 1782560355090,
-      "finishedAt": 1782560355508,
-      "durationMs": 418,
+      "startedAt": 1790018581719,
+      "finishedAt": 1790018582032,
+      "durationMs": 313,
       "command": "lark-cli",
       "args": [
         "--version"
       ],
-      "stdout": "lark-cli version 1.0.58"
+      "stdout": "lark-cli version 1.0.60"
     },
     {
       "id": "lark-cli-skills",
       "label": "lark-cli skills are discoverable",
       "status": "passed",
-      "startedAt": 1782560355508,
-      "finishedAt": 1782560355965,
-      "durationMs": 457,
+      "startedAt": 1790018582032,
+      "finishedAt": 1790018582352,
+      "durationMs": 320,
       "command": "lark-cli",
       "args": [
         "skills",
@@ -61,22 +61,22 @@
       "id": "lark-cli-doctor",
       "label": "lark-cli configuration doctor passes",
       "status": "failed",
-      "startedAt": 1782560355966,
-      "finishedAt": 1782560356957,
-      "durationMs": 991,
+      "startedAt": 1790018582353,
+      "finishedAt": 1790018583896,
+      "durationMs": 1543,
       "command": "lark-cli",
       "args": [
         "doctor"
       ],
       "stdout": "ok=false; checks=cli_version:pass, cli_update:warn, config_file:fail; notice=true",
-      "error": "Command failed: D:\\Program Files\\nodejs\\lark-cli.cmd doctor"
+      "error": "Command failed: C:\\Users\\Administrator\\AppData\\Roaming\\npm\\lark-cli.cmd doctor"
     },
     {
       "id": "feishu-route-target",
       "label": "Feishu route has a real chat/user target",
       "status": "blocked",
-      "startedAt": 1782560356957,
-      "finishedAt": 1782560356957,
+      "startedAt": 1790018583896,
+      "finishedAt": 1790018583896,
       "durationMs": 0,
       "error": "No Feishu chat/user target is configured for the selected agent platform."
     },
@@ -84,14 +84,14 @@
       "id": "tencent-ima-provider",
       "label": "Tencent ima online knowledge provider is configured",
       "status": "blocked",
-      "startedAt": 1782560356957,
-      "finishedAt": 1782560356957,
+      "startedAt": 1790018583896,
+      "finishedAt": 1790018583896,
       "durationMs": 0,
       "error": "Tencent ima Client ID, knowledge-base ID, API Key, or QR authorization is incomplete."
     }
   ],
   "warnings": [
-    "lark-cli configuration doctor passes: Command failed: D:\\Program Files\\nodejs\\lark-cli.cmd doctor",
+    "lark-cli configuration doctor passes: Command failed: C:\\Users\\Administrator\\AppData\\Roaming\\npm\\lark-cli.cmd doctor",
     "Feishu route has a real chat/user target: No Feishu chat/user target is configured for the selected agent platform.",
     "Tencent ima online knowledge provider is configured: Tencent ima Client ID, knowledge-base ID, API Key, or QR authorization is incomplete."
   ],

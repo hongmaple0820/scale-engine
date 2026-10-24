@@ -39,6 +39,48 @@ export function externalCommandExists(
   return Boolean(resolveExternalCommandPath(command, runtime))
 }
 
+/**
+ * Windows 上把无扩展名的命令解析为可执行的真实文件。
+ * npm 全局安装的 CLI（lark-cli / claude / codex 等）是 .cmd 垫片，
+ * 直接 spawn 无扩展名路径会 ENOENT。
+ */
+export function resolveWindowsCommandShim(executable: string): string {
+  if (process.platform !== 'win32') return executable
+  if (!/[\\/]/.test(executable) || extname(executable)) return executable
+  for (const extension of ['.cmd', '.exe', '.bat', '.com']) {
+    const candidate = `${executable}${extension}`
+    if (existsSync(candidate)) return candidate
+  }
+  return executable
+}
+
+export interface SpawnInvocation {
+  executable: string
+  args: string[]
+}
+
+/**
+ * 为 child_process.spawn 构造跨平台调用：
+ * - 已能解析到真实路径的命令直接用；
+ * - Windows 上是 .cmd/.bat 垫片时，改走 cmd.exe /d /c call 包装（spawn 不认这些扩展名）；
+ * - 解析不到的命令原样返回，让 spawn 报出原始错误。
+ */
+export function buildSpawnInvocation(
+  command: string,
+  args: string[],
+  runtime: CommandRuntime = DEFAULT_RUNTIME,
+): SpawnInvocation {
+  const resolvedPath = resolveExternalCommandPath(command, runtime)
+  const resolved = resolveWindowsCommandShim(resolvedPath ?? command)
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved)) {
+    return {
+      executable: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/c', 'call', resolved, ...args],
+    }
+  }
+  return { executable: resolved, args }
+}
+
 export function runExternalCommandSync(
   command: string,
   args: string[],
@@ -78,12 +120,3 @@ export function runExternalCommandSync(
   return runtime.execFileSync(resolved, args, options)
 }
 
-function resolveWindowsCommandShim(executable: string): string {
-  if (process.platform !== 'win32') return executable
-  if (!/[\\/]/.test(executable) || extname(executable)) return executable
-  for (const extension of ['.cmd', '.exe', '.bat', '.com']) {
-    const candidate = `${executable}${extension}`
-    if (existsSync(candidate)) return candidate
-  }
-  return executable
-}

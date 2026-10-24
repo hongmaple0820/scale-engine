@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.55.3-orange?style=flat-square" alt="version" />
-  <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
-  <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
+  <img src="https://img.shields.io/badge/platforms-23-blue?style=flat-square" alt="platforms" />
+  <img src="https://img.shields.io/badge/agents-23-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
   <img src="https://img.shields.io/badge/npm-0.55.3-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
@@ -103,7 +103,7 @@ scale diagnose plan --task-id TASK-001 --symptom "callback 在 state 过期时�
 scale tdd slice --task-id TASK-001 --behavior "拒绝过期 OAuth state" --failing-test "expired state returns 401"
 ```
 
-完整教程见 [Agent 满血工作流一键接入](docs/start/agent-full-workflow.md)、[npx 与交互式安装指南](docs/start/npx-interactive-install.md)、[3 分钟快速开始](docs/start/quickstart.md)、[22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
+完整教程见 [Agent 满血工作流一键接入](docs/start/agent-full-workflow.md)、[npx 与交互式安装指南](docs/start/npx-interactive-install.md)、[3 分钟快速开始](docs/start/quickstart.md)、[23 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) 和 [官方 Demo Walkthrough](docs/start/agent-governance-demo.md)。如果你在评估 SCALE 和其他工作流的差异，先看 [工作流能力与横向对比](docs/workflow/competitive-comparison.md)。
 
 ## 安装
 
@@ -224,7 +224,7 @@ scale ai-os plan \
 | 让 Agent 直接接管 | [Agent 满血工作流一键接入](docs/start/agent-full-workflow.md) | 复制提示词，让 Agent 检查 full setup、gbrain、CodeGraph、Graphify、rtk、浏览器/E2E 和飞书消息通道 |
 | 无全局安装试用 | [npx 与交互式安装指南](docs/start/npx-interactive-install.md) | 用 `npx` 跑 `onboard`、`init --interactive`、`setup` |
 | 先跑起来 | [3 分钟快速开始](docs/start/quickstart.md) | 安装 CLI、初始化治理文件、运行 preflight |
-| 接入具体 Agent | [22 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) | Codex、Claude Code、Cursor、Cline、Windsurf 等 22 个 adapter 的初始化、验证和面板入口 |
+| 接入具体 Agent | [23 种 Agent 安装与使用教程](docs/start/agent-installation-guide.md) | Codex、Claude Code、Cursor、ZCode、Cline、Windsurf 等 23 个 adapter 的初始化、验证和面板入口 |
 | 看完整闭环 | [官方 Demo Walkthrough](docs/start/agent-governance-demo.md) | 任务上下文、诊断、TDD、artifact 和验证证据如何串起来 |
 | 横向评估 | [工作流能力与横向对比](docs/workflow/competitive-comparison.md) | 与 LangGraph、AutoGen、CrewAI、gstack、Superpowers、ECC、GitHub Agentic Workflows 的定位差异 |
 | 接入已有项目 | [SCALE 工作流升级指南](docs/start/workflow-upgrade.md) | `init`、`upgrade check/plan/apply`、本地 `make` 包装入口 |

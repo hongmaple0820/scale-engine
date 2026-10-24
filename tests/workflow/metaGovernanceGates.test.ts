@@ -22,10 +22,10 @@ describe('GuardrailEffectivenessGate', () => {
     mkdirSync(join(projectDir, '.claude', 'hooks'), { recursive: true })
     writeFileSync(join(projectDir, '.claude', 'settings.json'), JSON.stringify({
       hooks: {
-        PreToolUse: [{ command: 'node .claude/hooks/shield-pre-tool.js' }],
+        PreToolUse: [{ command: 'node .claude/hooks/shield-pre-tool.cjs' }],
       },
     }, null, 2), 'utf-8')
-    writeFileSync(join(projectDir, '.claude', 'hooks', 'shield-pre-tool.js'), 'process.exit(0)\n', 'utf-8')
+    writeFileSync(join(projectDir, '.claude', 'hooks', 'shield-pre-tool.cjs'), 'process.exit(0)\n', 'utf-8')
     mkdirSync(join(scaleDir, 'events'), { recursive: true })
     writeFileSync(join(scaleDir, 'events', '2026-06-13.jsonl'), `${JSON.stringify({ type: 'guardrail.detector.triggered' })}\n`, 'utf-8')
 

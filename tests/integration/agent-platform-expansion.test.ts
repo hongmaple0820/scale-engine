@@ -12,6 +12,7 @@ import {
   QoderAdapter,
   SUPPORTED_AGENTS,
   WindsurfAdapter,
+  ZCodeAdapter,
   createAdapter,
   type IAgentAdapter,
 } from '../../src/adapters/index.js'
@@ -37,6 +38,7 @@ const cases: PlatformCase[] = [
   { platform: 'cline', create: () => new ClineAdapter(), settingsSuffix: '.cline/settings.json', knowledgeSuffix: '.clinerules/SCALE.md', knowledgeNeedle: 'SCALE Engine Integration (Cline)' },
   { platform: 'kilocode', create: () => new KiloCodeAdapter(), settingsSuffix: '.kilocode/settings.json', knowledgeSuffix: 'AGENTS.md', knowledgeNeedle: 'SCALE Engine Integration (Kilo Code)' },
   { platform: 'antigravity', create: () => new AntigravityAdapter(), settingsSuffix: '.agents/hooks.json', knowledgeSuffix: '.agents/rules/SCALE.md', knowledgeNeedle: 'SCALE Engine Integration (Antigravity)' },
+  { platform: 'zcode', create: () => new ZCodeAdapter(), settingsSuffix: '.zcode/config.json', knowledgeSuffix: 'AGENTS.md', knowledgeNeedle: 'SCALE Engine Integration (ZCode)' },
 ]
 
 describe('expanded agent platform adapters', () => {

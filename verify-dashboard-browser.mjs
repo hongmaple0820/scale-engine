@@ -76,7 +76,7 @@ try {
   fail(`SPA shell failed to load: ${e.message}`)
 }
 
-const pages = ['overview', 'workflow', 'topology', 'monitoring', 'costs', 'documents', 'agents']
+const pages = ['overview', 'workflow', 'agentos', 'topology', 'monitoring', 'costs', 'documents', 'agents', 'integrations']
 
 for (const name of pages) {
   const before = pageErrors.length
@@ -109,6 +109,8 @@ for (const name of pages) {
 // ── Below the threshold: the plain (non-windowed) list must still be used ──
 console.log('── agents list (empty session) ──')
 try {
+  // Navigate explicitly: the page loop above may leave the router on another page.
+  await goTo('agents')
   const plainList = await page.$('.agent-message-list') !== null
   const virtualList = await page.$('.agent-message-list-virtual') !== null
   console.log(`  plain container: ${plainList}; virtual container: ${virtualList}`)
@@ -155,6 +157,70 @@ if (sessionId) {
   } catch (e) {
     fail(`virtual list check failed: ${e.message}`)
   }
+}
+
+// ── New operating surfaces: governance config tab, feishu bridge, task actions ──
+// These render only after tab switches / data loads, so assert on real DOM presence
+// rather than relying on the page-level "no JS errors" check.
+console.log('\n── integrations: governance + bridge ──')
+try {
+  await goTo('integrations')
+  const governanceTab = page.locator('.n-tabs-tab', { hasText: '治理配置' })
+  if (await governanceTab.count() === 0) {
+    fail('governance tab missing on the integrations page')
+  } else {
+    await governanceTab.first().click()
+    await page.waitForTimeout(1200)
+    const textareas = await page.$$eval('textarea', nodes => nodes.length)
+    const hasPolicy = (await page.content()).includes('policy.yaml')
+    const hasThresholds = (await page.content()).includes('覆盖率下限')
+    const hasMemory = (await page.content()).includes('路由模式')
+    console.log(`  textareas=${textareas} policy=${hasPolicy} thresholds=${hasThresholds} memory=${hasMemory}`)
+    if (!hasPolicy || !hasThresholds || !hasMemory) fail('governance tab did not render all three config sections')
+    else console.log('  ✓ Governance tab renders policy / thresholds / memory routing')
+  }
+
+  const bridgeHeading = (await page.content()).includes('飞书桥接')
+  void bridgeHeading
+  // 桥接面板在 agent-connect 标签页内，必须先切过去才会渲染
+  const agentConnectTab = page.locator('.n-tabs-tab', { hasText: 'Agent Connect' })
+  if (await agentConnectTab.count() === 0) {
+    fail('agent-connect tab missing on the integrations page')
+  } else {
+    await agentConnectTab.first().click()
+    await page.waitForTimeout(1000)
+  }
+  const bridgeStart = page.locator('button', { hasText: '启动桥接' })
+  const bridgeStop = page.locator('button', { hasText: '停止桥接' })
+  const bridgeButtons = await bridgeStart.count() + await bridgeStop.count()
+  const hasBridgeHeading = (await page.content()).includes('飞书桥接')
+  console.log(`  bridgeHeading=${hasBridgeHeading} bridgeButtons=${bridgeButtons}`)
+  if (!hasBridgeHeading || bridgeButtons === 0) fail('feishu bridge panel missing on the agent-connect tab')
+  else console.log('  ✓ Feishu bridge panel renders with start/stop control')
+} catch (e) {
+  fail(`integrations new-surface check failed: ${e.message}`)
+}
+
+console.log('\n── agentos: task lifecycle + executor selector ──')
+try {
+  // 任务生命周期在 Agent OS 页；执行器选择在 Agent 控制台的会话配置里
+  await goTo('agentos')
+  await page.waitForTimeout(800)
+  const agentosContent = await page.content()
+  const hasCreateTask = agentosContent.includes('创建任务')
+  const hasTaskPlaceholder = agentosContent.includes('任务名称')
+  console.log(`  createTask=${hasCreateTask} taskInput=${hasTaskPlaceholder}`)
+  if (!hasCreateTask || !hasTaskPlaceholder) fail('task lifecycle controls missing on the Agent OS workbench')
+  else console.log('  ✓ Task creation + lifecycle actions render')
+
+  await goTo('agents')
+  await page.waitForTimeout(800)
+  const executorSelect = (await page.content()).includes('执行器类型')
+  console.log(`  executorSelect=${executorSelect}`)
+  if (!executorSelect) fail('executor selector missing in the session setup form')
+  else console.log('  ✓ Executor selector renders')
+} catch (e) {
+  fail(`new-surface check failed: ${e.message}`)
 }
 
 // ── Screenshot + teardown ─────────────────────────────────────────────────
