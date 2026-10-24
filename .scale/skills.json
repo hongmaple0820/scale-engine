@@ -11,8 +11,8 @@
     "waivedRecommendedSkills": [
       {
         "id": "mcp-chrome-devtools",
-        "reason": "Recommended browser-inspection capability is provided by host agent profiles when available; current local MCP probe reports a Chrome profile conflict, so this remains an explicit non-blocking repo waiver rather than installed evidence.",
-        "expiresAt": "2026-07-31"
+        "reason": "Browser-inspection capability on this machine is provided by host agent plugins (browser-use via ZCode, autoglm-browser-agent) rather than a local Chrome DevTools MCP; the 2026-10-24 skills audit re-confirmed no local chrome-devtools MCP is configured. Renewed from the expired 2026-07-31 waiver.",
+        "expiresAt": "2027-01-22"
       }
     ]
   },

@@ -88,5 +88,12 @@ coverage/
 tmp-*/
 dashboard-*.png
 agent-control-*.png
-packages/
+# vitest/vite config timestamp scratch files
+*.timestamp-*.mjs
+# packages/* ignores scratch package dirs, but dsh-scale is a tracked source
+# package (a directory-level `packages/` rule would make it un-reincludable)
+packages/*
+!packages/dsh-scale/
+packages/dsh-scale/node_modules/
+packages/dsh-scale/lib/
 test-fixtures/

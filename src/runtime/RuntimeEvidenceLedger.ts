@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { redactEvidenceText, redactEvidenceValue } from '../tools/ToolEvidenceStore.js'
 
@@ -81,6 +82,23 @@ export class RuntimeEvidenceLedger {
   }
 
   record(input: RuntimeEvidenceInput): RuntimeEvidenceRecord {
+    const record = this.buildRecord(input)
+    writeFileSync(join(this.rootDir, `${record.id}.json`), JSON.stringify(record, null, 2), 'utf-8')
+    return record
+  }
+
+  /**
+   * Async variant of record() for host processes where a synchronous write on
+   * the hot path would block the event loop (e.g. the DSH Electron host —
+   * plan §6 T1.3). Same file format and redaction as record().
+   */
+  async recordAsync(input: RuntimeEvidenceInput): Promise<RuntimeEvidenceRecord> {
+    const record = this.buildRecord(input)
+    await writeFile(join(this.rootDir, `${record.id}.json`), JSON.stringify(record, null, 2), 'utf-8')
+    return record
+  }
+
+  private buildRecord(input: RuntimeEvidenceInput): RuntimeEvidenceRecord {
     const command = input.command ? redactEvidenceText(input.command) : undefined
     const summary = redactEvidenceText(input.summary)
     const metadata = redactEvidenceValue(input.metadata ?? {})
@@ -96,8 +114,6 @@ export class RuntimeEvidenceLedger {
       metadata: metadata.value as Record<string, unknown>,
       redactionApplied: Boolean(command?.redacted) || summary.redacted || metadata.redacted || artifacts.redacted,
     }
-
-    writeFileSync(join(this.rootDir, `${record.id}.json`), JSON.stringify(record, null, 2), 'utf-8')
     return record
   }
 

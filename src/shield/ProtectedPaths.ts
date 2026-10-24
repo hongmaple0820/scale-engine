@@ -140,6 +140,14 @@ export function checkCommand(command: string): CommandBlockRule[] {
 }
 
 /**
+ * Check if a command contains only warn-level matches (no blocks).
+ * Used by the DSH plugin to map warn → ask without silently discarding.
+ */
+export function checkWarnHits(command: string): CommandBlockRule[] {
+  return checkCommand(command).filter(m => m.severity === 'warn')
+}
+
+/**
  * Full pre-flight check for a tool input.
  * Returns allow/block decision.
  */

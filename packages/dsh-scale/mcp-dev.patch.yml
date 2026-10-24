@@ -1,0 +1,21 @@
+# T0 dev overlay — mount the SCALE MCP stdio server into a DSH profile
+# via dsh-mcp-client (plan §6 T0). Requires:
+#   dsh plugin --profile scale-dev add @deepseek-ai/dsh-mcp-client@<runtime-matched>
+#
+# Usage:
+#   dsh --profile scale-dev --patch packages/dsh-scale/mcp-dev.patch.yml --dump-config
+#
+# Note: stdio child-process env is scrubbed (KEY|PASSWORD|SECRET|TOKEN / DSH_*);
+# pass any SCALE_* variables explicitly via config.env if ever needed.
+- insert:
+    - id: mcp-scale
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: scale
+        transport: stdio
+        command: node
+        args:
+          - 'E:/project/scale-engine/dist/api/mcpStdio.js'
+        cwd: 'E:/project/scale-engine'
+        toolCallTimeoutMs: 60000
+        failOnStartupError: false

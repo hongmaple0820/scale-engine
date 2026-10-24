@@ -1,6 +1,14 @@
+import { resolve } from 'node:path'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Plugin tests (tests/dsh/) exercise packages/dsh-scale source against
+      // the live main-package source, not a possibly-stale dist/ build.
+      '@hongmaple0820/scale-engine': resolve(__dirname, 'src/index.ts'),
+    },
+  },
   test: {
     globals: false,
     environment: 'node',

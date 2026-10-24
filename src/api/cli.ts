@@ -77,6 +77,7 @@ import { autofixCommand } from '../cli/autofixCommands.js'
 import { costReportCommand, costOptimizeCommand } from '../cli/costCommands.js'
 import { reviewCommand as crossReviewCommand } from '../review/reviewCommands.js'
 import { shieldCommand } from '../cli/shieldCommands.js'
+import { specCommand } from '../cli/specCommands.js'
 import { gitCommand } from '../cli/gitCommands.js'
 import { commitSuggestCommand } from '../cli/commitSuggestCommands.js'
 import { orchCommand } from '../cli/orchCommands.js'
@@ -1831,6 +1832,7 @@ const main = defineCommand({
     'cost-optimize': costOptimizeCommand,
     'cross-review': crossReviewCommand,
     shield: shieldCommand,
+    spec: specCommand,
     git: gitCommand,
     'commit-suggest': commitSuggestCommand,
     orch: orchCommand,

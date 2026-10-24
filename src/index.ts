@@ -142,6 +142,7 @@ export {
   HermesAdapter,
   TraeAdapter,
   WorkBuddyAdapter,
+  ZCodeAdapter,
   VSCAdapter,
   QCoderAdapter,
   DeepSeekTuiAdapter,
@@ -234,6 +235,28 @@ export type { DashboardOptions, DashboardState, ArtifactTreeNode, GateSummary, D
 // API
 export { Doctor } from './api/doctor.js'
 export { ScaleMCPServer } from './api/mcp.js'
+
+// Shield（供 DSH 插件直接调用）
+export {
+  checkToolInput,
+  checkCommand,
+  checkWarnHits,
+  checkProtectedPath,
+} from './shield/ProtectedPaths.js'
+export type { ShieldInput, ShieldDecision } from './shield/ShieldProtocol.js'
+
+// Cortex + Evidence（供 DSH 插件直接调用；与 Shield 同属 T1 三桥依赖面）
+export { InstinctStore } from './cortex/InstinctStore.js'
+export { SessionInjector } from './cortex/SessionInjector.js'
+export type { SessionInjection } from './cortex/SessionInjector.js'
+export { RuntimeEvidenceLedger } from './runtime/RuntimeEvidenceLedger.js'
+export type {
+  RuntimeEvidenceInput,
+  RuntimeEvidenceRecord,
+  RuntimeEvidenceStatus,
+  RuntimeEvidenceKind,
+  RuntimeEvidenceSummary,
+} from './runtime/RuntimeEvidenceLedger.js'
 
 // Output (HTML Document Rendering)
 export { HTMLDocumentRenderer } from './output/HTMLDocumentRenderer.js'
