@@ -68,3 +68,37 @@ jobs:
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
             --notes "${NOTES:-Release v${VERSION}}"
+
+  publish-plugin:
+    name: Publish dsh-scale plugin
+    runs-on: ubuntu-latest
+    environment: npm
+    needs: publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Build main package (plugin typecheck resolves dist types)
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build plugin
+        working-directory: packages/dsh-scale
+        run: |
+          npm install
+          npm run build
+          npm pack --dry-run
+
+      - name: Publish plugin
+        working-directory: packages/dsh-scale
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
