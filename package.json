@@ -60,6 +60,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
     "smoke:setup": "node scripts/workflow/setup-smoke.mjs",
+    "verify:agent-dispatch": "node scripts/qa/verify-agent-dispatch.mjs",
     "smoke:package": "node scripts/workflow/package-smoke.mjs",
     "smoke:providers": "node scripts/workflow/provider-rehearsal.mjs",
     "smoke:gbrain": "node scripts/workflow/provider-rehearsal.mjs --skip-graphify --require-gbrain",
@@ -67,6 +68,7 @@
     "release:sync-gitee": "node scripts/release/sync-gitee-releases.mjs",
     "release:check": "npm run learning:health && npm run docs:health && npm run typecheck && npm run lint && npm test && npm run smoke:setup && npm run smoke:providers -- --write-report --large-project examples/demo-projects/agent-governance-demo && npm run build && npm run smoke:package && npm audit --omit=dev --registry=https://registry.npmjs.org && git diff --check && npm pack --dry-run",
     "mcp": "node dist/api/mcp.js",
+    "mcp:stdio": "node dist/api/mcpStdio.js",
     "serve": "node dist/api/http.js",
     "dashboard:daemon": "node dist/api/cli.js dashboard daemon"
   },

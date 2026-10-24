@@ -1,0 +1,6 @@
+# dsh-scale: SCALE Engine governance plugin
+# Insert SCALE governance into the DSH profile's bundle list.
+# The --insert adds the bundle _after_ any existing entries in the target group.
+- insert:
+    - id: scale-governance
+      name: '@hongmaple0820/dsh-scale'

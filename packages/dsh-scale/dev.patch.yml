@@ -1,0 +1,14 @@
+# Local development overlay — loads the plugin by absolute path on top of an
+# existing profile (does NOT touch the profile's bundle list).
+#
+# One-time setup (creates the @hongmaple0820/scale-engine symlink the plugin's
+# bare import resolves through):
+#   cd packages/dsh-scale && npm install
+#   npm run build            # in repo root first, then here (tsc -p)
+#
+# Usage:
+#   dsh --profile scale-dev --patch packages/dsh-scale/dev.patch.yml --help
+#   SCALE_DSH_SELFTEST=1 dsh --profile scale-dev --patch ... --help   # probe run (§5.6)
+- insert:
+    - id: scale-governance-dev
+      name: E:\project\scale-engine\packages\dsh-scale\lib\index.js
