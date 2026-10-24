@@ -71,11 +71,10 @@ scale shield compile
 ```
 
 将 `.scale/policy.yaml` 编译为：
-- `.claude/hooks/shield-pre-tool.js` — PreToolUse hook 脚本
-- `.codex/hooks/shield-pre-tool.js` — Codex 版本
-- `.cursor/hooks/shield-pre-tool.js` — Cursor 版本
+- `.claude/hooks/shield-pre-tool.cjs` — Combined PreToolUse hook 脚本（`.cjs` 强制 CJS 语义，ESM 项目同样可用）
+- `.claude/hooks/shield-<rule>.cjs` — 单规则脚本（如 `shield-require-clean-worktree.cjs`）
 
-编译后的 hook 注册到对应平台的 settings.json 中。
+编译后的 hook 注册到对应平台的配置文件中：Claude Code `.claude/settings.json`、Codex `.codex/hooks.json`、Cursor `.cursor/hooks.json`、ZCode `.zcode/config.json`（`hooks.events` 嵌套格式，并自动启用 `hooks.enabled`）。
 
 ## 受保护断言
 

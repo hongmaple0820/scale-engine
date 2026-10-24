@@ -10,9 +10,11 @@
       "channelProvider": "dashboard",
       "channelRouteId": "dashboard-local",
       "commandPrefix": "/scale",
-      "mode": "dry-run",
+      "mode": "live-guarded",
       "autoImportKnowledge": true,
-      "updatedAt": 1782548376655
+      "localExecutor": true,
+      "executor": "agent-cli",
+      "updatedAt": 1792772862282
     },
     {
       "version": 1,
@@ -25,7 +27,9 @@
       "commandPrefix": "/scale",
       "mode": "dry-run",
       "autoImportKnowledge": true,
-      "updatedAt": 1782548376655
+      "localExecutor": false,
+      "executor": "governed",
+      "updatedAt": 1792772862282
     }
   ]
 }

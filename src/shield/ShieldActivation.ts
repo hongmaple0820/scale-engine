@@ -62,7 +62,7 @@ export function activateShield(projectDir: string, options: { scaleDir?: string 
   } catch (error) {
     warnings.push(`Shield hook registration failed: ${error instanceof Error ? error.message : String(error)}`)
   }
-  for (const settingsPath of [output.settingsPatches.claude, output.settingsPatches.codex, output.settingsPatches.cursor]) {
+  for (const settingsPath of [output.settingsPatches.claude, output.settingsPatches.codex, output.settingsPatches.cursor, output.settingsPatches.zcode]) {
     if (existsSync(settingsPath)) registered.push(settingsPath)
   }
   if (registered.length === 0) {

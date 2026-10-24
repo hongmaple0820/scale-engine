@@ -926,6 +926,7 @@ export type AgentPlatform =
   | 'cline'
   | 'kilocode'
   | 'antigravity'
+  | 'zcode'
 
 /** Skill 引用 */
 export interface SkillRef {

@@ -75,6 +75,7 @@ const toolAdapterAliases: Record<string, AgentPlatform> = {
   'gemini-cli': 'gemini',
   openclaw: 'openclaw',
   workbuddy: 'workbuddy',
+  zcode: 'zcode',
   hermes: 'hermes',
   qoder: 'qoder',
 }

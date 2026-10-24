@@ -229,6 +229,7 @@ export class Doctor {
       { agent: 'hermes', path: join(this.projectDir, '.hermes', 'settings.json') },
       { agent: 'trae', path: join(this.projectDir, '.trae', 'settings.json') },
       { agent: 'workbuddy', path: join(this.projectDir, '.workbuddy', 'settings.json') },
+      { agent: 'zcode', path: join(this.projectDir, '.zcode', 'config.json') },
       { agent: 'vsc', path: join(this.projectDir, '.vscode', 'scale.json') },
       { agent: 'qcoder', path: join(this.projectDir, '.qwen', 'settings.json') },
       { agent: 'qoder', path: join(this.projectDir, '.qoder', 'settings.json') },
@@ -244,7 +245,7 @@ export class Doctor {
       return {
         name: 'Agent settings',
         status: 'warn',
-        message: 'No agent settings found (.claude/.codex/.cursor/.gemini/.openclaw/.hermes/.trae/.workbuddy/.vscode/.qwen/.qoder/.jcode/.windsurf/.kiro/.cline/.kilocode/.agents)',
+        message: 'No agent settings found (.claude/.codex/.cursor/.gemini/.openclaw/.hermes/.trae/.workbuddy/.zcode/.vscode/.qwen/.qoder/.jcode/.windsurf/.kiro/.cline/.kilocode/.agents)',
         fix: 'Run: scale init --agent <platform>',
       }
     }
@@ -261,9 +262,13 @@ export class Doctor {
         }
         return flattened
       }
-      const hookEntries = collectHookEntries(
-        Object.values(content.hooks ?? {}).flatMap((value) => Array.isArray(value) ? value : []),
-      )
+      const hookContainers: unknown[] = Object.values(content.hooks ?? {}).flatMap((value: unknown) => Array.isArray(value) ? value : [])
+      // ZCode 形态：hooks = { enabled, events: { <Event>: [ { matcher, hooks: [...] } ] } }
+      const hookEventsRecord = (content.hooks ?? {} as Record<string, unknown>).events
+      if (hookEventsRecord && typeof hookEventsRecord === 'object') {
+        hookContainers.push(...Object.values(hookEventsRecord).flatMap((value: unknown) => Array.isArray(value) ? value : []))
+      }
+      const hookEntries = collectHookEntries(hookContainers)
       const hasScaleHooks = hookEntries.some((entry) => {
         const command = typeof entry.command === 'string' ? entry.command : ''
         const description = typeof entry.description === 'string' ? entry.description : ''
@@ -280,7 +285,7 @@ export class Doctor {
           fix: `Run: scale init --agent ${found.agent} to inject hooks`,
         }
       }
-      const hookCount = Object.values(content.hooks ?? {}).flat().length
+      const hookCount = hookContainers.length
       const hasLegacyBeforeStopHook = hookEntries.some((entry) => {
         const command = typeof entry.command === 'string' ? entry.command : ''
         return /\bscale\s+gate\s+before-stop\b/.test(command)

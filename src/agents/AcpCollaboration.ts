@@ -42,6 +42,7 @@ const localPlatformAliases: Record<string, AgentPlatform> = {
   hermes: 'hermes',
   trae: 'trae',
   workbuddy: 'workbuddy',
+  zcode: 'zcode',
   vsc: 'vsc',
   qcoder: 'qcoder',
   qoder: 'qoder',

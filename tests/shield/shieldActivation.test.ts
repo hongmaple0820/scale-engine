@@ -32,8 +32,8 @@ describe('activateShield', () => {
     expect(report.registered).toEqual([join(dir, '.claude', 'settings.json')])
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
-    expect(settings.hooks.PreToolUse.some((entry: { command: string }) => entry.command.includes('shield-pre-tool.js'))).toBe(true)
-    expect(settings.hooks.Stop.some((entry: { command: string }) => entry.command.includes('shield-require-clean-worktree.js'))).toBe(true)
+    expect(settings.hooks.PreToolUse.some((entry: { command: string }) => entry.command.includes('shield-pre-tool.cjs'))).toBe(true)
+    expect(settings.hooks.Stop.some((entry: { command: string }) => entry.command.includes('shield-require-clean-worktree.cjs'))).toBe(true)
   })
 
   it('writes an editable policy file that round-trips back into the same rules', () => {
@@ -76,8 +76,8 @@ describe('activateShield', () => {
     activateShield(dir)
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
-    const stopEntries = settings.hooks.Stop.filter((entry: { command: string }) => entry.command.includes('shield-require-clean-worktree.js'))
-    const preToolEntries = settings.hooks.PreToolUse.filter((entry: { command: string }) => entry.command.includes('shield-pre-tool.js'))
+    const stopEntries = settings.hooks.Stop.filter((entry: { command: string }) => entry.command.includes('shield-require-clean-worktree.cjs'))
+    const preToolEntries = settings.hooks.PreToolUse.filter((entry: { command: string }) => entry.command.includes('shield-pre-tool.cjs'))
     expect(stopEntries).toHaveLength(1)
     expect(preToolEntries).toHaveLength(1)
   })

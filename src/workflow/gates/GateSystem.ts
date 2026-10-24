@@ -1494,7 +1494,7 @@ export class SecurityGate implements IGate {
   }
 
   private isGeneratedShieldHook(file: string): boolean {
-    return /(^|\/)\.claude\/hooks\/shield-[^/]+\.js$/i.test(file)
+    return /(^|\/)\.claude\/hooks\/shield-[^/]+\.(cjs|js)$/i.test(file)
   }
 
   private isSecurityRuleDefinitionLine(trimmed: string): boolean {

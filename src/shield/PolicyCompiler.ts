@@ -113,6 +113,7 @@ export interface CompilerOutput {
     claude: string   // path to settings.json
     codex: string
     cursor: string
+    zcode: string
   }
   policyHash: string
 }
@@ -335,12 +336,12 @@ export class PolicyCompiler {
     }
 
     // Always generate a combined pre-tool hook for runtime efficiency
-    const combinedPath = join(hooksDir, 'shield-pre-tool.js')
+    const combinedPath = join(hooksDir, 'shield-pre-tool.cjs')
     const combinedScript = this.generateCombinedPreToolScript(policy)
     writeFileSync(combinedPath, combinedScript, 'utf-8')
 
     compiled.push({
-      fileName: 'shield-pre-tool.js',
+      fileName: 'shield-pre-tool.cjs',
       hookType: 'PreToolUse',
       matcher: '',
       scriptPath: combinedPath,
@@ -355,6 +356,7 @@ export class PolicyCompiler {
         claude: join(projectDir, '.claude', 'settings.json'),
         codex: join(projectDir, '.codex', 'hooks.json'),
         cursor: join(projectDir, '.cursor', 'hooks.json'),
+        zcode: join(projectDir, '.zcode', 'config.json'),
       },
       policyHash,
     }
@@ -372,6 +374,9 @@ export class PolicyCompiler {
 
     // Cursor hooks.json
     this.patchHarnessSettings(output.settingsPatches.cursor, output, 'cursor')
+
+    // ZCode .zcode/config.json（hooks.events 嵌套格式）
+    this.patchZcodeSettings(output)
   }
 
   /**
@@ -388,13 +393,13 @@ export class PolicyCompiler {
       .slice(0, 12)
 
     // Check combined hook exists
-    const combinedPath = join(hooksDir, 'shield-pre-tool.js')
+    const combinedPath = join(hooksDir, 'shield-pre-tool.cjs')
     if (!existsSync(combinedPath)) {
-      mismatches.push('shield-pre-tool.js missing — run scale shield compile')
+      mismatches.push('shield-pre-tool.cjs missing — run scale shield compile')
     } else {
       const content = readFileSync(combinedPath, 'utf-8')
       if (!content.includes(expectedHash)) {
-        mismatches.push(`shield-pre-tool.js hash mismatch (expected ${expectedHash}) — run scale shield compile`)
+        mismatches.push(`shield-pre-tool.cjs hash mismatch (expected ${expectedHash}) — run scale shield compile`)
       }
     }
 
@@ -406,7 +411,7 @@ export class PolicyCompiler {
   // -----------------------------------------------------------------------
 
   private compileRule(rule: ShieldPolicyRule, hooksDir: string, hash: string): CompiledHook {
-    const fileName = `shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.js`
+    const fileName = `shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.cjs`
     return {
       fileName,
       hookType: rule.hookType,
@@ -539,7 +544,11 @@ function check(input) {
 }
 
 try {
-  const raw = process.argv[2] || '{}';
+  let raw = process.argv[2];
+  if (!raw) {
+    try { raw = require('fs').readFileSync(0, 'utf-8'); } catch (e) { raw = ''; }
+  }
+  if (!raw || !raw.trim()) raw = '{}';
   const input = JSON.parse(raw);
   const result = check(input);
   if (result.blocked) {
@@ -594,15 +603,19 @@ const BLOCKED_COMMAND_PATTERNS = [
 ];
 
 function isProtectedPath(filePath) {
-  const protected = ['.scale/', '.hook-state/', '.env', 'credentials', '.pem', '-key.json'];
-  for (const p of protected) {
+  const protectedPaths = ['.scale/', '.hook-state/', '.env', 'credentials', '.pem', '-key.json'];
+  for (const p of protectedPaths) {
     if (filePath.includes(p)) return true;
   }
   return false;
 }
 
 try {
-  const raw = process.argv[2] || '{}';
+  let raw = process.argv[2];
+  if (!raw) {
+    try { raw = require('fs').readFileSync(0, 'utf-8'); } catch (e) { raw = ''; }
+  }
+  if (!raw || !raw.trim()) raw = '{}';
   const input = typeof raw === 'string' ? JSON.parse(raw) : raw;
   const toolName = input.tool_name || '';
   const toolInput = input.tool_input || {};
@@ -688,7 +701,7 @@ try {
       if (!deduped.found) {
         settings.hooks.PreToolUse.push({
           type: 'command',
-          command: `node .claude/hooks/shield-pre-tool.js`,
+          command: `node .claude/hooks/shield-pre-tool.cjs`,
           timeout: 5000,
         })
         deduped.changed = true
@@ -703,6 +716,57 @@ try {
     }
   }
 
+  /**
+   * ZCode (.zcode/config.json)：hooks 为 { enabled, events } 嵌套结构，与 Claude 扁平格式不同。
+   * 与 codex/cursor 行为一致：目录不存在则跳过（等 scale init 创建后再 compile）。
+   */
+  private patchZcodeSettings(output: CompilerOutput): void {
+    const settingsPath = output.settingsPatches.zcode
+    const dir = settingsPath.replace(/[/\\][^/\\]+$/, '')
+    if (!existsSync(settingsPath) && !existsSync(dir)) return
+    let config: Record<string, unknown> = {}
+    if (existsSync(settingsPath)) {
+      try {
+        config = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+      } catch {
+        config = {}
+      }
+    }
+    const hooks = (config.hooks && typeof config.hooks === 'object' ? config.hooks : {}) as Record<string, unknown>
+    const events = (hooks.events && typeof hooks.events === 'object' ? hooks.events : {}) as Record<string, Array<{ matcher?: string; hooks?: Array<{ type?: string; command?: string; timeoutMs?: number }> }>>
+
+    const ensureEvent = (event: string, command: string, timeoutMs: number): boolean => {
+      const groups = Array.isArray(events[event]) ? events[event] : []
+      const alreadyRegistered = groups.some((group) =>
+        Array.isArray(group?.hooks) && group.hooks.some((hook) => hook?.command === command),
+      )
+      if (!alreadyRegistered) {
+        groups.push({ matcher: '', hooks: [{ type: 'command', command, timeoutMs }] })
+        events[event] = groups
+      }
+      return !alreadyRegistered
+    }
+
+    let changed = false
+    if (ensureEvent('PreToolUse', 'node .claude/hooks/shield-pre-tool.cjs', 5000)) changed = true
+    for (const rule of DEFAULT_POLICY.rules.filter(r => r.hookType === 'Stop')) {
+      const fileName = `shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.cjs`
+      if (ensureEvent('Stop', `node .claude/hooks/${fileName}`, 10000)) changed = true
+    }
+    // ZCode 配置文件 hook 默认关闭；Shield 接入必须显式启用
+    if (hooks.enabled !== true) {
+      hooks.enabled = true
+      changed = true
+    }
+    hooks.events = events
+    config.hooks = hooks
+    if (changed || !existsSync(settingsPath)) {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(settingsPath, JSON.stringify(config, null, 2))
+      logger.info({ harness: 'zcode' }, 'Shield hooks config patched')
+    }
+  }
+
   private patchHarnessSettings(settingsPath: string, output: CompilerOutput, _harness: string): void {
     if (!existsSync(settingsPath)) {
       // Create hooks.json if directory exists
@@ -711,7 +775,7 @@ try {
         const config = {
           hooks: {
             PreToolUse: [
-              { type: 'command', command: `node .claude/hooks/shield-pre-tool.js`, timeout: 5000 },
+              { type: 'command', command: `node .claude/hooks/shield-pre-tool.cjs`, timeout: 5000 },
             ],
           },
         }
@@ -731,7 +795,7 @@ try {
       if (!deduped.found) {
         config.hooks.PreToolUse.push({
           type: 'command',
-          command: `node .claude/hooks/shield-pre-tool.js`,
+          command: `node .claude/hooks/shield-pre-tool.cjs`,
           timeout: 5000,
         })
         deduped.changed = true
@@ -757,7 +821,7 @@ try {
     if (!Array.isArray(settings.hooks.Stop)) settings.hooks.Stop = []
     let changed = false
     for (const rule of stopRules) {
-      const fileName = `shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.js`
+      const fileName = `shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.cjs`
       const command = `node .claude/hooks/${fileName}`
       const existing = (settings.hooks.Stop as Array<{ command?: string }>).some(entry => entry?.command === command)
       if (!existing) {

@@ -140,6 +140,7 @@ export function detectPlatform(projectDir: string = '.'): PlatformDetectionResul
   const checks: Array<{ platform: AgentPlatform; paths: string[] }> = [
     { platform: 'claude-code', paths: [join(projectDir, '.claude', 'settings.json')] },
     { platform: 'codex', paths: [join(projectDir, '.codex', 'config.toml')] },
+    { platform: 'zcode', paths: [join(projectDir, '.zcode', 'config.json'), join(projectDir, '.zcode', 'skills')] },
     { platform: 'cursor', paths: [join(projectDir, '.cursorrules')] },
     { platform: 'gemini', paths: [join(projectDir, '.gemini', 'settings.json')] },
     { platform: 'qoder', paths: [join(projectDir, '.qoder', 'settings.json')] },
@@ -157,7 +158,7 @@ export function detectPlatform(projectDir: string = '.'): PlatformDetectionResul
   for (const check of checks) {
     for (const p of check.paths) if (existsSync(p)) return { platform: check.platform, confidence: 1.0, suggestions: [] }
   }
-  return { platform: null, confidence: 0, suggestions: ['codex', 'claude-code', 'cursor', 'qoder', 'cline', 'windsurf'] }
+  return { platform: null, confidence: 0, suggestions: ['codex', 'claude-code', 'zcode', 'cursor', 'qoder', 'cline', 'windsurf'] }
 }
 
 export const PHYSICAL_CONSTRAINTS = [

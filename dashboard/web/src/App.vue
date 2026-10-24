@@ -18,7 +18,9 @@ import {
   NEmpty,
   NInput,
   NInputGroup,
+  NInputNumber,
   NLayout,
+  NPopconfirm,
   NLayoutContent,
   NLayoutHeader,
   NLayoutSider,
@@ -53,7 +55,7 @@ type KnowledgeTab = 'base' | 'memory' | 'graph'
 type GraphKey = 'graphify' | 'memory'
 type LoadKey = 'projects' | 'capabilities' | 'dashboardService' | 'metrics' | 'state' | 'topology' | 'domains' | 'documents' | 'knowledge' | 'knowledgeBase' | 'integrations' | 'agentControl' | 'prompts' | 'agentWorkbench'
 type CommandCenterArea = 'agent' | 'channel' | 'knowledge' | 'loop' | 'cost'
-type IntegrationTab = 'overview' | 'messages' | 'agent-connect' | 'knowledge' | 'automation' | 'diagnostics'
+type IntegrationTab = 'overview' | 'messages' | 'agent-connect' | 'knowledge' | 'automation' | 'diagnostics' | 'governance'
 type IntegrationClosureScope = 'core' | 'remote' | 'optional'
 
 interface ProjectSummary {
@@ -651,6 +653,8 @@ interface AgentSessionDraft {
   mode: AgentControlMode
   autoImportKnowledge: boolean
   localExecutor: boolean
+  executor: 'governed' | 'agent-cli'
+  agentCommand: string
 }
 
 interface MetricsReport {
@@ -1167,6 +1171,7 @@ const agentKnowledgeImporting = ref(false)
 const agentMessageDraft = ref('')
 const agentMessageSending = ref(false)
 const agentMessageActionLoading = ref('')
+const agentExecutionEnabling = ref(false)
 
 let refreshTimer: number | undefined
 let knowledgeGraphChart: ECharts | null = null
@@ -1775,6 +1780,7 @@ const integrationActiveTabTitle = computed(() => {
     knowledge: 'integrations.tabKnowledge',
     automation: 'integrations.tabAutomation',
     diagnostics: 'integrations.tabDiagnostics',
+    governance: 'integrations.tabGovernance',
   }
   return t(keyByTab[activeIntegrationTab.value])
 })
@@ -1786,6 +1792,7 @@ const integrationActiveTabDescription = computed(() => {
     knowledge: 'integrations.tabKnowledgeDesc',
     automation: 'integrations.tabAutomationDesc',
     diagnostics: 'integrations.tabDiagnosticsDesc',
+    governance: 'integrations.tabGovernanceDesc',
   }
   return t(keyByTab[activeIntegrationTab.value])
 })
@@ -2539,6 +2546,75 @@ async function reviewMemory(id: string, action: string) {
   await refreshCapabilitiesOnly()
 }
 
+// ===== 飞书桥接（cc-connect 模式：入站事件 → agent 执行 → 回复回流飞书） =====
+interface FeishuBridgeCounters {
+  received: number
+  routed: number
+  executed: number
+  replied: number
+  skipped: number
+  failed: number
+}
+interface FeishuBridgeStatus {
+  running: boolean
+  sessionId: string
+  eventKey: string
+  command?: string
+  lastEventAt?: number
+  lastError?: string
+  restarts: number
+  counters: FeishuBridgeCounters
+}
+interface FeishuBridgeReport {
+  ok?: boolean
+  status: FeishuBridgeStatus | null
+  readiness: { ready: boolean; blockers: string[] }
+}
+
+const feishuBridgeReport = ref<FeishuBridgeReport | null>(null)
+const feishuBridgeLoading = ref(false)
+let feishuBridgeTimer: number | undefined
+
+async function refreshFeishuBridge() {
+  try {
+    const payload = await fetchJSON<FeishuBridgeReport>('/api/integrations/feishu/bridge')
+    feishuBridgeReport.value = payload
+    if (payload.status?.running) {
+      feishuBridgeTimer = window.setTimeout(refreshFeishuBridge, 4000)
+    } else {
+      feishuBridgeTimer = undefined
+    }
+  } catch {
+    feishuBridgeTimer = undefined
+  }
+}
+
+async function toggleFeishuBridge(start: boolean) {
+  if (feishuBridgeLoading.value) return
+  feishuBridgeLoading.value = true
+  try {
+    const sessionId = selectedAgentSession.value?.sessionId
+    const response = await dashboardFetch(`/api/integrations/feishu/bridge/${start ? 'start' : 'stop'}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(start && sessionId ? { sessionId } : {}),
+    })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+    if (!response.ok || !payload.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = start ? t('integrations.bridgeStarted') : t('integrations.bridgeStopped')
+    if (feishuBridgeTimer) window.clearTimeout(feishuBridgeTimer)
+    feishuBridgeTimer = undefined
+    await refreshFeishuBridge()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    feishuBridgeLoading.value = false
+  }
+}
+
 async function runIntegrationAction(providerId: string, actionId: string) {
   if (!providerId || !actionId) return
   integrationActionLoading.value = actionId
@@ -2562,6 +2638,305 @@ async function runIntegrationAction(providerId: string, actionId: string) {
     integrationActionLoading.value = ''
   }
 }
+
+interface IntegrationSetupRunState {
+  status: 'running' | 'completed' | 'failed'
+  command: string
+  startedAt: number
+  finishedAt?: number
+  exitCode?: number | null
+  stdout: string
+  stderr: string
+}
+
+const setupRunState = ref<IntegrationSetupRunState | null>(null)
+const setupRunStarting = ref(false)
+let setupRunTimer: number | undefined
+
+async function refreshIntegrationSetupRun() {
+  try {
+    const payload = await fetchJSON<{ ok?: boolean; run: IntegrationSetupRunState | null }>('/api/integrations/setup/run')
+    setupRunState.value = payload.run
+    if (payload.run?.status === 'running') {
+      setupRunTimer = window.setTimeout(refreshIntegrationSetupRun, 3000)
+      return
+    }
+    setupRunTimer = undefined
+    if (payload.run) {
+      notice.value = payload.run.status === 'completed' ? t('integrations.setupPassed') : t('integrations.setupFailed')
+      await refreshCapabilitiesOnly()
+      integrations.value = await fetchJSON<IntegrationsReport>('/api/integrations')
+    }
+  } catch {
+    setupRunTimer = undefined
+  }
+}
+
+async function runIntegrationSetup() {
+  if (setupRunStarting.value || setupRunState.value?.status === 'running') return
+  setupRunStarting.value = true
+  try {
+    const response = await dashboardFetch('/api/integrations/setup/run', { method: 'POST' })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; run?: IntegrationSetupRunState }
+    if (!response.ok || !payload.ok || !payload.run) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    setupRunState.value = payload.run
+    notice.value = t('integrations.setupRunning')
+    setupRunTimer = window.setTimeout(refreshIntegrationSetupRun, 3000)
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    setupRunStarting.value = false
+  }
+}
+
+// ===== Agent OS 任务生命周期（T3：创建/启动/检查点/恢复/完成 面板闭环） =====
+const agentTaskActionLoading = ref('')
+const agentTaskFormName = ref('')
+const agentTaskFormLevel = ref<'S' | 'M' | 'L'>('M')
+const agentTaskForm = ref<{ taskId: string; action: 'checkpoint' | 'complete'; summary: string; validation: string } | null>(null)
+
+async function refreshAgentWorkbench() {
+  await load('agentWorkbench', 'agent-os-workbench', '/api/v1/workbench', value => { agentWorkbench.value = value })
+}
+
+function canStartAgentTask(task: AgentOsTask): boolean {
+  return ['created', 'planned'].includes(task.status)
+}
+function canCheckpointAgentTask(task: AgentOsTask): boolean {
+  return ['running', 'verifying', 'waiting_for_external_input'].includes(task.status)
+}
+function canResumeAgentTask(task: AgentOsTask): boolean {
+  return ['waiting_for_approval', 'waiting_for_external_input', 'blocked'].includes(task.status)
+}
+function canCompleteAgentTask(task: AgentOsTask): boolean {
+  return ['running', 'verifying', 'waiting_for_approval', 'waiting_for_external_input', 'blocked'].includes(task.status)
+}
+
+async function createAgentOsTask() {
+  const name = agentTaskFormName.value.trim()
+  if (!name || agentTaskActionLoading.value) return
+  agentTaskActionLoading.value = 'create'
+  try {
+    const response = await dashboardFetch('/api/v1/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, level: agentTaskFormLevel.value }),
+    })
+    const payload = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = t('agentos.taskCreated')
+    agentTaskFormName.value = ''
+    await refreshAgentWorkbench()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    agentTaskActionLoading.value = ''
+  }
+}
+
+async function agentOsTaskAction(taskId: string, action: 'start' | 'resume') {
+  if (agentTaskActionLoading.value) return
+  agentTaskActionLoading.value = `${action}:${taskId}`
+  try {
+    const response = await dashboardFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const payload = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = action === 'start' ? t('agentos.taskStarted') : t('agentos.taskResumed')
+    await refreshAgentWorkbench()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    agentTaskActionLoading.value = ''
+  }
+}
+
+function beginAgentTaskForm(taskId: string, action: 'checkpoint' | 'complete') {
+  if (agentTaskForm.value?.taskId === taskId && agentTaskForm.value.action === action) {
+    agentTaskForm.value = null
+    return
+  }
+  agentTaskForm.value = { taskId, action, summary: '', validation: '' }
+}
+
+async function submitAgentTaskForm() {
+  const form = agentTaskForm.value
+  if (!form || !form.summary.trim() || agentTaskActionLoading.value) return
+  const validation = form.validation.split('\n').map(item => item.trim()).filter(Boolean)
+  if (form.action === 'complete' && validation.length === 0) {
+    notice.value = t('agentos.validationRequired')
+    return
+  }
+  agentTaskActionLoading.value = `${form.action}:${form.taskId}`
+  try {
+    const body = form.action === 'complete'
+      ? { outcome: 'complete', summary: form.summary.trim(), validation }
+      : { summary: form.summary.trim() }
+    const response = await dashboardFetch(`/api/v1/tasks/${encodeURIComponent(form.taskId)}/${form.action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const payload = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = form.action === 'complete' ? t('agentos.taskCompleted') : t('agentos.checkpointSaved')
+    agentTaskForm.value = null
+    await refreshAgentWorkbench()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    agentTaskActionLoading.value = ''
+  }
+}
+
+// ===== 治理配置管理（T3：policy / thresholds / memory provider 查看+编辑+保存） =====
+interface GovernanceThresholdsData {
+  coverage?: { minimum?: number }
+  retry?: { bruteMaximum?: number }
+  severity?: { blockLevel?: string }
+}
+interface GovernanceMemoryRouting {
+  mode?: string
+  defaultOrder?: string[]
+  allowExternalWrite?: boolean
+  requireEvidence?: boolean
+  maxResultsPerProvider?: number
+}
+interface GovernanceConfigReport {
+  policy: { path: string; exists: boolean; yaml: string; ruleCount: number }
+  thresholds: { path: string; exists: boolean; data: GovernanceThresholdsData | null }
+  memoryProviders: { path: string; exists: boolean; data: { routing?: GovernanceMemoryRouting } | null }
+}
+
+const governanceConfig = ref<GovernanceConfigReport | null>(null)
+const governanceLoading = ref(false)
+const policyDraft = ref('')
+const policyDirty = ref(false)
+const policySaving = ref(false)
+const thresholdsDraft = ref({ coverage: 80, retry: 3, severity: 'CRITICAL' })
+const thresholdsSaving = ref(false)
+const memoryDraft = ref({ mode: 'local-only', defaultOrder: 'hrain, gbrain', allowExternalWrite: false, requireEvidence: true, maxResultsPerProvider: 5 })
+const memorySaving = ref(false)
+
+async function loadGovernanceConfig() {
+  governanceLoading.value = true
+  try {
+    const payload = await fetchJSON<GovernanceConfigReport>('/api/v1/governance/config')
+    governanceConfig.value = payload
+    policyDraft.value = payload.policy?.yaml || ''
+    policyDirty.value = false
+    const thresholds = payload.thresholds?.data
+    thresholdsDraft.value = {
+      coverage: Number(thresholds?.coverage?.minimum ?? 80),
+      retry: Number(thresholds?.retry?.bruteMaximum ?? 3),
+      severity: String(thresholds?.severity?.blockLevel ?? 'CRITICAL'),
+    }
+    const routing = payload.memoryProviders?.data?.routing
+    memoryDraft.value = {
+      mode: String(routing?.mode ?? 'local-only'),
+      defaultOrder: (routing?.defaultOrder || []).join(', '),
+      allowExternalWrite: Boolean(routing?.allowExternalWrite),
+      requireEvidence: routing?.requireEvidence !== false,
+      maxResultsPerProvider: Number(routing?.maxResultsPerProvider ?? 5),
+    }
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    governanceLoading.value = false
+  }
+}
+
+async function saveGovernancePolicyYaml() {
+  if (policySaving.value) return
+  policySaving.value = true
+  try {
+    const response = await dashboardFetch('/api/v1/governance/config/policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: policyDraft.value }),
+    })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+    if (!response.ok || !payload.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    policyDirty.value = false
+    notice.value = t('integrations.policySaved')
+    await loadGovernanceConfig()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    policySaving.value = false
+  }
+}
+
+async function saveGovernanceThresholds() {
+  if (thresholdsSaving.value) return
+  thresholdsSaving.value = true
+  try {
+    const response = await dashboardFetch('/api/v1/governance/config/thresholds', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(thresholdsDraft.value),
+    })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+    if (!response.ok || !payload.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = t('integrations.thresholdsSaved')
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    thresholdsSaving.value = false
+  }
+}
+
+async function saveGovernanceMemoryProviders() {
+  if (memorySaving.value) return
+  memorySaving.value = true
+  try {
+    const response = await dashboardFetch('/api/v1/governance/config/memory-providers', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...memoryDraft.value, defaultOrder: memoryDraft.value.defaultOrder.split(',').map(item => item.trim()).filter(Boolean) }),
+    })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+    if (!response.ok || !payload.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = t('integrations.memorySaved')
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    memorySaving.value = false
+  }
+}
+
+watch(activeIntegrationTab, tab => {
+  if (tab === 'governance' && !governanceConfig.value) void loadGovernanceConfig()
+  if (tab === 'agent-connect') {
+    void refreshFeishuBridge()
+    // 切过来就拉一次后台任务：config init 可能在别的标签页里已经启动并等待授权
+    void pollFeishuCliJob()
+  }
+})
 
 function updateFeishuRouteDraft(key: keyof FeishuRouteConfig, value: string | boolean) {
   if (key === 'agentPlatformId' && typeof value === 'string') {
@@ -2792,11 +3167,9 @@ async function startFeishuAuth() {
     const response = await dashboardFetch('/api/integrations/feishu/auth/start', { method: 'POST' })
     const result = await response.json().catch(() => ({})) as FeishuAuthStartResult
     feishuAuthResult.value = result
-    if (result.verificationUrl) {
-      notice.value = t('integrations.feishuAuthStarted')
-    } else {
-      notice.value = result.setupCommand || result.error || `${response.status} ${response.statusText}`
-    }
+    notice.value = result.verificationUrl
+      ? t('integrations.feishuAuthStarted')
+      : (result.error || `${response.status} ${response.statusText}`)
     const refreshed = await fetchJSON<IntegrationsReport>('/api/integrations')
     integrations.value = refreshed
   } catch (error) {
@@ -2813,17 +3186,82 @@ async function startFeishuConfig() {
     const response = await dashboardFetch('/api/integrations/feishu/config/start', { method: 'POST' })
     const result = await response.json().catch(() => ({})) as FeishuAuthStartResult
     feishuConfigResult.value = result
-    if (result.verificationUrl) {
-      notice.value = t('integrations.feishuConfigStarted')
-    } else {
-      notice.value = result.setupCommand || result.error || `${response.status} ${response.statusText}`
-    }
+    notice.value = result.verificationUrl
+      ? t('integrations.feishuConfigStarted')
+      : (result.error || `${response.status} ${response.statusText}`)
+    // 命令在后台运行并会吐出授权链接，轮询直到拿到 URL 或结束
+    if (result.verificationUrl || result.ok) void pollFeishuCliJob()
     const refreshed = await fetchJSON<IntegrationsReport>('/api/integrations')
     integrations.value = refreshed
   } catch (error) {
     notice.value = errorMessage(error)
   } finally {
     feishuConfigLoading.value = false
+  }
+}
+
+interface FeishuCliJob {
+  kind: string
+  status: 'running' | 'completed' | 'failed'
+  command: string
+  verificationUrl?: string
+  stdout: string
+  stderr: string
+  error?: string
+}
+const feishuCliJob = ref<FeishuCliJob | null>(null)
+let feishuCliJobTimer: number | undefined
+
+async function pollFeishuCliJob() {
+  try {
+    const payload = await fetchJSON<{ ok?: boolean; job: FeishuCliJob | null }>('/api/integrations/feishu/cli-job')
+    feishuCliJob.value = payload.job
+    if (payload.job?.status === 'running') {
+      feishuCliJobTimer = window.setTimeout(pollFeishuCliJob, 2500)
+      return
+    }
+    feishuCliJobTimer = undefined
+    if (payload.job?.status === 'completed') {
+      notice.value = t('integrations.feishuConfigDone')
+      const refreshed = await fetchJSON<IntegrationsReport>('/api/integrations')
+      integrations.value = refreshed
+    } else if (payload.job?.status === 'failed') {
+      notice.value = payload.job.error || t('integrations.feishuConfigFailed')
+    }
+  } catch {
+    feishuCliJobTimer = undefined
+  }
+}
+
+function openFeishuVerificationUrl() {
+  const url = feishuCliJob.value?.verificationUrl || feishuAuthResult.value?.verificationUrl || feishuConfigResult.value?.verificationUrl
+  if (url) window.open(url, '_blank', 'noopener')
+}
+
+async function completeFeishuAuth() {
+  const deviceCode = feishuAuthResult.value?.deviceCode
+  if (!deviceCode) {
+    notice.value = t('integrations.feishuAuthNoDeviceCode')
+    return
+  }
+  feishuAuthLoading.value = true
+  try {
+    const response = await dashboardFetch('/api/integrations/feishu/auth/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceCode }),
+    })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+    if (!response.ok || !payload.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = t('integrations.feishuAuthCompleting')
+    await pollFeishuCliJob()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    feishuAuthLoading.value = false
   }
 }
 
@@ -2869,6 +3307,8 @@ function createEmptyAgentSessionDraft(): AgentSessionDraft {
     mode: 'dry-run',
     autoImportKnowledge: true,
     localExecutor: false,
+    executor: 'governed',
+    agentCommand: '',
   }
 }
 
@@ -2888,6 +3328,8 @@ function syncAgentSessionDraft() {
     mode: session.mode,
     autoImportKnowledge: session.autoImportKnowledge,
     localExecutor: session.localExecutor ?? false,
+    executor: session.executor === 'agent-cli' ? 'agent-cli' : 'governed',
+    agentCommand: session.agentCommand ?? '',
   }
 }
 
@@ -3042,6 +3484,30 @@ async function saveAgentSession() {
   }
 }
 
+async function enableAgentLiveExecution() {
+  const session = selectedAgentSession.value
+  if (!session) return
+  agentExecutionEnabling.value = true
+  try {
+    const response = await dashboardFetch(`/api/agent-control/sessions/${encodeURIComponent(session.sessionId)}/enable-local-executor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+    if (!response.ok || !payload.ok) {
+      notice.value = payload.error || `${response.status} ${response.statusText}`
+      return
+    }
+    notice.value = t('agents.liveEnabled')
+    await refreshAgentControl()
+    await refreshCapabilitiesOnly()
+  } catch (error) {
+    notice.value = errorMessage(error)
+  } finally {
+    agentExecutionEnabling.value = false
+  }
+}
+
 async function sendAgentMessage() {
   const session = selectedAgentSession.value
   const text = agentMessageDraft.value.trim()
@@ -3053,13 +3519,13 @@ async function sendAgentMessage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, dryRun: session.mode !== 'live-guarded', from: 'dashboard' }),
     })
-    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; message?: AgentControlMessage }
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; message?: AgentControlMessage; willExecute?: boolean }
     if (!response.ok || !payload.ok) {
       notice.value = payload.error || `${response.status} ${response.statusText}`
       return
     }
     agentMessageDraft.value = ''
-    if (payload.message?.willExecute) {
+    if (payload.willExecute) {
       notice.value = t('agents.messageExecuting')
     } else if (payload.message?.status === 'blocked') {
       notice.value = t('agents.messageBlocked')
@@ -4361,6 +4827,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stream.value?.close()
   if (refreshTimer) window.clearInterval(refreshTimer)
+  if (setupRunTimer) window.clearTimeout(setupRunTimer)
+  if (feishuBridgeTimer) window.clearTimeout(feishuBridgeTimer)
   window.removeEventListener('resize', resizeKnowledgeGraphChart)
   disposeKnowledgeGraphChart()
 })
@@ -4381,6 +4849,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'common.refresh': '刷新',
     'common.copied': '已复制',
     'common.copy': '复制',
+    'common.terminalRequired': '需在终端完成',
     'common.download': '下载',
     'common.exportJson': '导出 JSON',
     'common.edit': '编辑',
@@ -4490,6 +4959,21 @@ const translations: Record<Lang, Record<string, string>> = {
     'workflow.noActions': '当前 Artifact 无可执行动作或运行时未注入 FSM。',
     'workflow.failedRequired': '失败必需门禁',
     'agentos.tasks': '任务',
+    'agentos.createTask': '创建任务',
+    'agentos.taskNamePlaceholder': '任务名称，例如：登录页重构',
+    'agentos.startTask': '启动',
+    'agentos.checkpoint': '写检查点',
+    'agentos.resumeTask': '恢复',
+    'agentos.completeTask': '完成',
+    'agentos.checkpointSummaryPlaceholder': '检查点摘要：已完成步骤 / 待办 / 风险',
+    'agentos.completionSummaryPlaceholder': '完成摘要：改动内容与验证证据',
+    'agentos.validationPlaceholder': '验证证据（每行一条）：实际运行的测试/检查命令及结果',
+    'agentos.validationRequired': '完成任务前必须填写验证证据（治理规则：未验证不得声称完成）',
+    'agentos.taskCreated': '任务已创建',
+    'agentos.taskStarted': '任务已启动',
+    'agentos.taskResumed': '任务已从检查点恢复',
+    'agentos.checkpointSaved': '检查点已保存',
+    'agentos.taskCompleted': '任务已完成并记录证据',
     'agentos.timeline': '时间线',
     'agentos.bridges': '桥接',
     'agentos.approvals': '审批',
@@ -4595,6 +5079,37 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.dynamicActions': '动态控制',
     'integrations.lastAction': '最近一次执行',
     'integrations.setupCommands': '安装/配置命令',
+    'integrations.tabGovernance': '治理配置',
+    'integrations.tabGovernanceDesc': '直接在面板查看并编辑 Shield 策略、质量阈值与记忆路由，保存即生效。',
+    'integrations.thresholdsTitle': '质量阈值',
+    'integrations.coverageThreshold': '覆盖率下限 (%)',
+    'integrations.retryThreshold': '暴力重试上限 (次)',
+    'integrations.blockSeverity': '拦截严重级别',
+    'integrations.memoryTitle': '记忆路由',
+    'integrations.memoryMode': '路由模式',
+    'integrations.providerOrder': '提供方顺序',
+    'integrations.allowExternalWrite': '允许外部写入',
+    'integrations.requireEvidence': '要求证据',
+    'integrations.maxResults': '单源结果上限',
+    'integrations.policyTitle': 'Shield 策略 (policy.yaml)',
+    'integrations.policyRecompileHint': '保存后自动重新编译 Shield 并注册到各 agent',
+    'integrations.policySaved': '策略已保存并重新编译 Shield',
+    'integrations.thresholdsSaved': '质量阈值已保存',
+    'integrations.memorySaved': '记忆路由已保存',
+    'integrations.runSetup': '一键安装/配置（约 2–5 分钟）',
+    'integrations.setupConfirm': '确认在后台执行 scale setup（full 包，会写入安装文件）？',
+    'integrations.setupRunning': 'setup 正在后台执行，完成后会自动提示',
+    'integrations.setupPassed': 'setup 执行成功',
+    'integrations.setupFailed': 'setup 执行失败，请查看输出',
+    'integrations.feishuBridge': '飞书桥接（入站→执行→回复）',
+    'integrations.feishuBridgeDesc': '常驻消费飞书消息事件，自动派给本地执行器，并把 agent 回复发回原聊天。启动前需满足右侧全部就绪条件。',
+    'integrations.bridgeStart': '启动桥接',
+    'integrations.bridgeStop': '停止桥接',
+    'integrations.bridgeRunning': '运行中',
+    'integrations.bridgeIdle': '未启动',
+    'integrations.bridgeBlockers': '未就绪',
+    'integrations.bridgeStarted': '飞书桥接已启动',
+    'integrations.bridgeStopped': '飞书桥接已停止',
     'integrations.verifyCommands': '验收命令',
     'integrations.dryRunSend': '消息发送预演',
     'integrations.eventConsume': '事件消费预演',
@@ -4620,7 +5135,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'agents.closedLoopCoverage': '闭环覆盖率',
     'agents.localExecutor': '本地执行器（实跑）',
     'agents.executionModeLive': '实跑模式：消息将触发本地执行器自动执行。',
-    'agents.executionModeDry': '预演模式：消息仅入队、不会真正执行。在"会话配置"开启本地执行器可启用实跑。',
+    'agents.executionModeDry': '预演模式：消息仅入队、不会真正执行。点击右侧按钮一键开启实跑。',
+    'agents.liveEnable': '一键开启实跑',
+    'agents.liveEnabled': '实跑已开启：live-guarded 模式下消息将由本地执行器自动执行。',
+    'agents.executorKind': '执行器类型',
+    'agents.executorGoverned': '治理规划（进程内）',
+    'agents.executorAgentCli': '真实 CLI（派发 agent）',
+    'agents.agentCommand': '命令模板（可选覆盖）',
+    'agents.agentCommandPlaceholder': '如 claude -p {prompt} --output-format text',
     'agents.messageExecuting': '已触发本地执行器，正在执行…',
     'common.themeLight': '浅色',
     'common.themeDark': '深色',
@@ -4915,6 +5437,16 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.copyAcceptancePath': '复制验收报告路径',
     'integrations.startFeishuConfig': '启动飞书初始化',
     'integrations.startFeishuAuth': '启动飞书授权',
+    'integrations.feishuCompleteAuth': '我已完成授权',
+    'integrations.feishuCliJob': '飞书配置任务',
+    'integrations.feishuCliJobRunning': '后台运行中（请在上方链接完成浏览器操作）',
+    'integrations.feishuCliJobCompleted': '已完成',
+    'integrations.feishuCliJobFailed': '失败',
+    'integrations.feishuOpenAuthPage': '打开授权页面',
+    'integrations.feishuConfigDone': '飞书应用配置已完成',
+    'integrations.feishuConfigFailed': '飞书配置任务失败，请查看输出',
+    'integrations.feishuAuthCompleting': '正在完成授权…',
+    'integrations.feishuAuthNoDeviceCode': '缺少设备码，请先点「启动飞书授权」',
     'integrations.feishuConfigStarted': '飞书初始化已启动，请打开链接或扫码完成首次配置。',
     'integrations.feishuAuthStarted': '飞书授权已启动，请打开链接或扫码完成授权。',
     'integrations.wizardFeishuCli': '安装与授权飞书 CLI',
@@ -4980,6 +5512,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'common.refresh': 'Refresh',
     'common.copied': 'Copied',
     'common.copy': 'Copy',
+    'common.terminalRequired': 'Requires terminal',
     'common.download': 'Download',
     'common.exportJson': 'Export JSON',
     'common.edit': 'Edit',
@@ -5089,6 +5622,21 @@ const translations: Record<Lang, Record<string, string>> = {
     'workflow.noActions': 'No available actions or FSM is not injected.',
     'workflow.failedRequired': 'Failed required gates',
     'agentos.tasks': 'Tasks',
+    'agentos.createTask': 'Create task',
+    'agentos.taskNamePlaceholder': 'Task name, e.g. refactor login page',
+    'agentos.startTask': 'Start',
+    'agentos.checkpoint': 'Checkpoint',
+    'agentos.resumeTask': 'Resume',
+    'agentos.completeTask': 'Complete',
+    'agentos.checkpointSummaryPlaceholder': 'Checkpoint summary: done / remaining / risks',
+    'agentos.completionSummaryPlaceholder': 'Completion summary: changes and validation evidence',
+    'agentos.validationPlaceholder': 'Validation evidence (one per line): commands you actually ran and their results',
+    'agentos.validationRequired': 'Validation evidence is required before completing a task (governance: never claim done without verification)',
+    'agentos.taskCreated': 'Task created',
+    'agentos.taskStarted': 'Task started',
+    'agentos.taskResumed': 'Task resumed from checkpoint',
+    'agentos.checkpointSaved': 'Checkpoint saved',
+    'agentos.taskCompleted': 'Task completed with evidence recorded',
     'agentos.timeline': 'Timeline',
     'agentos.bridges': 'Bridges',
     'agentos.approvals': 'Approvals',
@@ -5194,6 +5742,37 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.dynamicActions': 'Dynamic controls',
     'integrations.lastAction': 'Last action',
     'integrations.setupCommands': 'Install/configure commands',
+    'integrations.tabGovernance': 'Governance',
+    'integrations.tabGovernanceDesc': 'View and edit the Shield policy, quality thresholds, and memory routing right here; saving takes effect immediately.',
+    'integrations.thresholdsTitle': 'Quality thresholds',
+    'integrations.coverageThreshold': 'Coverage minimum (%)',
+    'integrations.retryThreshold': 'Brute-retry maximum',
+    'integrations.blockSeverity': 'Block severity',
+    'integrations.memoryTitle': 'Memory routing',
+    'integrations.memoryMode': 'Routing mode',
+    'integrations.providerOrder': 'Provider order',
+    'integrations.allowExternalWrite': 'Allow external write',
+    'integrations.requireEvidence': 'Require evidence',
+    'integrations.maxResults': 'Max results per provider',
+    'integrations.policyTitle': 'Shield policy (policy.yaml)',
+    'integrations.policyRecompileHint': 'Saving recompiles Shield and re-registers hooks to every agent',
+    'integrations.policySaved': 'Policy saved and Shield recompiled',
+    'integrations.thresholdsSaved': 'Quality thresholds saved',
+    'integrations.memorySaved': 'Memory routing saved',
+    'integrations.runSetup': 'Run setup (takes 2–5 min)',
+    'integrations.setupConfirm': 'Run scale setup in the background (full pack, writes install files)?',
+    'integrations.setupRunning': 'Setup is running in the background; you will be notified when it finishes',
+    'integrations.setupPassed': 'Setup completed successfully',
+    'integrations.setupFailed': 'Setup failed; check the output above',
+    'integrations.feishuBridge': 'Feishu bridge (inbound → execute → reply)',
+    'integrations.feishuBridgeDesc': 'Continuously consumes Feishu message events, dispatches them to the local executor, and sends the agent reply back to the originating chat. All readiness conditions must be met before starting.',
+    'integrations.bridgeStart': 'Start bridge',
+    'integrations.bridgeStop': 'Stop bridge',
+    'integrations.bridgeRunning': 'Running',
+    'integrations.bridgeIdle': 'Stopped',
+    'integrations.bridgeBlockers': 'Not ready',
+    'integrations.bridgeStarted': 'Feishu bridge started',
+    'integrations.bridgeStopped': 'Feishu bridge stopped',
     'integrations.verifyCommands': 'Verification commands',
     'integrations.dryRunSend': 'Message dry-run',
     'integrations.eventConsume': 'Event consume dry-run',
@@ -5219,7 +5798,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'agents.closedLoopCoverage': 'Closed-loop coverage',
     'agents.localExecutor': 'Local executor (live run)',
     'agents.executionModeLive': 'Live mode: messages trigger the local executor automatically.',
-    'agents.executionModeDry': 'Dry-run mode: messages are queued but not executed. Enable local executor in Session config to run live.',
+    'agents.executionModeDry': 'Dry-run mode: messages are queued but not executed. Click the button to enable live run in one click.',
+    'agents.liveEnable': 'Enable live run',
+    'agents.liveEnabled': 'Live run enabled: the local executor will execute messages automatically in live-guarded mode.',
+    'agents.executorKind': 'Executor',
+    'agents.executorGoverned': 'Governed plan (in-process)',
+    'agents.executorAgentCli': 'Real CLI (dispatch agent)',
+    'agents.agentCommand': 'Command template (optional)',
+    'agents.agentCommandPlaceholder': 'e.g. claude -p {prompt} --output-format text',
     'agents.messageExecuting': 'Local executor triggered, executing…',
     'common.themeLight': 'Light',
     'common.themeDark': 'Dark',
@@ -5446,6 +6032,16 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.copyAcceptancePath': 'Copy acceptance report path',
     'integrations.startFeishuConfig': 'Start Feishu setup',
     'integrations.startFeishuAuth': 'Start Feishu auth',
+    'integrations.feishuCompleteAuth': 'I have authorized',
+    'integrations.feishuCliJob': 'Feishu setup task',
+    'integrations.feishuCliJobRunning': 'Running in background (finish the browser step via the link above)',
+    'integrations.feishuCliJobCompleted': 'Completed',
+    'integrations.feishuCliJobFailed': 'Failed',
+    'integrations.feishuOpenAuthPage': 'Open authorization page',
+    'integrations.feishuConfigDone': 'Feishu app setup completed',
+    'integrations.feishuConfigFailed': 'Feishu setup task failed; check the output',
+    'integrations.feishuAuthCompleting': 'Completing authorization…',
+    'integrations.feishuAuthNoDeviceCode': 'Missing device code; start Feishu auth first',
     'integrations.feishuConfigStarted': 'Feishu setup started. Open the link or scan to complete first-time configuration.',
     'integrations.feishuAuthStarted': 'Feishu authorization started. Open the link or scan to complete authorization.',
     'integrations.wizardFeishuCli': 'Install and authorize Feishu CLI',
@@ -5823,6 +6419,11 @@ const translations: Record<Lang, Record<string, string>> = {
 
               <div class="two-col wide-left">
                 <n-card :title="t('agentos.tasks')">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px">
+                    <n-input v-model:value="agentTaskFormName" size="small" :placeholder="t('agentos.taskNamePlaceholder')" @keydown.enter="createAgentOsTask" />
+                    <n-select v-model:value="agentTaskFormLevel" size="small" style="width: 88px" :options="[{ label: 'S', value: 'S' }, { label: 'M', value: 'M' }, { label: 'L', value: 'L' }]" />
+                    <n-button size="small" type="primary" :loading="agentTaskActionLoading === 'create'" @click="createAgentOsTask">{{ t('agentos.createTask') }}</n-button>
+                  </div>
                   <n-empty v-if="agentOsTasks.length === 0" :description="t('common.empty')" />
                   <n-list v-else>
                     <n-list-item v-for="task in agentOsTasks" :key="task.taskId">
@@ -5837,6 +6438,20 @@ const translations: Record<Lang, Record<string, string>> = {
                           <n-tag v-for="file in (task.files || []).slice(0, 4)" :key="file" size="small">{{ file }}</n-tag>
                         </div>
                         <n-text depth="3">{{ formatDateTime(task.updatedAt) }}</n-text>
+                        <n-space size="small" style="margin-top: 8px">
+                          <n-button v-if="canStartAgentTask(task)" size="small" type="primary" :loading="agentTaskActionLoading === `start:${task.taskId}`" @click="agentOsTaskAction(task.taskId, 'start')">{{ t('agentos.startTask') }}</n-button>
+                          <n-button v-if="canCheckpointAgentTask(task)" size="small" @click="beginAgentTaskForm(task.taskId, 'checkpoint')">{{ t('agentos.checkpoint') }}</n-button>
+                          <n-button v-if="canResumeAgentTask(task)" size="small" :loading="agentTaskActionLoading === `resume:${task.taskId}`" @click="agentOsTaskAction(task.taskId, 'resume')">{{ t('agentos.resumeTask') }}</n-button>
+                          <n-button v-if="canCompleteAgentTask(task)" size="small" type="warning" @click="beginAgentTaskForm(task.taskId, 'complete')">{{ t('agentos.completeTask') }}</n-button>
+                        </n-space>
+                        <div v-if="agentTaskForm?.taskId === task.taskId" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px">
+                          <n-input v-model:value="agentTaskForm.summary" size="small" type="textarea" :rows="2" :placeholder="agentTaskForm.action === 'complete' ? t('agentos.completionSummaryPlaceholder') : t('agentos.checkpointSummaryPlaceholder')" />
+                          <n-input v-if="agentTaskForm.action === 'complete'" v-model:value="agentTaskForm.validation" size="small" type="textarea" :rows="2" :placeholder="t('agentos.validationPlaceholder')" />
+                          <n-space size="small">
+                            <n-button size="small" type="primary" :loading="agentTaskActionLoading === `${agentTaskForm.action}:${task.taskId}`" @click="submitAgentTaskForm">{{ t('common.save') }}</n-button>
+                            <n-button size="small" @click="agentTaskForm = null">{{ t('common.cancel') }}</n-button>
+                          </n-space>
+                        </div>
                       </n-thing>
                     </n-list-item>
                   </n-list>
@@ -6334,7 +6949,12 @@ const translations: Record<Lang, Record<string, string>> = {
             </n-alert>
 
             <n-alert v-if="agentExecutionModeText" :type="agentExecutionModeType" style="margin-bottom: 12px">
-              {{ agentExecutionModeText }}
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+                <span>{{ agentExecutionModeText }}</span>
+                <n-button v-if="agentExecutionModeType === 'warning'" size="small" type="primary" :loading="agentExecutionEnabling" @click="enableAgentLiveExecution">
+                  {{ t('agents.liveEnable') }}
+                </n-button>
+              </div>
             </n-alert>
 
             <div class="agent-workspace-grid">
@@ -6414,6 +7034,16 @@ const translations: Record<Lang, Record<string, string>> = {
                           <div v-if="message.commandPlan || message.direction === 'operator-to-agent'" class="doc-actions">
                             <n-button v-if="message.commandPlan" size="small" @click="copyText(commandPlanText(message.commandPlan))">{{ t('common.copy') }}</n-button>
                             <n-button
+                              v-if="message.commandPlan"
+                              size="small"
+                              type="primary"
+                              :loading="integrationActionLoading === 'dry-run-send'"
+                              :disabled="Boolean(integrationActionLoading)"
+                              @click="runIntegrationAction('feishu', 'dry-run-send')"
+                            >
+                              {{ t('integrations.dryRunSend') }}
+                            </n-button>
+                            <n-button
                               v-if="message.direction === 'operator-to-agent' && message.status === 'queued'"
                               size="small"
                               :loading="agentMessageActionLoading === `claim:${message.id}`"
@@ -6465,6 +7095,16 @@ const translations: Record<Lang, Record<string, string>> = {
                             <pre v-if="item.commandPlan" class="code-box compact">{{ commandPlanText(item.commandPlan) }}</pre>
                             <div v-if="item.commandPlan || item.direction === 'operator-to-agent'" class="doc-actions">
                               <n-button v-if="item.commandPlan" size="small" @click="copyText(commandPlanText(item.commandPlan))">{{ t('common.copy') }}</n-button>
+                              <n-button
+                                v-if="item.commandPlan"
+                                size="small"
+                                type="primary"
+                                :loading="integrationActionLoading === 'dry-run-send'"
+                                :disabled="Boolean(integrationActionLoading)"
+                                @click="runIntegrationAction('feishu', 'dry-run-send')"
+                              >
+                                {{ t('integrations.dryRunSend') }}
+                              </n-button>
                               <n-button
                                 v-if="item.direction === 'operator-to-agent' && item.status === 'queued'"
                                 size="small"
@@ -6675,6 +7315,14 @@ const translations: Record<Lang, Record<string, string>> = {
                       <span>{{ t('agents.localExecutor') }}</span>
                       <n-switch :value="agentSessionDraft.localExecutor" @update:value="value => updateAgentSessionDraft('localExecutor', value)" />
                     </label>
+                    <label class="agent-switch-row">
+                      <span>{{ t('agents.executorKind') }}</span>
+                      <n-select :value="agentSessionDraft.executor" size="small" style="width: 200px" :options="[{ label: t('agents.executorGoverned'), value: 'governed' }, { label: t('agents.executorAgentCli'), value: 'agent-cli' }]" @update:value="value => updateAgentSessionDraft('executor', value)" />
+                    </label>
+                    <label class="agent-switch-row">
+                      <span>{{ t('agents.agentCommand') }}</span>
+                      <n-input :value="agentSessionDraft.agentCommand" size="small" style="width: 260px" :placeholder="t('agents.agentCommandPlaceholder')" @update:value="value => updateAgentSessionDraft('agentCommand', value)" />
+                    </label>
                   </div>
                   <n-space>
                     <n-button type="primary" :loading="agentSessionSaving" @click="saveAgentSession">{{ t('agents.saveSession') }}</n-button>
@@ -6764,7 +7412,7 @@ const translations: Record<Lang, Record<string, string>> = {
                       <strong>{{ integrationPrimaryWorkItem?.title || t('integrations.allClosed') }}</strong>
                       <p>{{ integrationPrimaryWorkItem?.helper || integrationPrimaryWorkItem?.description || t('integrations.coreClosureReadyLine') }}</p>
                     </div>
-                    <code v-if="integrationPrimaryWorkItem?.command">{{ integrationPrimaryWorkItem.command }}</code>
+                    <n-text v-if="integrationPrimaryWorkItem?.command" depth="3">{{ integrationPrimaryWorkItem.command }} · {{ t('common.terminalRequired') }}</n-text>
                   </div>
                   <n-space class="integration-primary-actions" wrap>
                     <n-button type="primary" @click="focusIntegrationWorkItem(integrationPrimaryWorkItem)">{{ integrationPrimaryWorkItem?.actionLabel || t('commandCenter.openAgents') }}</n-button>
@@ -7022,12 +7670,42 @@ const translations: Record<Lang, Record<string, string>> = {
                           <n-space v-if="feishuAuthResult?.verificationUrl || feishuAuthResult?.setupCommand" size="small">
                             <n-button v-if="feishuAuthResult?.verificationUrl" size="small" tag="a" :href="feishuAuthResult.verificationUrl" target="_blank">{{ t('common.open') }}</n-button>
                             <n-button size="small" @click="copyText(feishuAuthResult?.verificationUrl || feishuAuthResult?.setupCommand || '')">{{ t('common.copy') }}</n-button>
+                            <n-button v-if="feishuAuthResult?.deviceCode" size="small" type="primary" :loading="feishuAuthLoading" @click="completeFeishuAuth">{{ t('integrations.feishuCompleteAuth') }}</n-button>
                           </n-space>
+                          <n-alert v-if="feishuCliJob" :type="feishuCliJob.status === 'completed' ? 'success' : feishuCliJob.status === 'failed' ? 'error' : 'info'" size="small">
+                            <div>{{ t('integrations.feishuCliJob') }}：{{ feishuCliJob.command }} — {{ feishuCliJob.status === 'running' ? t('integrations.feishuCliJobRunning') : feishuCliJob.status === 'completed' ? t('integrations.feishuCliJobCompleted') : t('integrations.feishuCliJobFailed') }}</div>
+                            <n-space v-if="feishuCliJob.verificationUrl" size="small" style="margin-top: 6px">
+                              <n-button size="small" type="primary" tag="a" :href="feishuCliJob.verificationUrl" target="_blank">{{ t('integrations.feishuOpenAuthPage') }}</n-button>
+                              <n-button size="small" @click="openFeishuVerificationUrl">{{ t('common.open') }}</n-button>
+                            </n-space>
+                            <n-text v-if="feishuCliJob.error" depth="3" style="display: block; margin-top: 4px">{{ feishuCliJob.error }}</n-text>
+                          </n-alert>
                         </section>
                         <aside class="config-panel">
                           <div class="panel-heading">
                             <h3>{{ t('integrations.routePreview') }}</h3>
                             <n-text depth="3">{{ t('integrations.routePreviewDesc') }}</n-text>
+                          </div>
+                          <div class="inline-section">
+                            <n-space size="small">
+                              <n-button
+                                type="primary"
+                                size="small"
+                                :loading="integrationActionLoading === 'dry-run-send'"
+                                :disabled="Boolean(integrationActionLoading) || !feishuProvider?.commandAvailable"
+                                @click="runIntegrationAction('feishu', 'dry-run-send')"
+                              >
+                                {{ t('integrations.dryRunSend') }}
+                              </n-button>
+                              <n-button
+                                size="small"
+                                :loading="integrationActionLoading === 'consume-once'"
+                                :disabled="Boolean(integrationActionLoading) || !feishuProvider?.commandAvailable"
+                                @click="runIntegrationAction('feishu', 'consume-once')"
+                              >
+                                {{ t('integrations.eventConsume') }}
+                              </n-button>
+                            </n-space>
                           </div>
                           <pre class="code-box compact">{{ feishuRouteDryRunCommand || t('common.empty') }}</pre>
                           <pre class="code-box compact">{{ feishuRouteEventCommand }}</pre>
@@ -7171,6 +7849,52 @@ const translations: Record<Lang, Record<string, string>> = {
                             <h3>{{ t('integrations.localRuntime') }}</h3>
                             <n-text depth="3">{{ t('integrations.localRuntimeDesc') }}</n-text>
                           </div>
+                          <div class="inline-section">
+                            <h3>{{ t('integrations.feishuBridge') }}</h3>
+                            <n-text depth="3">{{ t('integrations.feishuBridgeDesc') }}</n-text>
+                            <n-space size="small" align="center" style="margin-top: 8px">
+                              <n-button
+                                v-if="!feishuBridgeReport?.status?.running"
+                                type="primary"
+                                size="small"
+                                :loading="feishuBridgeLoading"
+                                :disabled="Boolean(feishuBridgeReport?.readiness && !feishuBridgeReport.readiness.ready)"
+                                @click="toggleFeishuBridge(true)"
+                              >
+                                {{ t('integrations.bridgeStart') }}
+                              </n-button>
+                              <n-button v-else size="small" :loading="feishuBridgeLoading" @click="toggleFeishuBridge(false)">
+                                {{ t('integrations.bridgeStop') }}
+                              </n-button>
+                              <n-tag size="small" :type="feishuBridgeReport?.status?.running ? 'success' : 'default'">
+                                {{ feishuBridgeReport?.status?.running ? t('integrations.bridgeRunning') : t('integrations.bridgeIdle') }}
+                              </n-tag>
+                              <n-tag v-if="feishuBridgeReport?.status" size="small">{{ feishuBridgeReport.status.eventKey }}</n-tag>
+                            </n-space>
+                            <n-alert v-if="feishuBridgeReport?.readiness && !feishuBridgeReport.readiness.ready" type="warning" size="small" style="margin-top: 8px">
+                              {{ t('integrations.bridgeBlockers') }}：{{ feishuBridgeReport.readiness.blockers.join('；') }}
+                            </n-alert>
+                            <div v-if="feishuBridgeReport?.status" class="prompt-chip-row" style="margin-top: 8px">
+                              <n-tag size="small">入站 {{ feishuBridgeReport.status.counters.received }}</n-tag>
+                              <n-tag size="small">路由 {{ feishuBridgeReport.status.counters.routed }}</n-tag>
+                              <n-tag size="small">执行 {{ feishuBridgeReport.status.counters.executed }}</n-tag>
+                              <n-tag size="small" :type="feishuBridgeReport.status.counters.replied ? 'success' : 'default'">回复 {{ feishuBridgeReport.status.counters.replied }}</n-tag>
+                              <n-tag size="small">跳过 {{ feishuBridgeReport.status.counters.skipped }}</n-tag>
+                              <n-tag size="small" :type="feishuBridgeReport.status.counters.failed ? 'error' : 'default'">失败 {{ feishuBridgeReport.status.counters.failed }}</n-tag>
+                            </div>
+                            <n-text v-if="feishuBridgeReport?.status?.lastError" depth="3" style="margin-top: 6px">{{ feishuBridgeReport.status.lastError }}</n-text>
+                          </div>
+                          <n-space size="small" align="center">
+                            <n-popconfirm @positive-click="runIntegrationSetup">
+                              <template #trigger>
+                                <n-button type="primary" size="small" :loading="setupRunStarting" :disabled="setupRunState?.status === 'running'">
+                                  {{ t('integrations.runSetup') }}
+                                </n-button>
+                              </template>
+                              {{ t('integrations.setupConfirm') }}
+                            </n-popconfirm>
+                            <n-text v-if="setupRunState?.status === 'running'" depth="3">{{ t('integrations.setupRunning') }}</n-text>
+                          </n-space>
                           <pre class="code-box compact">{{ (connectorWorkflow?.commands.configure || []).join('\n') }}</pre>
                           <pre class="code-box compact">{{ (connectorWorkflow?.daemon.hooks || []).join('\n') }}</pre>
                           <n-descriptions bordered :column="1" size="small">
@@ -7353,18 +8077,40 @@ const translations: Record<Lang, Record<string, string>> = {
                               <n-alert v-if="stage.blockers.length" type="warning" size="small">
                                 {{ stage.blockers.join('；') }}
                               </n-alert>
-                              <pre v-if="stage.commands.length" class="code-box compact">{{ stage.commands.join('\n') }}</pre>
+                              <template v-if="stage.commands.length">
+                                <n-button
+                                  v-if="stage.commands.some(command => command.includes('dashboard daemon ensure'))"
+                                  size="small"
+                                  type="primary"
+                                  @click="runDashboardServiceAction('ensure')"
+                                >
+                                  {{ t('service.ensure') }}
+                                </n-button>
+                                <n-text v-else depth="3">{{ t('common.terminalRequired') }}</n-text>
+                                <pre class="code-box compact">{{ stage.commands.join('\n') }}</pre>
+                              </template>
                             </div>
                           </div>
                           <div class="two-col compact">
                             <div>
                               <strong>{{ t('integrations.setupCommands') }}</strong>
                               <pre class="code-box compact">{{ (feishuProvider?.setupCommands || []).join('\n') }}</pre>
-                              <n-button size="small" @click="copyText((feishuProvider?.setupCommands || []).join('\n'))">{{ t('common.copy') }}</n-button>
+                              <n-space size="small" align="center">
+                                <n-popconfirm @positive-click="runIntegrationSetup">
+                                  <template #trigger>
+                                    <n-button size="small" type="primary" :loading="setupRunStarting" :disabled="setupRunState?.status === 'running'">
+                                      {{ t('integrations.runSetup') }}
+                                    </n-button>
+                                  </template>
+                                  {{ t('integrations.setupConfirm') }}
+                                </n-popconfirm>
+                                <n-button size="small" @click="copyText((feishuProvider?.setupCommands || []).join('\n'))">{{ t('common.copy') }}</n-button>
+                              </n-space>
                             </div>
                             <div>
                               <strong>{{ t('integrations.verifyCommands') }}</strong>
                               <pre class="code-box compact">{{ (feishuProvider?.verifyCommands || []).join('\n') }}</pre>
+                              <n-button size="small" type="primary" :loading="agentOsAcceptanceLoading" @click="runAgentOsAcceptance">{{ t('integrations.runAcceptance') }}</n-button>
                               <n-button size="small" @click="copyText((feishuProvider?.verifyCommands || []).join('\n'))">{{ t('common.copy') }}</n-button>
                             </div>
                           </div>
@@ -7413,6 +8159,71 @@ const translations: Record<Lang, Record<string, string>> = {
                         </div>
                         <pre class="code-box compact">{{ [integrationActionResult.error, integrationActionResult.stdout, integrationActionResult.stderr].filter(Boolean).join('\n\n') || t('common.empty') }}</pre>
                       </section>
+                    </n-tab-pane>
+                    <n-tab-pane name="governance" :tab="t('integrations.tabGovernance')">
+                      <n-spin v-if="governanceLoading" size="small" />
+                      <template v-else>
+                        <div class="two-col compact">
+                          <div>
+                            <strong>{{ t('integrations.thresholdsTitle') }}</strong>
+                            <n-text depth="3">{{ governanceConfig?.thresholds?.path }}</n-text>
+                            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.coverageThreshold') }}</span>
+                                <n-input-number v-model:value="thresholdsDraft.coverage" size="small" :min="0" :max="100" style="width: 110px" />
+                              </label>
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.retryThreshold') }}</span>
+                                <n-input-number v-model:value="thresholdsDraft.retry" size="small" :min="1" :max="20" style="width: 110px" />
+                              </label>
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.blockSeverity') }}</span>
+                                <n-select v-model:value="thresholdsDraft.severity" size="small" style="width: 130px" :options="[{ label: 'CRITICAL', value: 'CRITICAL' }, { label: 'HIGH', value: 'HIGH' }, { label: 'MEDIUM', value: 'MEDIUM' }]" />
+                              </label>
+                              <n-button type="primary" size="small" :loading="thresholdsSaving" @click="saveGovernanceThresholds">{{ t('common.save') }}</n-button>
+                            </div>
+                          </div>
+                          <div>
+                            <strong>{{ t('integrations.memoryTitle') }}</strong>
+                            <n-text depth="3">{{ governanceConfig?.memoryProviders?.path }}</n-text>
+                            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.memoryMode') }}</span>
+                                <n-select v-model:value="memoryDraft.mode" size="small" style="width: 160px" :options="[{ label: 'auto', value: 'auto' }, { label: 'local-only', value: 'local-only' }, { label: 'external-first', value: 'external-first' }]" />
+                              </label>
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.providerOrder') }}</span>
+                                <n-input v-model:value="memoryDraft.defaultOrder" size="small" style="width: 180px" />
+                              </label>
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.allowExternalWrite') }}</span>
+                                <n-switch v-model:value="memoryDraft.allowExternalWrite" size="small" />
+                              </label>
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.requireEvidence') }}</span>
+                                <n-switch v-model:value="memoryDraft.requireEvidence" size="small" />
+                              </label>
+                              <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                                <span>{{ t('integrations.maxResults') }}</span>
+                                <n-input-number v-model:value="memoryDraft.maxResultsPerProvider" size="small" :min="1" :max="50" style="width: 110px" />
+                              </label>
+                              <n-button type="primary" size="small" :loading="memorySaving" @click="saveGovernanceMemoryProviders">{{ t('common.save') }}</n-button>
+                            </div>
+                          </div>
+                        </div>
+                        <section style="margin-top: 12px">
+                          <div class="panel-heading">
+                            <h3>{{ t('integrations.policyTitle') }}</h3>
+                            <n-tag size="small">{{ governanceConfig?.policy?.ruleCount ?? 0 }} rules</n-tag>
+                          </div>
+                          <n-text depth="3">{{ governanceConfig?.policy?.path }} · {{ t('integrations.policyRecompileHint') }}</n-text>
+                          <n-input v-model:value="policyDraft" type="textarea" :rows="14" @update:value="() => { policyDirty = true }" style="margin-top: 8px" />
+                          <n-space size="small" style="margin-top: 8px">
+                            <n-button type="primary" size="small" :loading="policySaving" :disabled="!policyDirty" @click="saveGovernancePolicyYaml">{{ t('common.save') }}</n-button>
+                            <n-button size="small" :disabled="!policyDirty" @click="() => { policyDraft = governanceConfig?.policy?.yaml || ''; policyDirty = false }">{{ t('common.reset') }}</n-button>
+                          </n-space>
+                        </section>
+                      </template>
                     </n-tab-pane>
                   </n-tabs>
                 </main>
