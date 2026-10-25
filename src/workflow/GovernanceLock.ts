@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { GovernancePackId } from './GovernanceTemplatePacks.js'
+import { workflowDocPhysicalPath } from '../surface/ScaleSurface.js'
 
 export interface GovernanceLockFile {
   version: 1
@@ -42,10 +43,10 @@ export function writeGovernanceLock(projectDir: string, input: GovernanceLockInp
     packVersion: input.packVersion,
     generatedAt: new Date().toISOString(),
     files: input.files
-      .filter(file => file.sha256 || existsSync(join(projectDir, file.path)))
+      .filter(file => file.sha256 || existsSync(workflowDocPhysicalPath(projectDir, file.path)))
       .map(file => ({
         path: file.path,
-        sha256: file.sha256 ?? hashFile(join(projectDir, file.path)),
+        sha256: file.sha256 ?? hashFile(workflowDocPhysicalPath(projectDir, file.path)),
         owned: file.owned,
       })),
   }
@@ -70,7 +71,9 @@ export function computeGovernanceDrift(projectDir: string): GovernanceDriftRepor
   const clean: GovernanceLockEntry[] = []
 
   for (const entry of lock.files.filter(file => file.owned)) {
-    const target = join(projectDir, entry.path)
+    // lock keys are logical (docs/workflow/...) — resolve the physical
+    // location (docs/workflow legacy or .scale/reports/workflow)
+    const target = workflowDocPhysicalPath(projectDir, entry.path)
     if (!existsSync(target)) {
       missing.push(entry)
       continue

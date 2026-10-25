@@ -554,7 +554,11 @@ TASK_ID="\${DATE}-\${NAME}"
 TASK_DIR="$PLANNING_TASKS/$TASK_ID"
 STATE_DIR="$AGENT_STATE"
 STATE_FILE="$STATE_DIR/current.json"
-TEMPLATES="$PROJECT_ROOT/docs/workflow/templates"
+if [ -d "$PROJECT_ROOT/.scale/reports/workflow/templates" ]; then
+  TEMPLATES="$PROJECT_ROOT/.scale/reports/workflow/templates"
+else
+  TEMPLATES="$PROJECT_ROOT/docs/workflow/templates"
+fi
 PY_STATE="$PROJECT_ROOT/scripts/lib/workflow_state.py"
 
 mkdir -p "$TASK_DIR" "$STATE_DIR"

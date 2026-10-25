@@ -262,7 +262,9 @@ export async function quickStart(projectDir: string = '.', options?: {
   }
   const gitignorePath = join(scaleDir, '.gitignore')
   if (!existsSync(gitignorePath)) {
-    writeFileSync(gitignorePath, '*.db\n*.db-journal\nevents/\ncheckpoints/\nevidence/\nstate/\nhooks/*.sh\n')
+    // regenerable buckets (plan 2026-10-24 §2.1): reports/ holds generated
+    // workflow docs — kept out of the user's git on purpose
+    writeFileSync(gitignorePath, '*.db\n*.db-journal\nevents/\ncheckpoints/\nevidence/\nstate/\nreports/\ntmp/\ncache/\nhooks/*.sh\n')
     result.created.push(gitignorePath)
   }
   result.constraintsApplied = detection.platform ? PHYSICAL_CONSTRAINTS.length : 0

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { workflowDocPhysicalPath } from '../../src/surface/ScaleSurface.js'
 import { writeGovernanceTemplates } from '../../src/workflow/GovernanceTemplates.js'
 import {
   applyUpgradePlan,
@@ -56,7 +57,7 @@ describe('UpgradeManager', () => {
   it('blocks safe apply when generated files have local changes', () => {
     const projectDir = makeDir()
     writeGovernanceTemplates(projectDir, { mode: 'standard', pack: 'project-scaffold' })
-    writeFileSync(join(projectDir, 'docs', 'workflow', 'README.md'), '# Local workflow rules\n', 'utf-8')
+    writeFileSync(workflowDocPhysicalPath(projectDir, 'docs/workflow/README.md'), '# Local workflow rules\n', 'utf-8')
 
     const plan = createUpgradePlanReport({ projectDir })
 
@@ -78,7 +79,7 @@ describe('UpgradeManager', () => {
   it('plans to recreate missing generated files without overwriting local changes', () => {
     const projectDir = makeDir()
     writeGovernanceTemplates(projectDir, { mode: 'standard', pack: 'project-scaffold' })
-    rmSync(join(projectDir, 'docs', 'workflow', 'templates', 'summary.md'))
+    rmSync(workflowDocPhysicalPath(projectDir, 'docs/workflow/templates/summary.md'))
 
     const plan = createUpgradePlanReport({ projectDir })
 
@@ -94,7 +95,7 @@ describe('UpgradeManager', () => {
 
   it('safe-applies missing generated files and writes a rollback point', () => {
     const projectDir = makeDir()
-    const missingPath = join(projectDir, 'docs', 'workflow', 'templates', 'summary.md')
+    const missingPath = workflowDocPhysicalPath(projectDir, 'docs/workflow/templates/summary.md')
     writeGovernanceTemplates(projectDir, { mode: 'standard', pack: 'project-scaffold' })
     rmSync(missingPath)
 
@@ -125,7 +126,7 @@ describe('UpgradeManager', () => {
 
     expect(report.ok).toBe(true)
     expect(report.applied).toBe(true)
-    expect(report.changedFiles).toContain('docs/workflow/README.md')
+    expect(report.changedFiles).toContain('.scale/reports/workflow/README.md') // updated files report physical paths
     expect(report.changedFiles).toContain('.scale/governance.lock.json')
     const lock = JSON.parse(readFileSync(join(projectDir, '.scale', 'governance.lock.json'), 'utf-8')) as { packVersion: number }
     expect(lock.packVersion).toBe(2)
@@ -134,7 +135,7 @@ describe('UpgradeManager', () => {
   it('refuses safe apply when generated files have local changes', () => {
     const projectDir = makeDir()
     writeGovernanceTemplates(projectDir, { mode: 'standard', pack: 'project-scaffold' })
-    writeFileSync(join(projectDir, 'docs', 'workflow', 'README.md'), '# Local workflow rules\n', 'utf-8')
+    writeFileSync(workflowDocPhysicalPath(projectDir, 'docs/workflow/README.md'), '# Local workflow rules\n', 'utf-8')
 
     const report = applyUpgradePlan({ projectDir, confirm: true })
 
@@ -145,7 +146,7 @@ describe('UpgradeManager', () => {
 
   it('rolls back the latest safe apply by restoring previous file state', () => {
     const projectDir = makeDir()
-    const missingPath = join(projectDir, 'docs', 'workflow', 'templates', 'summary.md')
+    const missingPath = workflowDocPhysicalPath(projectDir, 'docs/workflow/templates/summary.md')
     writeGovernanceTemplates(projectDir, { mode: 'standard', pack: 'project-scaffold' })
     rmSync(missingPath)
     const applied = applyUpgradePlan({ projectDir, confirm: true })

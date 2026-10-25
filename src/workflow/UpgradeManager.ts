@@ -4,6 +4,7 @@ import { TOOL_CAPABILITY_CATALOG, type ToolCapabilityCategory } from '../tools/T
 import { createAiOsDoctor, type AiOsDoctorReport } from '../runtime/AiOsRuntime.js'
 import { SCALE_ENGINE_VERSION } from '../version.js'
 import { computeGovernanceDrift, readGovernanceLock, type GovernanceDriftReport } from './GovernanceLock.js'
+import { workflowDocPhysicalPath } from '../surface/ScaleSurface.js'
 import { listGovernanceTemplatePacks, resolveGovernanceTemplatePack, type GovernancePackId } from './GovernanceTemplatePacks.js'
 import { writeGovernanceTemplates } from './GovernanceTemplates.js'
 
@@ -530,7 +531,7 @@ export function applyUpgradePlan(options: UpgradeApplyOptions = {}): UpgradeAppl
   mergeCreatedFilesIntoBackup(backup.manifestPath, createdFiles)
 
   const changedFiles = uniqueStrings([
-    ...missingFiles.filter(path => existsSync(join(projectDir, path))),
+    ...missingFiles.filter(path => existsSync(workflowDocPhysicalPath(projectDir, path))),
     ...createdFiles,
     ...updatedFiles,
     '.scale/governance.lock.json',
@@ -566,7 +567,8 @@ export function rollbackLatestUpgrade(options: UpgradeManagerOptions = {}): Upgr
   const manifest = JSON.parse(readFileSync(backup.manifestPath, 'utf-8')) as UpgradeBackupManifest
   const restoredFiles: string[] = []
   for (const entry of manifest.files) {
-    const target = join(projectDir, entry.path)
+    // manifest paths are logical lock keys — resolve the physical location
+    const target = workflowDocPhysicalPath(projectDir, entry.path)
     if (entry.existed && entry.backupPath) {
       mkdirSync(dirname(target), { recursive: true })
       copyFileSync(join(backup.dir, entry.backupPath), target)
@@ -657,7 +659,7 @@ function createUpgradeBackup(projectDir: string, relativePaths: string[]): { id:
     createdAt: new Date().toISOString(),
     projectDir,
     files: uniqueStrings(relativePaths).map(path => {
-      const target = join(projectDir, path)
+      const target = workflowDocPhysicalPath(projectDir, path)
       if (!existsSync(target)) return { path, existed: false }
       const backupPath = join('files', path.replace(/^[\\/]+/, '').replace(/\\/g, '/'))
       const backupTarget = join(dir, backupPath)

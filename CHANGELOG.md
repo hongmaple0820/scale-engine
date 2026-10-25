@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Output governance — docs/workflow templates out of the user's docs/ (final T2.4 subtask)
+- Workflow docs keep their logical governance.lock keys (`docs/workflow/...`) but their physical location now probes: projects with an existing docs/workflow keep it untouched (zero disruption), clean projects get `.scale/reports/workflow/` — the user's docs/ no longer receives generated output. The three lock-key/physical decoupling points are all mapped through `workflowDocPhysicalPath` (drift comparison, lock liveness filter, UpgradeManager backup/restore/changedFiles — the latter two were found by the suite and fixed before reaching users).
+- Readers probe both locations: doctor template checks, TaskArtifactScaffolder, plan/new-task TEMPLATES (own scripts + templates generated for target projects). Target projects' generated `.scale/.gitignore` now ignores `reports/|tmp/|cache/`; legacy-location `docs/workflow/` writes are manifest-registered as regenerable so `scale uninstall` can reclaim them.
+- Tests: fresh→new location with stable lock keys, legacy→in-place, upgradeManager/doctor/phaseCli 73 cases green; live fresh-init verified (clean user docs/, doctor probes 20 templates + 38 lock files clean).
+
+
 ### Concurrency phase 1 — cross-process FileLock + InstinctStore lost-update fix
 - `src/core/FileLock.ts`: zero-dependency cross-process lock (mkdir atomicity, stale-TTL steal via atomic rename, `Atomics.wait` backoff, sync API to preserve InstinctStore's sync contract). Implements the spike's phase-1 recommendation (`docs/plans/2026-10-25-scale-concurrency-spike.md`).
 - `InstinctStore.save`'s read-modify-write critical section (findByKey merge → unlink → write) is now lock-guarded, keyed by trigger+scope+project — the last-writer-wins lost-update the spike identified as the only real concurrency defect in `.scale/`.

@@ -1,5 +1,6 @@
 // W10 Tests: Doctor + Health Check
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { workflowDocPhysicalPath } from '../../src/surface/ScaleSurface.js'
 import { Doctor } from '../../src/api/doctor.js'
 import { ClaudeCodeAdapter } from '../../src/adapters/ClaudeCodeAdapter.js'
 import { writeGovernanceTemplates } from '../../src/workflow/GovernanceTemplates.js'
@@ -238,7 +239,7 @@ describe('Doctor', () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.init({ projectDir: TMP })
     writeGovernanceTemplates(TMP, { mode: 'standard', projectName: 'Doctor Test' })
-    writeFileSync(join(TMP, 'docs', 'workflow', 'README.md'), '# Changed\n', 'utf-8')
+    writeFileSync(workflowDocPhysicalPath(TMP, 'docs/workflow/README.md'), '# Changed\n', 'utf-8')
 
     const doc = new Doctor(TMP)
     const report = await doc.diagnose()

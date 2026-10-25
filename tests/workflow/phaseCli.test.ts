@@ -242,7 +242,7 @@ describe('phase CLI workflow', () => {
     expect(result).toMatchObject({ ok: true, mode: 'governance-only', platform: null })
     expect(existsSync(join(projectDir, '.scale', 'governance.lock.json'))).toBe(true)
     expect(existsSync(join(projectDir, '.scale', 'tools.json'))).toBe(true)
-    expect(existsSync(join(projectDir, 'docs', 'workflow', 'README.md'))).toBe(true)
+    expect(existsSync(join(projectDir, '.scale', 'reports', 'workflow', 'README.md'))).toBe(true)
   }, 120_000)
 
   it('prints workflow list as machine-readable JSON', async () => {

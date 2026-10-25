@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { skillRoutingPolicyTemplate } from '../skills/routing/SkillPolicy.js'
 import { computeGovernanceDrift, readGovernanceLock, writeGovernanceLock } from './GovernanceLock.js'
+import { workflowDocPhysicalPath } from '../surface/ScaleSurface.js'
 import {
   resolveGovernanceTemplatePack,
   type GovernanceGeneratedFile,
@@ -190,7 +191,11 @@ function writeTracked(
   content: string,
   overwritePaths: Set<string>,
 ): void {
-  const status = writeIfMissing(result, join(projectDir, relativePath), content, overwritePaths.has(relativePath))
+  // Logical lock key stays `docs/workflow/...` (governance.lock contract);
+  // the physical location probes legacy-if-exists else .scale/reports/workflow
+  // (plan 2026-10-24 §3.4 — generated output out of the user's docs/)
+  const physical = workflowDocPhysicalPath(projectDir, relativePath)
+  const status = writeIfMissing(result, physical, content, overwritePaths.has(relativePath))
   if (status !== 'skipped') lockFiles.set(relativePath, { path: relativePath, owned: true })
 }
 
@@ -206,7 +211,8 @@ function writePackGeneratedFile(
   const content = shouldUseGeneratedHeader(file)
     ? generatedHeader(packId, packVersion) + file.content
     : file.content
-  const status = writeIfMissing(result, join(projectDir, file.path), content, overwritePaths.has(file.path))
+  const physical = workflowDocPhysicalPath(projectDir, file.path)
+  const status = writeIfMissing(result, physical, content, overwritePaths.has(file.path))
   if (status !== 'skipped') lockFiles.set(file.path, { path: file.path, owned: file.owned })
 }
 

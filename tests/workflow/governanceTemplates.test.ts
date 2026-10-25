@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { governanceTemplateContent, writeGovernanceTemplates } from '../../src/workflow/GovernanceTemplates.js'
@@ -25,21 +25,21 @@ describe('writeGovernanceTemplates', () => {
     const result = writeGovernanceTemplates(dir, { mode: 'critical', projectName: 'Demo' })
 
     expect(result.created).toEqual(expect.arrayContaining([
-      join(dir, 'docs', 'workflow', 'README.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'mini-prd.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'skill-plan.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'skill-evidence.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'runtime.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'reality-check.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'resource-cleanup.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'ui-spec.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'docs-impact.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'resource-impact.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'standards-impact.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'architecture-review.md'),
-      join(dir, 'docs', 'workflow', 'templates', 'github-actions-scale-preflight.yml'),
-      join(dir, 'docs', 'workflow', 'templates', 'pre-push-scale-preflight.sh'),
-      join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'README.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'mini-prd.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'skill-plan.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'skill-evidence.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'runtime.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'reality-check.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'resource-cleanup.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'ui-spec.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'docs-impact.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'resource-impact.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'standards-impact.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'architecture-review.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'github-actions-scale-preflight.yml'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'pre-push-scale-preflight.sh'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', 'product-smoke.md'),
       join(dir, 'docs', 'worklog', 'metrics.md'),
       join(dir, 'scripts', 'qa', 'product-smoke.ps1'),
       join(dir, 'scripts', 'qa', 'product-smoke.sh'),
@@ -55,26 +55,26 @@ describe('writeGovernanceTemplates', () => {
       join(dir, '.scale', 'frameworks.json'),
       join(dir, '.scale', 'governance.lock.json'),
     ]))
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('Governance mode: critical')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('Tool orchestration is part of the workflow contract')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('## Workflow Upgrade')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('## HTML Artifacts')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('.planning/tasks/<yyyy-mm-dd>-<task-slug>/')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'skill-plan.md'), 'utf-8')).toContain('## Tool Orchestration')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'skill-evidence.md'), 'utf-8')).toContain('## Browser Or Web Evidence')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Credential-Gated')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Unsupported Claims')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'architecture-review.md'), 'utf-8')).toContain('## Hallucination Guards')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'verification.md'), 'utf-8')).toContain('## Learning Evidence')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'summary.md'), 'utf-8')).toContain('## Learning And Prevention')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Real Product Path')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Quick Setup')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('scale preflight --profile productSmoke --json')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('"productSmoke":true')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')).toContain('Governance mode: critical')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')).toContain('Tool orchestration is part of the workflow contract')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')).toContain('## Workflow Upgrade')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')).toContain('## HTML Artifacts')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')).toContain('.planning/tasks/<yyyy-mm-dd>-<task-slug>/')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'skill-plan.md'), 'utf-8')).toContain('## Tool Orchestration')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'skill-evidence.md'), 'utf-8')).toContain('## Browser Or Web Evidence')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Credential-Gated')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'reality-check.md'), 'utf-8')).toContain('## Unsupported Claims')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'architecture-review.md'), 'utf-8')).toContain('## Hallucination Guards')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'verification.md'), 'utf-8')).toContain('## Learning Evidence')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'summary.md'), 'utf-8')).toContain('## Learning And Prevention')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Real Product Path')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('## Quick Setup')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('scale preflight --profile productSmoke --json')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'product-smoke.md'), 'utf-8')).toContain('"productSmoke":true')
     expect(readFileSync(join(dir, 'scripts', 'qa', 'product-smoke.ps1'), 'utf-8')).toContain('$ConfigPath = Join-Path $Root ".scale\\product-smoke.json"')
     expect(readFileSync(join(dir, 'scripts', 'qa', 'product-smoke.sh'), 'utf-8')).toContain('CONFIG_PATH="$ROOT/.scale/product-smoke.json"')
     expect(readFileSync(join(dir, 'scripts', 'qa', 'product-smoke.ps1'), 'utf-8')).toContain("replace(/^\\uFEFF/, '')")
-    const githubActionsPreflight = readFileSync(join(dir, 'docs', 'workflow', 'templates', 'github-actions-scale-preflight.yml'), 'utf-8')
+    const githubActionsPreflight = readFileSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'github-actions-scale-preflight.yml'), 'utf-8')
     expect(githubActionsPreflight).toContain('permissions:')
     expect(githubActionsPreflight).toContain('contents: read')
     expect(githubActionsPreflight).toContain('scale-engine@latest preflight --service all --profile ci --preflight-profile ci')
@@ -238,13 +238,13 @@ describe('writeGovernanceTemplates', () => {
     expect(result.created).toEqual(expect.arrayContaining([
       join(dir, 'scripts', 'preflight', 'all.sh'),
       join(dir, 'scripts', 'preflight', 'all.ps1'),
-      join(dir, 'docs', 'workflow', 'node-library.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'node-library.md'),
       join(dir, '.scale', 'workspace.json'),
       join(dir, '.planning', 'tasks', '.gitkeep'),
     ]))
     expect(readFileSync(join(dir, 'scripts', 'preflight', 'all.sh'), 'utf-8')).toContain('[PREFLIGHT] node-library workflow')
     expect(readFileSync(join(dir, 'scripts', 'preflight', 'all.ps1'), 'utf-8')).toContain("[PREFLIGHT] node-library workflow")
-    const nodeLibraryDoc = readFileSync(join(dir, 'docs', 'workflow', 'node-library.md'), 'utf-8')
+    const nodeLibraryDoc = readFileSync(join(dir, '.scale', 'reports', 'workflow', 'node-library.md'), 'utf-8')
     expect(nodeLibraryDoc).toContain('feature/fix/docs/chore/codex -> dev -> master -> tag/publish')
     expect(nodeLibraryDoc).toContain('pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/all.ps1')
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'workspace.json'), 'utf-8'))).toMatchObject({
@@ -267,7 +267,7 @@ describe('writeGovernanceTemplates', () => {
 
     expect(result.created).toEqual(expect.arrayContaining([
       join(dir, '.scale', 'workspace.json'),
-      join(dir, 'docs', 'workflow', 'moe-workspace.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'moe-workspace.md'),
     ]))
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'workspace.json'), 'utf-8'))).toMatchObject({
       topology: 'moe',
@@ -277,8 +277,8 @@ describe('writeGovernanceTemplates', () => {
         requireRootPointerUpdate: true,
       },
     })
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'moe-workspace.md'), 'utf-8')).toContain('MOE Workspace Governance')
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')).toContain('Governance pack: moe-workspace')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'moe-workspace.md'), 'utf-8')).toContain('MOE Workspace Governance')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')).toContain('Governance pack: moe-workspace')
   })
 
   it('generates scale-engine-repo governance assets', () => {
@@ -317,7 +317,7 @@ describe('writeGovernanceTemplates', () => {
       join(dir, 'Makefile'),
       join(dir, 'docs', 'guides', 'GETTING_STARTED.md'),
       join(dir, 'docs', 'guides', 'DEVELOPMENT_WORKFLOW.md'),
-      join(dir, 'docs', 'workflow', 'README.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'README.md'),
       join(dir, '.scale', 'governance.lock.json'),
     ]))
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'governance.lock.json'), 'utf-8'))).toMatchObject({
@@ -360,7 +360,7 @@ describe('writeGovernanceTemplates', () => {
     expect(readFileSync(join(dir, 'docs', 'guides', 'GETTING_STARTED.md'), 'utf-8')).toContain('make preflight')
     expect(readFileSync(join(dir, 'scripts', 'gates', 'all.sh'), 'utf-8')).toContain('preflight --service all')
     expect(readFileSync(join(dir, 'scripts', 'workflow', 'verify.sh'), 'utf-8')).toContain('scale preflight')
-    const workflowReadme = readFileSync(join(dir, 'docs', 'workflow', 'README.md'), 'utf-8')
+    const workflowReadme = readFileSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'), 'utf-8')
     expect(workflowReadme).toContain('GitLab Flow')
     expect(workflowReadme).toContain('make workflow-aios-adopt')
     expect(workflowReadme).toContain('pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/workflow/verify.ps1 -Profile default')
@@ -378,11 +378,11 @@ describe('writeGovernanceTemplates', () => {
     const result = writeGovernanceTemplates(dir, { mode: 'critical', projectName: 'Resource Demo', pack: 'resource-governance' })
 
     expect(result.created).toEqual(expect.arrayContaining([
-      join(dir, 'docs', 'workflow', 'resource-governance.md'),
+      join(dir, '.scale', 'reports', 'workflow', 'resource-governance.md'),
       join(dir, 'docs', 'modules', 'README.md'),
-      join(dir, 'docs', 'workflow', 'templates', '.gitignore.scale-assets.example'),
+      join(dir, '.scale', 'reports', 'workflow', 'templates', '.gitignore.scale-assets.example'),
     ]))
-    expect(readFileSync(join(dir, 'docs', 'workflow', 'resource-governance.md'), 'utf-8')).toContain('Resource Governance')
+    expect(readFileSync(join(dir, '.scale', 'reports', 'workflow', 'resource-governance.md'), 'utf-8')).toContain('Resource Governance')
     expect(JSON.parse(readFileSync(join(dir, '.scale', 'governance.lock.json'), 'utf-8'))).toMatchObject({
       pack: 'resource-governance',
       packVersion: 1,
@@ -425,7 +425,7 @@ describe('writeGovernanceTemplates', () => {
 
   it('does not overwrite existing templates', () => {
     const dir = makeDir()
-    const readme = join(dir, 'docs', 'workflow', 'README.md')
+    const readme = join(dir, '.scale', 'reports', 'workflow', 'README.md')
     writeGovernanceTemplates(dir)
     writeFileSync(readme, 'custom\n', 'utf-8')
 
@@ -433,17 +433,40 @@ describe('writeGovernanceTemplates', () => {
 
     expect(result.skipped).toContain(readme)
     expect(readFileSync(readme, 'utf-8')).toBe('custom\n')
-    expect(existsSync(join(dir, 'docs', 'workflow', 'templates', 'summary.md'))).toBe(true)
+    expect(existsSync(join(dir, '.scale', 'reports', 'workflow', 'templates', 'summary.md'))).toBe(true)
   })
 
   it('does not erase existing governance drift when init is rerun', () => {
     const dir = makeDir()
-    const readme = join(dir, 'docs', 'workflow', 'README.md')
+    const readme = join(dir, '.scale', 'reports', 'workflow', 'README.md')
     writeGovernanceTemplates(dir, { pack: 'project-scaffold' })
     writeFileSync(readme, '# Local change\n', 'utf-8')
 
     writeGovernanceTemplates(dir, { pack: 'project-scaffold' })
 
     expect(computeGovernanceDrift(dir).changed.map(item => item.path)).toContain('docs/workflow/README.md')
+  })
+})
+
+describe('workflow docs physical location (plan 2026-10-24 §3.4)', () => {
+  it('fresh projects write under .scale/reports/workflow with stable lock keys', () => {
+    const dir = makeDir()
+    writeGovernanceTemplates(dir, { mode: 'standard', projectName: 'Fresh' })
+
+    expect(existsSync(join(dir, '.scale', 'reports', 'workflow', 'README.md'))).toBe(true)
+    expect(existsSync(join(dir, 'docs', 'workflow'))).toBe(false) // user docs/ stays clean
+    const lock = JSON.parse(readFileSync(join(dir, '.scale', 'governance.lock.json'), 'utf-8'))
+    const readme = lock.files.find((f: { path: string }) => f.path === 'docs/workflow/README.md')
+    expect(readme?.owned).toBe(true) // logical key unchanged
+  })
+
+  it('projects with an existing docs/workflow keep writing there (zero disruption)', () => {
+    const dir = makeDir()
+    mkdirSync(join(dir, 'docs', 'workflow'), { recursive: true })
+    writeFileSync(join(dir, 'docs', 'workflow', 'KEEP.marker'), 'legacy', 'utf-8')
+    writeGovernanceTemplates(dir, { mode: 'standard', projectName: 'Legacy' })
+
+    expect(existsSync(join(dir, 'docs', 'workflow', 'README.md'))).toBe(true)
+    expect(existsSync(join(dir, '.scale', 'reports', 'workflow'))).toBe(false)
   })
 })
