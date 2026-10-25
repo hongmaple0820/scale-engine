@@ -5,6 +5,7 @@ import { LessonExtractor, RuleProposer, HookGenerator, EvolutionEngine } from '.
 import { Doctor } from '../api/doctor.js'
 import { inspectEnvironment, renderEnvironmentDoctor } from '../env/EnvironmentDoctor.js'
 import { listSurface, CLEANABLE_KINDS } from '../surface/ScaleSurface.js'
+import { auditSkills } from '../skills/SkillsAudit.js'
 import { resolve } from 'node:path'
 
 function runEnvironmentDoctor(json: unknown) {
@@ -46,6 +47,32 @@ function runSurfaceDoctor(dir: string, json: unknown) {
   console.log(`\n  可清理类别: ${[...CLEANABLE_KINDS].join(' / ')} — 用 scale clean --dry-run 查看`)
 }
 
+function runSkillsDoctor(dir: string, json: unknown) {
+  const projectDir = resolve(dir || '.')
+  const report = auditSkills(projectDir)
+  if (json) {
+    console.log(JSON.stringify(report, null, 2))
+  } else {
+    console.log('\nSCALE Skills 治理审计\n')
+    console.log(`  roots          : ${report.roots.length} 个（含全局）`)
+    console.log(`  引用/实装      : ${report.present}/${report.totalReferenced}`)
+    if (report.missingRequired > 0) {
+      console.log(`\n  ❌ REQUIRED 缺失 ${report.missingRequired} 个（阻塞级）:`)
+      for (const m of report.missing.filter(x => x.required).slice(0, 10)) console.log(`     ${m.domain}: ${m.id}`)
+    }
+    const missingRecommended = report.missing.filter(m => !m.required)
+    if (missingRecommended.length > 0) {
+      console.log(`\n  ⚠️  recommended 缺失 ${missingRecommended.length} 个（warn 级）: ${missingRecommended.slice(0, 5).map(m => `${m.domain}:${m.id}`).join(' ')}${missingRecommended.length > 5 ? ' …' : ''}`)
+    }
+    if (report.expiredWaivers.length > 0) {
+      console.log(`\n  ❌ waiver 已过期 ${report.expiredWaivers.length} 个:`)
+      for (const w of report.expiredWaivers) console.log(`     ${w.id}（过期于 ${w.expiresAt}）`)
+    }
+    if (report.ok) console.log('\n  ✅ REQUIRED 全部可解析，waiver 均在有效期内')
+  }
+  process.exitCode = report.ok ? 0 : 1
+}
+
 export const evolveCommand = defineCommand({
   meta: { name: 'evolve', description: 'Run evolution cycle (Defect→Lesson→Rule→Hook)' },
   args: {},
@@ -63,7 +90,7 @@ export const evolveCommand = defineCommand({
 export const doctorCommand = defineCommand({
   meta: { name: 'doctor', description: 'Diagnose SCALE Engine health' },
   args: {
-    scope: { type: 'positional', required: false, description: 'Optional diagnostic scope: env | surface' },
+    scope: { type: 'positional', required: false, description: 'Optional diagnostic scope: env | surface | skills' },
     dir: { type: 'string', default: '.', description: 'Project directory' },
     json: { type: 'boolean', default: false, description: 'Output as JSON' },
   },
@@ -77,8 +104,12 @@ export const doctorCommand = defineCommand({
       runSurfaceDoctor(String(args.dir ?? '.'), args.json)
       return
     }
+    if (scope === 'skills') {
+      runSkillsDoctor(String(args.dir ?? '.'), args.json)
+      return
+    }
     if (scope) {
-      console.error(`Unknown doctor scope: ${scope}. Supported scopes: env, surface.`)
+      console.error(`Unknown doctor scope: ${scope}. Supported scopes: env, surface, skills.`)
       process.exitCode = 1
       return
     }

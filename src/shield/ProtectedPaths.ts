@@ -49,6 +49,12 @@ const COMMAND_BLOCKLIST: CommandBlockRule[] = [
   { pattern: /\brm\s+-rf\b/, reason: 'Recursive force delete (rm -rf) — data loss risk', severity: 'block', category: 'destructive' },
   { pattern: /\brm\s+-r\b/, reason: 'Recursive delete (rm -r)', severity: 'block', category: 'destructive' },
   { pattern: /\brmdir\b/, reason: 'Remove directory', severity: 'warn', category: 'destructive' },
+  // PowerShell/cmd native recursive deletes — the POSIX rules above only
+  // match rm/rmdir spellings; DSH adaptation verified these native forms slip through
+  { pattern: /\bremove-item\b(?=[^|]*\s-recurse\b)(?=[^|]*\s-force\b)/i, reason: 'PowerShell recursive force delete (Remove-Item -Recurse -Force) — data loss risk', severity: 'block', category: 'destructive' },
+  { pattern: /\bremove-item\b[^|]*\s-recurse\b/i, reason: 'PowerShell recursive delete (Remove-Item -Recurse)', severity: 'warn', category: 'destructive' },
+  { pattern: /\b(rd|rmdir)\s+\/s\b/i, reason: 'cmd recursive delete (rd /s) — data loss risk', severity: 'block', category: 'destructive' },
+  { pattern: /\bdel\b(?=[^|]*\/s\b)(?=[^|]*\/q\b)/i, reason: 'cmd recursive quiet delete (del /s /q) — data loss risk', severity: 'block', category: 'destructive' },
   { pattern: /git\s+clean\s+-[fd]+/, reason: 'Git clean with force — removes untracked files', severity: 'block', category: 'destructive' },
   { pattern: /git\s+reset\s+--hard/, reason: 'Git hard reset — destroys uncommitted work', severity: 'block', category: 'destructive' },
   { pattern: /git\s+push\s+--force/, reason: 'Git force push — overwrites remote history', severity: 'block', category: 'destructive' },
@@ -136,8 +142,7 @@ export function checkCommand(command: string): CommandBlockRule[] {
       matches.push(rule)
     }
   }
-  return matches
-}
+  return matches}
 
 /**
  * Check if a command contains only warn-level matches (no blocks).
@@ -145,6 +150,36 @@ export function checkCommand(command: string): CommandBlockRule[] {
  */
 export function checkWarnHits(command: string): CommandBlockRule[] {
   return checkCommand(command).filter(m => m.severity === 'warn')
+}
+
+/**
+ * The single source of truth for command rules — PolicyCompiler embeds this
+ * list into generated hook scripts instead of maintaining its own copy
+ * (the 31-vs-18 divergence was a governance debt; convergence is pinned by
+ * tests/shield/shieldSourceConvergence.test.ts).
+ */
+export function getCommandRules(): readonly CommandBlockRule[] {
+  return COMMAND_BLOCKLIST
+}
+
+/** Plain-object form of a rule for embedding into generated hook scripts. */
+export interface SerializableCommandRule {
+  re: string
+  flags: string
+  reason: string
+  severity: CommandBlockRule['severity']
+  category: CommandBlockRule['category']
+}
+
+/** Serialize the rule list for codegen (RegExp → source + flags). */
+export function serializeCommandRules(): SerializableCommandRule[] {
+  return COMMAND_BLOCKLIST.map(rule => ({
+    re: rule.pattern.source,
+    flags: rule.pattern.flags,
+    reason: rule.reason,
+    severity: rule.severity,
+    category: rule.category,
+  }))
 }
 
 /**

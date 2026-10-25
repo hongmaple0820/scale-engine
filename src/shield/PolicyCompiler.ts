@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { logger } from '../core/logger.js'
+import { serializeCommandRules } from './ProtectedPaths.js'
 
 // ---------------------------------------------------------------------------
 // Policy YAML types
@@ -572,35 +573,12 @@ try {
     return `// SCALE Shield Combined PreToolUse Hook
 // Policy hash: ${policyHash} | Rules: ${preToolRules.length} | Mode: ${policy.settings?.blockMode ?? 'strict'}
 // Auto-generated — DO NOT EDIT
+// Command rules are generated from ProtectedPaths.serializeCommandRules() —
+// the single source of truth (was a divergent hardcoded list; convergence
+// pinned by tests/shield/shieldSourceConvergence.test.ts).
 
-const BLOCKED_COMMANDS = ${JSON.stringify([
-      'rm -rf', 'DROP TABLE', 'DROP DATABASE', 'TRUNCATE TABLE',
-      'git push --force', 'git push -f', 'git reset --hard',
-      'curl | bash', 'wget | bash', 'chmod 777', 'chmod -R 777',
-      'docker rm -f', 'docker system prune', 'kubectl delete',
-      'cat .env', 'eval ', '--no-verify', 'allowDangerously',
-    ])};
-
-const BLOCKED_COMMAND_PATTERNS = [
-  { re: /\\brm\\s+-rf\\b/, reason: 'rm -rf is blocked' },
-  { re: /\\bDROP\\s+TABLE\\b/i, reason: 'DROP TABLE is blocked' },
-  { re: /\\bDROP\\s+DATABASE\\b/i, reason: 'DROP DATABASE is blocked' },
-  { re: /\\bTRUNCATE\\s+TABLE\\b/i, reason: 'TRUNCATE TABLE is blocked' },
-  { re: /git\\s+push\\s+--force/, reason: 'Force push is blocked' },
-  { re: /git\\s+reset\\s+--hard/, reason: 'Hard reset is blocked' },
-  { re: /git\\s+clean\\s+-[fd]+/, reason: 'Git clean with force flags is blocked' },
-  { re: /curl.*\\|\\s*bash/, reason: 'curl-pipe-bash is blocked' },
-  { re: /wget.*\\|\\s*bash/, reason: 'wget-pipe-bash is blocked' },
-  { re: /\\bchmod\\s+777\\b/, reason: 'chmod 777 is blocked' },
-  { re: /\\beval\\s+/i, reason: 'eval is blocked' },
-  { re: /--no-verify/, reason: 'No-verify is blocked' },
-  { re: /\\bDELETE\\s+FROM\\b(?!.*\\bWHERE\\b)/i, reason: 'DELETE without WHERE is blocked' },
-  { re: /\\bdocker\\s+rm\\s+-f\\b/, reason: 'Docker force remove is blocked' },
-  { re: /\\bkubectl\\s+delete\\b/, reason: 'kubectl delete is blocked' },
-  { re: /\\bcat\\s+.*\\.env\\b/, reason: 'Reading .env files is blocked' },
-  { re: /\\becho\\s+.*\\$?(API[_-]?KEY|TOKEN|SECRET|PASSWORD)\\b/i, reason: 'Echoing secrets is blocked' },
-  { re: /SKIP_HOOKS|DISABLE_OMC|dang[eo]rously|bypass/i, reason: 'Governance bypass is blocked' },
-];
+const COMMAND_RULE_DATA = ${JSON.stringify(serializeCommandRules())};
+const BLOCKED_COMMAND_PATTERNS = COMMAND_RULE_DATA.map(r => ({ ...r, re: new RegExp(r.re, r.flags) }));
 
 function isProtectedPath(filePath) {
   const protectedPaths = ['.scale/', '.hook-state/', '.env', 'credentials', '.pem', '-key.json'];
@@ -632,11 +610,16 @@ try {
 
   // Check dangerous commands for Bash
   if (toolName === 'Bash' && command) {
-    for (const { re, reason } of BLOCKED_COMMAND_PATTERNS) {
+    const warnNotes = [];
+    for (const { re, reason, severity } of BLOCKED_COMMAND_PATTERNS) {
       if (re.test(command)) {
+        if (severity === 'warn') { warnNotes.push(reason); continue; }
         process.stderr.write('[SCALE SHIELD BLOCKED] ' + reason + '\\n');
         process.exit(2);
       }
+    }
+    for (const note of warnNotes) {
+      process.stderr.write('[SCALE SHIELD WARN] ' + note + '\\n');
     }
     // Gate check for git commit
     if (/git\\s+commit/.test(command)) {
