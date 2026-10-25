@@ -17,7 +17,10 @@ export default defineConfig({
     poolOptions: {
       forks: {
         minForks: 1,
-        maxForks: 4,
+        // 16 physical cores on the primary dev box; 8 forks halved the full
+        // suite wall time vs 4 while leaving headroom for child processes the
+        // heavier suites spawn (adapter init / dashboard / CLI e2e).
+        maxForks: 8,
       },
     },
     coverage: {

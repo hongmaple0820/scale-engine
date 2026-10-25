@@ -70,7 +70,8 @@
     "mcp": "node dist/api/mcp.js",
     "mcp:stdio": "node dist/api/mcpStdio.js",
     "serve": "node dist/api/http.js",
-    "dashboard:daemon": "node dist/api/cli.js dashboard daemon"
+    "dashboard:daemon": "node dist/api/cli.js dashboard daemon",
+    "test:quick": "vitest run --pool=forks --reporter=dot tests/shield tests/surface tests/spec tests/skills tests/dsh"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.4",
