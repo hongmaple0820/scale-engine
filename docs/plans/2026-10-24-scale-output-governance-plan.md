@@ -165,3 +165,30 @@
 1. `.scale/` 37 顶层条目中有若干单文件 json（assets.json、frameworks.json…）——归 config 还是 state？默认：可编辑归 config，机器生成归 state。
 2. `evidence/` 是否要进用户 git（治理证据随仓库走）还是本地留存？当前 gitignore 了 evidence/——维持现状，在 doctor --surface 标注提示。
 3. reports/ 30d 自动清理默认开还是关？默认关（只列不删，--exec 才删）。
+
+---
+
+## 7. T0–T3 实施记录【2026-10-25】
+
+T0/T1 见 commit 1abc746。本节记录 T2/T3 落地与两处**计划修订**：
+
+### 计划修订 1：junction 兼容替代"先全量替换 129 处字面量"
+
+原 T2 要求先全仓替换 `.scale` 路径字面量再迁移（grep 清零门禁）。实测字面量 129 处/40+ 文件——先替换的风险/收益不成比例。改为：**迁移在每个旧扁平路径留兼容链接**（目录=Windows junction/POSIX symlink；文件=硬链接——junction 不能别名文件，这是实施中实测出的 Windows 约束），129 处字面量读者原样工作。字面量→resolveScalePath 的替换降级为非阻塞卫生任务。同理修复：junction 目标必须绝对路径（相对目标会被按链接自身目录二次解析成 `.scale/.scale/...`）。
+
+另一实施发现：自名桶（evidence/specs/reports/cache/tmp）的 v2 目标就是桶根本身——**原位不动、不建链接**（搬运会变成"把目录重命名进自己"）。
+
+### 计划修订 2：docs/workflow 模板迁移重划为独立子任务
+
+`writeTracked`/governance.lock 以相对路径为键，单点重定向物理位置会造成锁键与位置脱钩（uninstall/升级按锁键重建路径会指错）。需随 lock 语义一并设计，不在 T2 强行半接。已预置 `workflowDocsRoot()` 探测助手（`.scale/reports/workflow` 优先、旧位置回退）供该子任务使用。
+
+### 已落地
+
+- `scale migrate`（v2 迁移 + `--rollback`；拷贝→链接→记录三段，中断可重跑；实机验证旧路径读写完好、回滚还原）
+- `.planning`/`.agent` 收编：plan/new-task/checkpoint/resume/explore 五脚本 + 下发给目标项目的生成模板（GovernanceTemplatePacks）全部探测式切换（`.scale` 存在→`.scale/state/planning|agent`；旧项目原位）；生成的前置检查（bash+PowerShell）改为任一位置通过；新增 `.scale/state/planning/tasks/.gitkeep` pack 条目
+- `scale uninstall`：dry-run 默认；AGENTS/CLAUDE 只摘 SCALE:BEGIN/END 段（含孤儿 BEGIN 容错）；可再生文档删除；平台配置列人工清单不盲删；`.scale` 删除前 evidence/specs/config 归档为 `scale-archive-<date>.tar.gz`（tar 不可用则中止保护证据）。实机验证全链路
+- 测试：迁移往返/自名桶/幂等/坏目录回滚（7）+ 探测根（2）+ uninstall 段落摘除（3），tests/surface 共 21 用例全绿
+
+### 环境备注
+
+本机 git-bash 下 `python3` 偶发静默退出 49（WindowsApps 存根别名抽风，与仓库 cwd 无关）——`plan.sh` 的状态步骤在此环境会受影响；bash 层全部验证通过，正常 python 环境不受影响。

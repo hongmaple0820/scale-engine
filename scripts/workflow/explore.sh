@@ -2,7 +2,16 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-STATE_DIR="$PROJECT_ROOT/.agent/state"
+# Output governance (plan 2026-10-24): scale projects keep workflow state under
+# .scale/state/; legacy projects keep .planning/ and .agent/state as-is.
+if [ -d "$PROJECT_ROOT/.scale" ]; then
+  PLANNING_TASKS="$PROJECT_ROOT/.scale/state/planning/tasks"
+  AGENT_STATE="$PROJECT_ROOT/.scale/state/agent"
+else
+  PLANNING_TASKS="$PROJECT_ROOT/.planning/tasks"
+  AGENT_STATE="$PROJECT_ROOT/.agent/state"
+fi
+STATE_DIR="$AGENT_STATE"
 STATE_FILE="$STATE_DIR/current.json"
 EXPLORE_FILE="$STATE_DIR/explore.json"
 PY_STATE="$PROJECT_ROOT/scripts/lib/workflow_state.py"

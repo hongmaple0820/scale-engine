@@ -119,13 +119,14 @@ describe('dual-layout resolution', () => {
     expect(isLayoutV2(join(dir, '.scale'))).toBe(false)
   })
 
-  it('v2 layout maps names into buckets', () => {
+  it('v2 layout maps names into buckets; self-named buckets stay in place', () => {
     const dir = project('v2')
     writeFileSync(join(dir, '.scale', 'layout.json'), '{"version":2}', 'utf-8')
     expect(isLayoutV2(join(dir, '.scale'))).toBe(true)
-    expect(resolveScalePath(join(dir, '.scale'), 'evidence')).toBe(join(dir, '.scale', 'evidence', 'evidence'))
+    expect(resolveScalePath(join(dir, '.scale'), 'evidence')).toBe(join(dir, '.scale', 'evidence'))
+    expect(resolveScalePath(join(dir, '.scale'), 'evidence/runtime')).toBe(join(dir, '.scale', 'evidence', 'runtime'))
     expect(resolveScalePath(join(dir, '.scale'), 'config.yaml')).toBe(join(dir, '.scale', 'config', 'config.yaml'))
-    expect(resolveScalePath(join(dir, '.scale'), 'evidence/runtime')).toBe(join(dir, '.scale', 'evidence', 'evidence/runtime'))
+    expect(resolveScalePath(join(dir, '.scale'), 'events')).toBe(join(dir, '.scale', 'state', 'events'))
     expect(resolveScalePath(join(dir, '.scale'), 'something-new')).toBe(join(dir, '.scale', 'state', 'something-new'))
   })
 })
