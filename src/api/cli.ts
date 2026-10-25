@@ -78,6 +78,7 @@ import { costReportCommand, costOptimizeCommand } from '../cli/costCommands.js'
 import { reviewCommand as crossReviewCommand } from '../review/reviewCommands.js'
 import { shieldCommand } from '../cli/shieldCommands.js'
 import { specCommand } from '../cli/specCommands.js'
+import { cleanCommand } from '../cli/cleanCommands.js'
 import { gitCommand } from '../cli/gitCommands.js'
 import { commitSuggestCommand } from '../cli/commitSuggestCommands.js'
 import { orchCommand } from '../cli/orchCommands.js'
@@ -1833,6 +1834,7 @@ const main = defineCommand({
     'cross-review': crossReviewCommand,
     shield: shieldCommand,
     spec: specCommand,
+    clean: cleanCommand,
     git: gitCommand,
     'commit-suggest': commitSuggestCommand,
     orch: orchCommand,

@@ -11,7 +11,10 @@ afterEach(() => {
 })
 
 function makeDir(prefix: string): string {
-  const root = join(process.cwd(), '.tmp-tests')
+  // G23 discipline: temp dirs live under the managed .scale/tmp/ root (needs
+  // repo locality — tsc resolves vitest types by walking up to the repo's
+  // node_modules; OS tmpdir would break that). 72h TTL self-heals stragglers.
+  const root = join(process.cwd(), '.scale', 'tmp')
   mkdirSync(root, { recursive: true })
   const dir = mkdtempSync(join(root, prefix))
   dirs.push(dir)

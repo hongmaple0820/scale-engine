@@ -112,6 +112,9 @@ export function getEngine(): Engine {
 
 function createEngine(): Engine {
   ensureDir(SCALE_DIR)
+  // Output-governance T1: 72h TTL self-heal for .scale/tmp/ (fire-and-forget;
+  // cleanup must never delay or fail engine boot). plan 2026-10-24 §2.3
+  void import('../surface/ScaleSurface.js').then(m => m.sweepScaleTmp(SCALE_DIR)).catch(() => {})
   const eventBus = new EventBus({ eventsDir: join(SCALE_DIR, 'events') })
   const store = new SQLiteArtifactStore(eventBus, {
     dbPath: DB_PATH,

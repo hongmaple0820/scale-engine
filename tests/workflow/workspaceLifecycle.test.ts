@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { cleanupWorkspaceLifecycle, inspectWorkspaceLifecycle } from '../../src/workflow/WorkspaceLifecycle.js'
@@ -12,8 +13,17 @@ afterEach(() => {
   dirs = []
 })
 
+// tmpdir() may return an 8.3 short path (…\ADMINI~1\…) while the code under
+// test reports long paths — string comparisons then fail. homedir() stays
+// long-form, so prefer the long temp root on Windows.
+function longTmpDir(): string {
+  const candidate = join(homedir(), 'AppData', 'Local', 'Temp')
+  return process.platform === 'win32' && existsSync(candidate) ? candidate : tmpdir()
+}
+
 function makeDir(prefix = 'scale-workspace-'): string {
-  const dir = mkdtempSync(join(process.cwd(), `.tmp-${prefix}`))
+  // G23 discipline: OS tempdir (long-form), never the repo cwd
+  const dir = mkdtempSync(join(longTmpDir(), prefix))
   dirs.push(dir)
   return dir
 }
