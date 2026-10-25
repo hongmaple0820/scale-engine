@@ -3,9 +3,11 @@
 // Future: SQLite-backed in Cortex v2
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { logger } from '../core/logger.js'
+import { withFileLockSync } from '../core/FileLock.js'
 import type { Instinct } from './InstinctExtractor.js'
 import {
   deriveScopedInstinctId,
@@ -81,6 +83,21 @@ export class InstinctStore {
 
     candidate.id = deriveScopedInstinctId(candidate.trigger, candidate.scope, candidate.projectId)
 
+    // read-modify-write critical section — cross-process lock keyed by the
+    // contested record (spike 2026-10-25: without this, concurrent savers of
+    // the same trigger lose each other's observation merges)
+    return withFileLockSync(
+      `instinct:${candidate.trigger}:${candidate.scope}:${candidate.projectId ?? ''}`,
+      this.lockRoot(),
+      () => this.saveCritical(candidate),
+    )
+  }
+
+  private lockRoot(): string {
+    return join(this.baseDir, '.locks')
+  }
+
+  private saveCritical(candidate: Instinct): string {
     const existing = this.findByKey(candidate.trigger, candidate.scope, candidate.projectId)
     if (existing && existing.confidence >= candidate.confidence) {
       // Keep existing. Increment observation count.
