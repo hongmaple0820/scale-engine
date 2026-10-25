@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { workflowDocPhysicalPath } from '../../src/surface/ScaleSurface.js'
 import { tmpdir } from 'node:os'
 
 const dirs: string[] = []
@@ -151,7 +152,7 @@ describe('upgrade CLI', () => {
   it('safe-applies missing generated files and can roll them back', async () => {
     const scaleDir = makeDir('scale-upgrade-cli-')
     const projectDir = makeDir('scale-upgrade-project-')
-    const missingPath = join(projectDir, 'docs', 'workflow', 'templates', 'summary.md')
+    const missingPath = workflowDocPhysicalPath(projectDir, 'docs/workflow/templates/summary.md')
     const init = await runScale(['init', '--dir', projectDir, '--governance-pack', 'project-scaffold', '--json'], scaleDir, projectDir)
     expect(init.exitCode).toBe(0)
     rmSync(missingPath)

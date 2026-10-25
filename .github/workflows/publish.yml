@@ -56,7 +56,14 @@ jobs:
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view "@hongmaple0820/scale-engine@$LOCAL" version 2>/dev/null || echo "")
+          if [ "$PUBLISHED" = "$LOCAL" ]; then
+            echo "scale-engine@$LOCAL already published — skipping (release completed out-of-band)."
+          else
+            npm publish --access public --provenance
+          fi
 
       - name: Create GitHub Release
         env:
@@ -65,9 +72,13 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           # Extract changelog section for this version
           NOTES=$(awk "/^## ${VERSION} -/{found=1; next} /^## [0-9]/{if(found) exit} found{print}" CHANGELOG.md)
-          gh release create "v${VERSION}" \
-            --title "v${VERSION}" \
-            --notes "${NOTES:-Release v${VERSION}}"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists — skipping."
+          else
+            gh release create "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes "${NOTES:-Release v${VERSION}}"
+          fi
 
   publish-plugin:
     name: Publish dsh-scale plugin
@@ -101,4 +112,11 @@ jobs:
         working-directory: packages/dsh-scale
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view "@hongmaple0820/dsh-scale@$LOCAL" version 2>/dev/null || echo "")
+          if [ "$PUBLISHED" = "$LOCAL" ]; then
+            echo "dsh-scale@$LOCAL already published — skipping."
+          else
+            npm publish --access public
+          fi
