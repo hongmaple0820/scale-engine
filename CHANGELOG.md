@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Concurrency phase 1 — cross-process FileLock + InstinctStore lost-update fix
+- `src/core/FileLock.ts`: zero-dependency cross-process lock (mkdir atomicity, stale-TTL steal via atomic rename, `Atomics.wait` backoff, sync API to preserve InstinctStore's sync contract). Implements the spike's phase-1 recommendation (`docs/plans/2026-10-25-scale-concurrency-spike.md`).
+- `InstinctStore.save`'s read-modify-write critical section (findByKey merge → unlink → write) is now lock-guarded, keyed by trigger+scope+project — the last-writer-wins lost-update the spike identified as the only real concurrency defect in `.scale/`.
+- Acceptance (spike §4): 12 truly-parallel child processes × 10 increments on one shared file lose nothing (120/120); 10 parallel savers of the same trigger merge observations losslessly (10/10); crashed-holder locks stolen after TTL; release-on-throw. Note: children require the BUILT `dist/` — run `npx tsc` before the suite after touching FileLock/InstinctStore.
+- Cortex suite 43/43, typecheck/lint clean.
+
 ### Verification speedup (P1) + concurrency spike (P2)
 - Full-suite wall time 551s → **388s (-30%)**: `run-vitest.mjs` was hardcoding `--maxWorkers=2`, silently overriding the config's pool sizing — the wrapper now defers to `vitest.config.ts` (`maxForks: 8` on the 16-core dev box; override via `SCALE_VITEST_WORKERS=N`). Two consecutive full runs at 8 forks: 2300/2301 each (single failure = the known Windows workbuddy EPERM temp-dir flake; passes standalone every time).
 - `npm run test:quick` — 250 governance-surface tests (shield/surface/spec/skills/dsh) in ~12s for the dev loop; `npm test` remains the full gate.
