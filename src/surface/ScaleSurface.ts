@@ -245,14 +245,27 @@ export function isLayoutV2(scaleDir: string): boolean {
  * Resolve a logical .scale name against the active layout. v2 maps flat names
  * into buckets; legacy returns the flat path unchanged.
  */
-export function resolveScalePath(scaleDir: string, name: string): string {
-  if (!isLayoutV2(scaleDir)) return join(scaleDir, name)
-  for (const bucket of V2_MAP) {
-    if (bucket.names.includes(name)) return join(scaleDir, bucket.dir, name)
-    const root = bucket.names.find(n => name.startsWith(`${n}/`))
-    if (root) return join(scaleDir, bucket.dir, name)
+/** Bucket dirs that are their own flat name — data stays at .scale/<name>. */
+const V2_SELF_BUCKETS = ['config', 'state', 'evidence', 'specs', 'reports', 'tmp', 'cache']
+
+/** v2-bucket resolution independent of the active layout (migration targets). */
+export function resolveV2Path(scaleDir: string, name: string): string {
+  // self-bucket paths (evidence, evidence/runtime, tmp/…) are already in
+  // place — moving them would mean renaming a directory into itself
+  for (const bucket of V2_SELF_BUCKETS) {
+    if (name === bucket || name.startsWith(`${bucket}/`)) return join(scaleDir, name)
+  }
+  for (const entry of V2_MAP) {
+    if (entry.names.includes(name)) return join(scaleDir, entry.dir, name)
+    const root = entry.names.find(n => name.startsWith(`${n}/`))
+    if (root) return join(scaleDir, entry.dir, name)
   }
   return join(scaleDir, 'state', name)
+}
+
+export function resolveScalePath(scaleDir: string, name: string): string {
+  if (!isLayoutV2(scaleDir)) return join(scaleDir, name)
+  return resolveV2Path(scaleDir, name)
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +302,38 @@ export function sweepScaleTmp(scaleDir: string, ttlMs = TMP_TTL_MS, now = Date.n
     return removed
   }
   return removed
+}
+
+// ---------------------------------------------------------------------------
+// Probe-based consolidated roots (T2.3) — new projects write under .scale/,
+// legacy projects keep their existing location; readers check both.
+// ---------------------------------------------------------------------------
+
+/**
+ * Workflow docs root: generated templates live under .scale/reports/workflow
+ * for any project with a .scale dir (every scale project), falling back to
+ * the legacy user docs/workflow location for pre-0.57 projects that have it.
+ */
+export function workflowDocsRoot(projectDir: string): string {
+  const modern = join(projectDir, '.scale', 'reports', 'workflow')
+  if (existsSync(modern)) return modern
+  const legacy = join(projectDir, 'docs', 'workflow')
+  if (existsSync(legacy)) return legacy
+  return modern
+}
+
+/** Planning task root: .scale/state/planning when .scale exists, else legacy .planning. */
+export function planningRoot(projectDir: string): string {
+  return existsSync(join(projectDir, '.scale'))
+    ? join(projectDir, '.scale', 'state', 'planning')
+    : join(projectDir, '.planning')
+}
+
+/** Workflow agent-state dir: .scale/state/agent when .scale exists, else legacy .agent/state. */
+export function agentStateRoot(projectDir: string): string {
+  return existsSync(join(projectDir, '.scale'))
+    ? join(projectDir, '.scale', 'state', 'agent')
+    : join(projectDir, '.agent', 'state')
 }
 
 // ---------------------------------------------------------------------------

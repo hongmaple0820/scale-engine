@@ -138,6 +138,7 @@ const PACKS: GovernanceTemplatePack[] = [
       { path: '.scale/workspace.json', kind: 'config', owned: true, content: workspaceTopologyTemplate({ topology: 'single' }) },
       { path: 'docs/workflow/node-library.md', kind: 'doc', owned: true, content: nodeLibraryGuide() },
       { path: '.planning/tasks/.gitkeep', kind: 'config', owned: true, content: '' },
+      { path: '.scale/state/planning/tasks/.gitkeep', kind: 'config', owned: true, content: '' },
     ],
   },
   {
@@ -533,6 +534,16 @@ PROJECT_ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd)"
 NAME="\${1:-}"
 LEVEL="\${2:-M}"
 
+# Output governance (plan 2026-10-24): scale projects keep workflow state
+# under .scale/state/; legacy projects keep .planning/ and .agent/state.
+if [ -d "$PROJECT_ROOT/.scale" ]; then
+  PLANNING_TASKS="$PROJECT_ROOT/.scale/state/planning/tasks"
+  AGENT_STATE="$PROJECT_ROOT/.scale/state/agent"
+else
+  PLANNING_TASKS="$PROJECT_ROOT/.planning/tasks"
+  AGENT_STATE="$PROJECT_ROOT/.agent/state"
+fi
+
 if [ -z "$NAME" ]; then
   echo "[PLAN] usage: bash scripts/workflow/plan.sh feature-name [S|M|L|CRITICAL]"
   exit 1
@@ -540,8 +551,8 @@ fi
 
 DATE="$(date +%Y-%m-%d)"
 TASK_ID="\${DATE}-\${NAME}"
-TASK_DIR="$PROJECT_ROOT/.planning/tasks/$TASK_ID"
-STATE_DIR="$PROJECT_ROOT/.agent/state"
+TASK_DIR="$PLANNING_TASKS/$TASK_ID"
+STATE_DIR="$AGENT_STATE"
 STATE_FILE="$STATE_DIR/current.json"
 TEMPLATES="$PROJECT_ROOT/docs/workflow/templates"
 PY_STATE="$PROJECT_ROOT/scripts/lib/workflow_state.py"
@@ -564,7 +575,7 @@ EOF
   fi
 done
 
-python3 "$PY_STATE" plan "$STATE_FILE" "$TASK_ID" "$LEVEL" ".planning/tasks/$TASK_ID"
+python3 "$PY_STATE" plan "$STATE_FILE" "$TASK_ID" "$LEVEL" "\${PLANNING_TASKS#"\$PROJECT_ROOT"/}/\$TASK_ID"
 
 echo "[PLAN] task artifacts dir: $TASK_DIR"
 echo "[PLAN] state: $STATE_FILE"
@@ -1285,7 +1296,6 @@ echo ""
 echo "[CHECK] required directories"
 for dir in \
   ".scale" \
-  ".planning/tasks" \
   "docs/workflow" \
   "docs/workflow/templates" \
   "docs/worklog" \
@@ -1301,6 +1311,13 @@ for dir in \
     note_error "missing directory: $dir"
   fi
 done
+# Output governance (plan 2026-10-24): workflow state under .scale/state
+# (preferred) or legacy .planning/tasks — either satisfies the check.
+if [ -d "$PROJECT_ROOT/.scale/state/planning/tasks" ] || [ -d "$PROJECT_ROOT/.planning/tasks" ]; then
+  note_ok "workflow state (.scale/state | .planning/tasks)"
+else
+  note_error "missing workflow state dir (.scale/state/planning/tasks or .planning/tasks)"
+fi
 echo ""
 
 echo "[CHECK] governance JSON files"
@@ -1454,7 +1471,6 @@ Write-Host ''
 Write-Host '[CHECK] required directories'
 foreach ($Dir in @(
   '.scale',
-  '.planning\\tasks',
   'docs\\workflow',
   'docs\\workflow\\templates',
   'docs\\worklog',
@@ -1470,6 +1486,13 @@ foreach ($Dir in @(
   } else {
     Note-Error "missing directory: $Dir"
   }
+}
+# Output governance (plan 2026-10-24): workflow state under .scale/state (preferred)
+# or legacy .planning/tasks — either satisfies the check.
+if ((Test-Path (Join-Path $ProjectRoot '.scale\\state\\planning\\tasks')) -or (Test-Path (Join-Path $ProjectRoot '.planning\\tasks'))) {
+  Note-Ok 'workflow state (.scale/state | .planning/tasks)'
+} else {
+  Note-Error 'missing workflow state dir (.scale/state/planning/tasks or .planning/tasks)'
 }
 Write-Host ''
 

@@ -1,3 +1,12 @@
+## Unreleased
+
+### Output governance T2+T3 — layout migration, state consolidation, uninstall
+- `scale migrate` — moves flat `.scale/` entries into the six v2 buckets and leaves a compat link at every legacy path (directory junction / POSIX symlink; files get hard links — junctions cannot alias files), so the 129 hardcoded `join(scaleDir, …)` readers keep working unchanged; the planned literal→resolver sweep becomes non-blocking hygiene. Self-named buckets (evidence/specs/reports/cache/tmp) stay in place — moving them would rename a directory into itself. `--rollback` reverses from the recorded report. Live-verified: legacy reads intact through links, rollback restores flat layout with content untouched. Two Windows landmines fixed en route: junction targets must be absolute (relative targets re-resolve against the link's own dir), and file aliases need hard links.
+- `.planning/` + `.agent/` consolidation: plan/new-task/checkpoint/resume/explore scripts and the script templates generated for target projects now probe — `.scale` projects keep workflow state under `.scale/state/planning|agent`, legacy projects keep their existing roots; generated bash + PowerShell preflight checks accept either location; a `.scale/state/planning/tasks/.gitkeep` pack entry replaces the `.planning` one for new installs.
+- `scale uninstall` — dry-run by default: strips only the `SCALE:BEGIN/END` section from AGENTS.md/CLAUDE.md (orphan BEGIN tolerated), deletes regenerable generated docs, lists platform configs for manual review instead of blind-deleting them, and archives evidence/specs/config into `scale-archive-<date>.tar.gz` before removing `.scale/` (aborts without deletion if tar is unavailable). Live-verified end to end.
+- docs/workflow template relocation re-scoped to its own task: governance.lock keys are the relative paths, so a single-point physical redirect would desync lock keys from real locations. `workflowDocsRoot()` probe helper is pre-staged for it.
+- Known env note: on this machine git-bash `python3` intermittently exits 49 silently (WindowsApps stub alias) — affects `plan.sh`'s state step here only; bash-level behavior fully verified.
+
 ## 0.56.0 - 2026-10-24
 
 ### MySpec (SDD) spec ingestion + governance audit

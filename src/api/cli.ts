@@ -79,6 +79,8 @@ import { reviewCommand as crossReviewCommand } from '../review/reviewCommands.js
 import { shieldCommand } from '../cli/shieldCommands.js'
 import { specCommand } from '../cli/specCommands.js'
 import { cleanCommand } from '../cli/cleanCommands.js'
+import { migrateCommand } from '../cli/migrateCommands.js'
+import { uninstallCommand } from '../cli/uninstallCommands.js'
 import { gitCommand } from '../cli/gitCommands.js'
 import { commitSuggestCommand } from '../cli/commitSuggestCommands.js'
 import { orchCommand } from '../cli/orchCommands.js'
@@ -1835,6 +1837,8 @@ const main = defineCommand({
     shield: shieldCommand,
     spec: specCommand,
     clean: cleanCommand,
+    migrate: migrateCommand,
+    uninstall: uninstallCommand,
     git: gitCommand,
     'commit-suggest': commitSuggestCommand,
     orch: orchCommand,
