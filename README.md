@@ -46,6 +46,13 @@ scale install --agent recommended --profile standard --governance-pack frontend-
 
 SCALE Engine 让 AI Agent 不再只靠"自觉"遵守工程规范。它把探索、规划、实现、验证、评审、发版这些要求变成可执行的命令、门禁和证据文件，让人类可以看见 Agent 做了什么、跳过了什么、为什么能交付或不能交付。
 
+**DeepSeek Harness（DSH）用户**额外有治理插件（Shield 拦截 / Cortex 注入 / 证据链 / 斜杠命令 / skills / 工具卡片）：
+
+```bash
+dsh plugin --profile <your-profile> add @hongmaple0820/dsh-scale
+dsh --profile <your-profile> --dump-config   # 确认 scale-governance 层未被跳过
+```
+
 源码仓库：https://github.com/hongmaple0820/scale-engine
 国内镜像：https://gitee.com/hongmaple/scale-engine
 npm：https://www.npmjs.com/package/@hongmaple0820/scale-engine
@@ -92,7 +99,8 @@ npx -y @hongmaple0820/scale-engine@latest preflight --preflight-profile quick --
 - `.scale/skills.json`：skill 路由、统一来源和证据要求
 - `.scale/skills/`：随仓库提交的通用 workflow skills 主来源；旧 `skills/` 仅作为兼容 fallback
 - `.scale/tools.json`：CLI/MCP/browser/desktop 工具编排规则
-- `docs/workflow/templates/`：Mini-PRD、plan、verification、review、summary 模板
+- `.scale/reports/workflow/`：Mini-PRD、plan、verification、review、summary 模板（生成物，不进你的 docs/；已有 `docs/workflow/` 的旧项目原地续写）
+- `.scale/manifest.json`：SCALE 在本项目写入的全部产出登记（`scale doctor surface` 可视化）
 - `docs/standards/`：工程规范、Git 协作、资源治理规则
 
 继续体验完整闭环：
@@ -170,9 +178,12 @@ scale doctor env --json
 | **Role Skills** | 6 个角色化审查视角（eng-manager、security-reviewer、qa-lead 等） |
 | **Memory Intelligence** | 6 信号质量评分，跨 provider 冲突检测，新鲜度衰减 |
 | **Governance ROI** | 端到端治理 ROI 度量 — token 成本 vs 质量 vs 门禁摩擦 |
-| **Scale Shield** | 退出码钩子拦截引擎 — YAML 策略 → hook 脚本编译，40+ 危险命令阻断，退出码协议 |
+| **Scale Shield** | 退出码钩子拦截引擎 — YAML 策略 → hook 脚本编译，40+ 危险命令阻断（含 PowerShell/cmd 原生形态），退出码协议，单一规则源 |
 | **Scale Orchestrator** | 声明式编排守护进程 — SCALE_POLICY.md 策略驱动，git worktree 隔离，协调循环 |
 | **Scale Cortex** | 证据驱动持续进化 — 本能提取 (Instincts 0.3-0.9)，SessionStart 注入，跨 harness 适配器 |
+| **SDD 规范摄取** | `scale spec import-myspec` — MySpec 等 SDD 产物进 `.scale/specs/`（宪法不变量→约束，EARS+ 验收标准→成功标准）；`scale spec conformance` 可追溯性门禁（未追踪标准/幽灵引用/未完成任务即失败，落证据） |
+| **产出治理** | `.scale/manifest.json` 写入登记 + `scale doctor surface` 四类可视化 + `scale clean`（dry-run 默认，永不碰 evidence/specs）+ `scale migrate`（v2 布局可回滚）+ `scale uninstall`（证据归档后回收） |
+| **DSH 插件** | DeepSeek Harness 治理插件 `@hongmaple0820/dsh-scale` — tools/pre-execute 拦截（工具名映射 + warn→ask）、Cortex 注入、异步证据、6 个斜杠命令、skills 注册、25 张工具卡片 |
 
 ## SCALE 2.0 三引擎架构
 

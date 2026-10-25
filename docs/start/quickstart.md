@@ -100,3 +100,28 @@ scale smoke --dir .
 ```
 
 未运行验证，不要声称通过。`--json` 代表机器可读输出，不代表第三方能力已经实际可用；第三方能力需要 `setup --verify` 或对应 smoke 测试闭环。
+
+## 治理面速览（0.57.0+）
+
+SCALE 在你项目里写了什么、哪些能删，一条命令看清：
+
+```bash
+scale doctor surface    # 治理核心/平台集成/可再生产物/临时 四类清单
+scale doctor skills     # skills 引用解析 + waiver 有效期（不合格退出码 1，可进门禁）
+scale clean             # 清理 tmp/cache/reports —— dry-run 默认；--exec 才删；永不碰 evidence/specs
+```
+
+接入 SDD 工作台（如 MySpec）产出的规范，并让门禁校验实现是否忠于规范：
+
+```bash
+scale spec import-myspec <解压后的4文件目录> --name "Checkout"
+scale spec conformance   # 每条 EARS+ 验收标准必须被任务引用；未完成即 FAIL 并落证据
+```
+
+`.scale/` 布局升级与卸载（均可回滚/带归档）：
+
+```bash
+scale migrate            # 扁平 .scale/ → v2 六桶布局，旧路径留兼容链接；--rollback 回滚
+scale uninstall          # 默认 dry-run；摘除 SCALE 段落 + 证据归档 tar.gz 后移除 .scale/
+```
+

@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.55.3-orange?style=flat-square" alt="version" />
-  <img src="https://img.shields.io/badge/platforms-22-blue?style=flat-square" alt="platforms" />
-  <img src="https://img.shields.io/badge/agents-22-blue?style=flat-square" alt="agents" />
+  <img src="https://img.shields.io/badge/version-0.57.0-orange?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/platforms-23-blue?style=flat-square" alt="platforms" />
+  <img src="https://img.shields.io/badge/agents-23-blue?style=flat-square" alt="agents" />
   <img src="https://img.shields.io/badge/tests-verified-brightgreen?style=flat-square" alt="tests" />
-  <img src="https://img.shields.io/badge/npm-0.55.3-cb3837?style=flat-square&logo=npm" alt="npm" />
+  <img src="https://img.shields.io/badge/npm-0.57.0-cb3837?style=flat-square&logo=npm" alt="npm" />
 </p>
 
 [![RepoStars](https://repostars.dev/api/embed?repo=hongmaple0820%2Fscale-engine&theme=copper)](https://repostars.dev/?repos=hongmaple0820%2Fscale-engine&theme=copper)
 
-# SCALE Engine v0.55.3
+# SCALE Engine v0.57.0
 
 SCALE Engine turns AI-agent engineering discipline into executable commands, gates, and evidence files instead of relying on prompt discipline alone. It helps humans see what the agent explored, planned, verified, skipped, and why a task is or is not ready to ship.
 
@@ -109,6 +109,12 @@ Node.js 22 or newer is required.
 | **Role Skills** | 6 role-based review perspectives (eng-manager, security-reviewer, qa-lead, etc.) |
 | **Memory Intelligence** | 6-signal quality scoring, cross-provider conflict detection, freshness decay |
 | **Governance ROI** | End-to-end governance ROI — token cost vs quality vs gate friction |
+| **Scale Shield** | Exit-code hook interception engine — YAML policy → compiled hook scripts, 40+ dangerous-command blocks (incl. PowerShell/cmd native forms), single rule source |
+| **Scale Orchestrator** | Declarative orchestration daemon — SCALE_POLICY.md driven, git worktree isolation, coordination loop |
+| **Scale Cortex** | Evidence-driven continuous evolution — instinct extraction (0.3-0.9), SessionStart injection, cross-harness adapters |
+| **SDD Spec Ingestion** | `scale spec import-myspec` — MySpec-style SDD bundles into `.scale/specs/` (constitution invariants → constraints, EARS+ criteria → success criteria); `scale spec conformance` traceability gate (untraced criteria / phantom refs / open tasks fail with evidence) |
+| **Output Governance** | `.scale/manifest.json` write registry + `scale doctor surface` four-class listing + `scale clean` (dry-run default, never touches evidence/specs) + `scale migrate` (v2 layout, rollback) + `scale uninstall` (evidence archived then removed) |
+| **DSH Plugin** | DeepSeek Harness governance plugin `@hongmaple0820/dsh-scale` — tools/pre-execute interception (tool-name mapping + warn→ask), Cortex injection, async evidence, 6 slash commands, skills registry, 25 tool cards |
 
 ## AI OS Runtime
 
