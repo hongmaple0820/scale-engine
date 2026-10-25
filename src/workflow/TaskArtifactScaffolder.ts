@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
+import { workflowDocsRoot } from '../surface/ScaleSurface.js'
 import { governanceTemplateContent, type GovernanceArtifactTemplateName } from './GovernanceTemplates.js'
 import type { GateResult } from './types.js'
 import { skillPlanMarkdown, type SkillPlan } from '../skills/routing/index.js'
@@ -275,7 +276,8 @@ function appendTaskArtifactSection(options: {
 }
 
 function readTemplate(projectDir: string, name: string): string {
-  const templatePath = join(projectDir, 'docs', 'workflow', 'templates', name)
+  // probe: .scale/reports/workflow (new installs) or docs/workflow (legacy)
+  const templatePath = join(workflowDocsRoot(projectDir), 'templates', name)
   if (existsSync(templatePath)) return readFileSync(templatePath, 'utf-8')
   return isGovernanceTemplateName(name)
     ? governanceTemplateContent(name)

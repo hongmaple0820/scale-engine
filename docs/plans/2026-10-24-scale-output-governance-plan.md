@@ -192,3 +192,11 @@ T0/T1 见 commit 1abc746。本节记录 T2/T3 落地与两处**计划修订**：
 ### 环境备注
 
 本机 git-bash 下 `python3` 偶发静默退出 49（WindowsApps 存根别名抽风，与仓库 cwd 无关）——`plan.sh` 的状态步骤在此环境会受影响；bash 层全部验证通过，正常 python 环境不受影响。
+
+### docs/workflow 迁移落地（原 T2.4 独立子任务，2026-10-25 完成）
+
+设计：**逻辑锁键稳定（`docs/workflow/...` 不变），物理位置探测**——已有 `docs/workflow` 的项目原地续写（零破坏），干净项目写 `.scale/reports/workflow`（用户 docs/ 不再被生成物占用）。lock 语义的三个脱钩点全部修复：`computeGovernanceDrift` 比对、`writeGovernanceLock` 存活过滤、`UpgradeManager` 备份/恢复/变更清单（`workflowDocPhysicalPath` 统一映射，物理/逻辑两种形状都兼容）。读取点（doctor 模板检查、TaskArtifactScaffolder、plan/new-task 的 TEMPLATES、下发生成模板）全部探测式。目标项目 `.scale/.gitignore` 补 `reports/|tmp/|cache/`；manifest 对 legacy 位置的 `docs/workflow/` 写入标 regenerable（uninstall 可回收）。测试：fresh→新位置+锁键稳定、legacy→原地续写、upgradeManager/doctor/phaseCli 73 用例全过；实机 fresh init 验证用户 docs/ 零生成物 + doctor 双位置探测。
+
+### docs/workflow 迁移落地（原 T2.4 独立子任务，2026-10-25 完成）
+
+设计：逻辑锁键稳定（docs/workflow/... 不变），物理位置探测——已有 docs/workflow 的项目原地续写（零破坏），干净项目写 .scale/reports/workflow（用户 docs/ 不再被生成物占用）。lock 语义的三个脱钩点全部修复：computeGovernanceDrift 比对、writeGovernanceLock 存活过滤、UpgradeManager 备份/恢复/变更清单（workflowDocPhysicalPath 统一映射，物理/逻辑两种形状都兼容）。读取点（doctor 模板检查、TaskArtifactScaffolder、plan/new-task 的 TEMPLATES、下发生成模板）全部探测式。目标项目 .scale/.gitignore 补 reports/tmp/cache；manifest 对 legacy 位置的 docs/workflow 写入标 regenerable（uninstall 可回收）。测试：fresh→新位置+锁键稳定、legacy→原地续写、upgradeManager/doctor/phaseCli 73 用例全过；实机 fresh init 验证用户 docs/ 零生成物 + doctor 双位置探测。

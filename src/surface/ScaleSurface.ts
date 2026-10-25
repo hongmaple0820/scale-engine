@@ -175,6 +175,8 @@ export function recordSurfaceFromInit(
       platform,
       idempotent: IDempotenceOf(rel),
       by,
+      // generated workflow docs are regenerable — uninstall may remove them
+      ...(rel.startsWith('docs/workflow/') ? { regenerable: true } : {}),
     })
   }
   return recordWritings(scaleDir, entries, by)
@@ -320,6 +322,25 @@ export function workflowDocsRoot(projectDir: string): string {
   const legacy = join(projectDir, 'docs', 'workflow')
   if (existsSync(legacy)) return legacy
   return modern
+}
+
+/**
+ * Where NEW workflow-doc writes go: projects that already have docs/workflow
+ * keep it (zero disruption, lock keys unchanged); clean projects keep their
+ * docs/ free of generated output (plan 2026-10-24 §3.4).
+ */
+export function workflowDocsWriteRoot(projectDir: string): string {
+  const legacy = join(projectDir, 'docs', 'workflow')
+  if (existsSync(legacy)) return legacy
+  return join(projectDir, '.scale', 'reports', 'workflow')
+}
+
+/** Map a logical docs/workflow/... path to its physical location. */
+export function workflowDocPhysicalPath(projectDir: string, logicalPath: string): string {
+  if (logicalPath.startsWith('docs/workflow/')) {
+    return join(workflowDocsWriteRoot(projectDir), logicalPath.slice('docs/workflow/'.length))
+  }
+  return join(projectDir, logicalPath)
 }
 
 /** Planning task root: .scale/state/planning when .scale exists, else legacy .planning. */

@@ -7,6 +7,7 @@ import { getBootstrapPlanForProfile, getProfile, type ProfileBootstrapPlan } fro
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import { computeGovernanceDrift } from '../workflow/GovernanceLock.js'
+import { workflowDocsRoot } from '../surface/ScaleSurface.js'
 import { doctorEngineeringStandards } from '../workflow/EngineeringStandards.js'
 import { doctorResourceAssets } from '../workflow/ResourceGovernance.js'
 import { doctorRuntimeEvidence } from '../runtime/RuntimeDoctor.js'
@@ -417,26 +418,29 @@ export class Doctor {
   }
 
   private checkGovernanceTemplates(): DiagnosticResult {
+    // probe: .scale/reports/workflow (new installs) or docs/workflow (legacy)
+    const workflowRoot = workflowDocsRoot(this.projectDir)
+    const tpl = (...names: string[]) => join(workflowRoot, 'templates', ...names)
     const required = [
-      join(this.projectDir, 'docs', 'workflow', 'README.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'explore.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'mini-prd.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'skill-plan.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'ui-spec.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'visual-review.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'api-contract.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'security-review.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'resource-impact.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'standards-impact.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'architecture-review.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'db-change-plan.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'e2e-plan.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'plan.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'verification.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'review.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'summary.md'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'github-actions-scale-preflight.yml'),
-      join(this.projectDir, 'docs', 'workflow', 'templates', 'pre-push-scale-preflight.sh'),
+      join(workflowRoot, 'README.md'),
+      tpl('explore.md'),
+      tpl('mini-prd.md'),
+      tpl('skill-plan.md'),
+      tpl('ui-spec.md'),
+      tpl('visual-review.md'),
+      tpl('api-contract.md'),
+      tpl('security-review.md'),
+      tpl('resource-impact.md'),
+      tpl('standards-impact.md'),
+      tpl('architecture-review.md'),
+      tpl('db-change-plan.md'),
+      tpl('e2e-plan.md'),
+      tpl('plan.md'),
+      tpl('verification.md'),
+      tpl('review.md'),
+      tpl('summary.md'),
+      tpl('github-actions-scale-preflight.yml'),
+      tpl('pre-push-scale-preflight.sh'),
       join(this.projectDir, 'docs', 'worklog', 'metrics.md'),
     ]
     const missing = required.filter((path) => !existsSync(path))
