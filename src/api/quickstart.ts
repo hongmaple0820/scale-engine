@@ -10,6 +10,7 @@ import { inspectCodeIntelligence, type CodeIntelligenceStatusReport } from '../c
 import { getBootstrapPlanForProfile } from '../config/profiles.js'
 import { inspectToolCapabilities, type ToolCapabilityReport } from '../tools/ToolCapabilityRegistry.js'
 import { writeGovernanceTemplates } from '../workflow/GovernanceTemplates.js'
+import { recordSurfaceFromInit } from '../surface/ScaleSurface.js'
 
 export interface PlatformDetectionResult {
   platform: AgentPlatform | null
@@ -269,6 +270,8 @@ export async function quickStart(projectDir: string = '.', options?: {
   const governance = writeGovernanceTemplates(projectDir, { mode: 'standard', projectName, pack: options?.governancePack })
   result.created.push(...governance.created)
   result.skipped.push(...governance.skipped)
+  // Output-governance T0: register everything this run wrote (plan 2026-10-24 §2.2)
+  recordSurfaceFromInit(projectDir, result.created, 'scale quickstart', detection.platform ?? undefined)
 
   // Optional: Install governed knowledge dependencies (codegraph/graphify)
   if (options?.installKnowledgeGraph) {

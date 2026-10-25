@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { EventBus } from '../../src/core/eventBus.js'
@@ -11,8 +12,8 @@ describe('workflow hooks', () => {
   let bus: EventBus
 
   beforeEach(() => {
-    mkdirSync(join(process.cwd(), '.tmp-tests'), { recursive: true })
-    dir = mkdtempSync(join(process.cwd(), '.tmp-tests', 'scale-hooks-'))
+    // G23 discipline: test temp dirs live under the OS tempdir, never the repo cwd
+    dir = mkdtempSync(join(tmpdir(), 'scale-hooks-'))
     bus = new EventBus({ eventsDir: join(dir, 'events') })
   })
 

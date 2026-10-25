@@ -14,6 +14,7 @@ import { verifySetup, type SetupVerificationReport } from './SetupVerification.j
 import { runSetupWizard, type SetupWizardReport } from './SetupWizard.js'
 import { ensureGitInitialized, finalizeGitInitialization, type GitInitReport } from './GitGuardian.js'
 import { activateShield, type ShieldActivationReport } from '../shield/ShieldActivation.js'
+import { recordSurfaceFromInit } from '../surface/ScaleSurface.js'
 import {
   askCliConfirm,
   askCliSelect,
@@ -389,6 +390,12 @@ async function initializeProject(options: {
     agents: options.agents,
     knowledgeDocPaths,
   })
+  // Output-governance T0: register adapter + governance writes per platform
+  // (plan 2026-10-24 §2.2 — .scale/config layer + everything outside .scale)
+  for (const agent of options.agents) {
+    recordSurfaceFromInit(options.projectDir, created, `scale setup:${agent}`, agent)
+  }
+  recordSurfaceFromInit(options.projectDir, created, 'scale setup:governance')
   return {
     settingsPath,
     knowledgeDocPath,
