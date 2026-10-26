@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inspectEnvironment } from '../../src/env/EnvironmentDoctor.js'
+import { inspectEnvironment, probeNativeModule } from '../../src/env/EnvironmentDoctor.js'
 
 describe('inspectEnvironment', () => {
   it('treats recall-ready gbrain doctor output as healthy even when optional checks fail', () => {
@@ -12,6 +12,8 @@ describe('inspectEnvironment', () => {
       platform: 'win32',
       arch: 'x64',
       release: '10.0.19045',
+      // The subject here is gbrain recall readiness, not this machine's ABI.
+      nativeModuleProbe: () => ({ ok: true, version: '11.10.0' }),
       commandResolver(command) {
         const known = new Set(['git', 'npm', 'npx', 'gbrain'])
         return known.has(command) ? `C:\\tools\\${command}.cmd` : null
@@ -171,6 +173,8 @@ describe('inspectEnvironment', () => {
       platform: 'win32',
       arch: 'x64',
       release: '10.0.19045',
+      // Keep the bash assertion independent of the host's native binding state.
+      nativeModuleProbe: () => ({ ok: true, version: '11.10.0' }),
       commandResolver(command) {
         const known = new Map([
           ['git', 'C:\\tools\\git.cmd'],
@@ -252,5 +256,77 @@ describe('inspectEnvironment', () => {
     expect(report.recommendations).toEqual(expect.arrayContaining([
       expect.stringContaining('npm rebuild better-sqlite3'),
     ]))
+  })
+})
+
+describe('probeNativeModule', () => {
+  function fakeSqliteModule(state: { opened: number; closed: number }, failOnOpen?: string) {
+    return class FakeDatabase {
+      constructor(_path: string) {
+        if (failOnOpen) throw new Error(failOnOpen)
+        state.opened += 1
+      }
+
+      close() {
+        state.closed += 1
+      }
+    }
+  }
+
+  it('opens a real handle instead of trusting a successful require()', () => {
+    const state = { opened: 0, closed: 0 }
+    const abiError = "The module '\\\\?\\E:\\app\\node_modules\\better-sqlite3\\build\\Release\\better_sqlite3.node' was compiled against a different Node.js version using NODE_MODULE_VERSION 137. This version of Node.js requires NODE_MODULE_VERSION 127."
+
+    const result = probeNativeModule('better-sqlite3', {
+      loadModule: () => fakeSqliteModule(state, abiError),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('NODE_MODULE_VERSION 137')
+    expect(state.opened).toBe(0)
+  })
+
+  it('reports ok and closes the handle when the binding loads', () => {
+    const state = { opened: 0, closed: 0 }
+
+    const result = probeNativeModule('better-sqlite3', {
+      loadModule: () => fakeSqliteModule(state),
+      loadPackageVersion: () => '11.10.0',
+    })
+
+    expect(result).toEqual({ ok: true, version: '11.10.0' })
+    expect(state.opened).toBe(1)
+    expect(state.closed).toBe(1)
+  })
+
+  it('accepts an ESM default-wrapped constructor', () => {
+    const state = { opened: 0, closed: 0 }
+
+    const result = probeNativeModule('better-sqlite3', {
+      loadModule: () => ({ default: fakeSqliteModule(state) }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(state.opened).toBe(1)
+  })
+
+  it('surfaces a missing module as a failed probe', () => {
+    const result = probeNativeModule('better-sqlite3', {
+      loadModule: () => {
+        throw new Error('Cannot find module better-sqlite3')
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Cannot find module')
+  })
+
+  it('leaves plain JS modules alone', () => {
+    const result = probeNativeModule('js-yaml', {
+      loadModule: () => ({ load: () => undefined }),
+      loadPackageVersion: () => '4.2.0',
+    })
+
+    expect(result).toEqual({ ok: true, version: '4.2.0' })
   })
 })

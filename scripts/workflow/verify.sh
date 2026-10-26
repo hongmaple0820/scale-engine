@@ -83,37 +83,75 @@ fi
 PLAN="$(node "$ROOT/scripts/workflow/verify-plan.mjs" "$CONFIG" "$PROFILE" "$SERVICE")"
 
 STATUS=0
+PASSED_ITEMS=""
+FAILED_ITEMS=""
+SKIPPED_ITEMS=""
+BUILD_FAILED=0
+
 while IFS=$'\t' read -r kind name path check tools command; do
-  [ -z "$kind" ] && continue
+  if [ -z "$kind" ]; then
+    continue
+  fi
   case "$kind" in
     ERROR)
       echo "[VERIFY] $name"
       STATUS=1
+      FAILED_ITEMS="${FAILED_ITEMS}${FAILED_ITEMS:+, }$name"
       ;;
     SKIP)
       echo "[VERIFY] skip $name/$check: $command"
+      SKIPPED_ITEMS="${SKIPPED_ITEMS}${SKIPPED_ITEMS:+, }$name/$check (declared skip)"
       ;;
     RUN)
+      item_ok=1
       IFS=',' read -ra tool_list <<< "$tools"
       for tool in "${tool_list[@]}"; do
         if [ -n "$tool" ] && [ "$tool" != "-" ] && ! command -v "$tool" >/dev/null 2>&1; then
           echo "[VERIFY] missing tool for $name/$check: $tool"
-          STATUS=1
+          item_ok=0
         fi
       done
-      if [ "$STATUS" -ne 0 ]; then
+      if [ "$item_ok" -eq 0 ]; then
+        STATUS=1
+        FAILED_ITEMS="${FAILED_ITEMS}${FAILED_ITEMS:+, }$name/$check (missing tool)"
+        continue
+      fi
+      # A failed build makes the dependent stages meaningless, but it must not
+      # silently swallow them: record them as skipped with the reason.
+      if [ "$BUILD_FAILED" -eq 1 ] && { [ "$check" = "test" ] || [ "$check" = "coverage" ]; }; then
+        echo "[VERIFY] skip $name/$check: depends on build, which failed"
+        SKIPPED_ITEMS="${SKIPPED_ITEMS}${SKIPPED_ITEMS:+, }$name/$check (build failed)"
         continue
       fi
       log_dir="$ROOT/.agent/logs/$name"
       mkdir -p "$log_dir"
       echo "[VERIFY] run $name/$check"
-      if ! run_check_command "$path" "$command" >"$log_dir/$check.log" 2>&1; then
+      if run_check_command "$path" "$command" >"$log_dir/$check.log" 2>&1; then
+        PASSED_ITEMS="${PASSED_ITEMS}${PASSED_ITEMS:+, }$name/$check"
+      else
         echo "[VERIFY] failed $name/$check; log: .agent/logs/$name/$check.log"
         STATUS=1
+        FAILED_ITEMS="${FAILED_ITEMS}${FAILED_ITEMS:+, }$name/$check"
+        if [ "$check" = "build" ]; then
+          BUILD_FAILED=1
+        fi
       fi
       ;;
   esac
 done <<< "$PLAN"
+
+echo "[VERIFY] summary"
+if [ -n "$PASSED_ITEMS" ]; then
+  echo "[VERIFY]   passed:  $PASSED_ITEMS"
+else
+  echo "[VERIFY]   passed:  none"
+fi
+if [ -n "$FAILED_ITEMS" ]; then
+  echo "[VERIFY]   failed:  $FAILED_ITEMS"
+fi
+if [ -n "$SKIPPED_ITEMS" ]; then
+  echo "[VERIFY]   skipped: $SKIPPED_ITEMS"
+fi
 
 if [ "$STATUS" -ne 0 ]; then
   echo "[VERIFY] failed"

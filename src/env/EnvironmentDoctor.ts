@@ -533,23 +533,63 @@ function isWindowsCommandWrapper(executable: string): boolean {
   return process.platform === 'win32' && /\.(cmd|bat)$/i.test(executable)
 }
 
-function defaultNativeModuleProbe(moduleName: string): NativeModuleProbeResult {
+/**
+ * Opening a real handle per native module. `require()` alone only evaluates the
+ * JS wrapper — better-sqlite3 dlopens its .node lazily inside `new Database()`.
+ * Probing with require() therefore reports "ok" for a binding compiled against
+ * a different Node ABI, which is exactly the case where `scale status` dies
+ * with DEGRADED. The doctor must fail where the artifact store fails.
+ */
+const NATIVE_HANDLE_OPENERS: Record<string, (loaded: unknown) => void> = {
+  'better-sqlite3': (loaded) => {
+    const Constructor = unwrapDefaultExport(loaded) as new (path: string) => { close?: () => void }
+    const db = new Constructor(':memory:')
+    db.close?.()
+  },
+}
+
+function unwrapDefaultExport(loaded: unknown): unknown {
+  if (loaded && typeof loaded === 'object' && 'default' in (loaded as Record<string, unknown>)) {
+    const definition = (loaded as { default?: unknown }).default
+    if (definition) return definition
+  }
+  return loaded
+}
+
+export interface NativeModuleProbeDeps {
+  loadModule?: (moduleName: string) => unknown
+  loadPackageVersion?: (moduleName: string) => string | undefined
+}
+
+export function probeNativeModule(
+  moduleName: string,
+  deps: NativeModuleProbeDeps = {},
+): NativeModuleProbeResult {
+  const loadModule = deps.loadModule ?? ((name: string) => require(name))
+  const loadPackageVersion = deps.loadPackageVersion ?? defaultPackageVersionLookup
   try {
-    require(moduleName)
-    let version: string | undefined
-    try {
-      const packageJson = require(`${moduleName}/package.json`) as { version?: unknown }
-      if (typeof packageJson.version === 'string') version = packageJson.version
-    } catch {
-      version = undefined
-    }
-    return { ok: true, version }
+    const loaded = loadModule(moduleName)
+    NATIVE_HANDLE_OPENERS[moduleName]?.(loaded)
+    return { ok: true, version: loadPackageVersion(moduleName) }
   } catch (error) {
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     }
   }
+}
+
+function defaultPackageVersionLookup(moduleName: string): string | undefined {
+  try {
+    const packageJson = require(`${moduleName}/package.json`) as { version?: unknown }
+    return typeof packageJson.version === 'string' ? packageJson.version : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function defaultNativeModuleProbe(moduleName: string): NativeModuleProbeResult {
+  return probeNativeModule(moduleName)
 }
 
 function summarizeNativeError(error: string | undefined): string {

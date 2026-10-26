@@ -19,6 +19,45 @@ The report separates four concepts that were previously easy to confuse:
 
 `scale gates status` is intentionally read-only. It does not execute checks; it explains which checks exist and which policies are blocking.
 
+## Verification Profile Execution
+
+`scripts/workflow/verify.sh` runs every command listed in the active profile
+(`build`, `docs-health`, `learning-health`, `lint`, `typecheck`, `test`) and does
+not stop at the first failure. Each check reports its own outcome, and the run
+ends with an explicit summary:
+
+```
+[VERIFY] summary
+[VERIFY]   passed:  root/lint, root/typecheck
+[VERIFY]   failed:  root/docs-health
+[VERIFY]   skipped: root/test (build failed)
+```
+
+Two rules matter when reading gate results:
+
+- A failure in one check never hides the others. Before v0.58.0 the first failure
+  set a shared status flag that skipped every later check, so `G5` could report a
+  single `docs-health` failure while the test suite was never executed at all.
+- Checks with a build dependency are reported as `skipped`, together with the
+  reason, instead of disappearing. `test` and `coverage` depend on `build`.
+
+## Native Module Self-Check
+
+The artifact store, dashboard, and knowledge base load `better-sqlite3`, whose
+`.node` binary is bound to one Node ABI. `require('better-sqlite3')` still succeeds
+when the binding was compiled for a different Node major — the loader only fails at
+the first `new Database()`. SCALE therefore opens a real handle in two places:
+
+- At install time, `scripts/workflow/check-native-abi.mjs` (a `postinstall` hook)
+  prints the runtime ABI, the ABI the binding was built for, and the fix. It never
+  blocks the install, and stays silent when the binding matches.
+- At runtime, `scale doctor` and `scale status` open an in-memory database before
+  reporting the runtime as healthy, so a mismatched binding shows up as a failure
+  instead of a false green.
+
+Fix: `npm rebuild better-sqlite3`, or run SCALE on the Node major that built the
+binding.
+
 ## Architecture Standards Gate
 
 Architecture and engineering standards are driven by project configuration:

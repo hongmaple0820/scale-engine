@@ -1,4 +1,14 @@
+## 0.58.0-alpha.1 - 2026-10-26
+
+### Verification reliability — a gate no longer hides its own test stage
+- `scripts/workflow/verify.sh` stopped at the first failing check and silently skipped the rest: the loop reused one global `STATUS` as the "is this check runnable" signal, so after `docs-health` failed, `lint`, `typecheck` and `test` were `continue`d without a word. `G5` therefore reported a single docs failure while the 2,300-case suite had not run at all. Each check now fails independently, dependent stages are marked `skipped` with a reason (`test`/`coverage` depend on `build`), and the run always ends with a `passed / failed / skipped` summary.
+- `EnvironmentDoctor.defaultNativeModuleProbe` only called `require('better-sqlite3')`, which evaluates the JS wrapper and never dlopens the `.node` binary. A binding built for another Node ABI was therefore reported healthy while `scale status` died with DEGRADED. The probe now opens `new Database(':memory:')` and closes it, and `probeNativeModule` is exported for tests (5 cases covering ABI mismatch, ESM default wrapping, missing module, and plain JS modules).
+- `scripts/workflow/check-native-abi.mjs` (new `postinstall` hook, in `files` so tarball users get it) reports the runtime ABI versus the ABI the binding was built for, plus the fix, without ever blocking an install.
+- Docs: `docs/workflow/GATES_AND_SCORE.md` documents the collect-all execution contract and the two-place native self-check.
+- Verified: full build green; `environmentDoctor` 10/10, `sqliteStore` 14/14 (both previously failing or false-green on this box); `scale doctor` 0 failures; `scale status` exit 0; the no-short-circuit path observed live (`docs-health` failed, `learning-health`/`lint`/`typecheck`/`test` still ran).
+
 ## 0.57.0 - 2026-10-25
+
 
 ### Output governance — docs/workflow templates out of the user's docs/ (final T2.4 subtask)
 - Workflow docs keep their logical governance.lock keys (`docs/workflow/...`) but their physical location now probes: projects with an existing docs/workflow keep it untouched (zero disruption), clean projects get `.scale/reports/workflow/` — the user's docs/ no longer receives generated output. The three lock-key/physical decoupling points are all mapped through `workflowDocPhysicalPath` (drift comparison, lock liveness filter, UpgradeManager backup/restore/changedFiles — the latter two were found by the suite and fixed before reaching users).
