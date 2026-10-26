@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1",
+  "title": "media engine smoke sample — 2s @ 960x540/24fps",
+  "canvas": { "width": 960, "height": 540, "fps": 24, "background": "#0f172a" },
+  "output": { "videoCodec": "libx264", "pixelFormat": "yuv420p", "audioCodec": "aac", "crf": 22, "preset": "veryfast" },
+  "scenes": [
+    {
+      "id": "intro",
+      "durationMs": 1000,
+      "elements": [
+        { "type": "text", "content": "SCALE 媒体引擎 · smoke", "fontFamily": "Microsoft YaHei", "fontSize": 48, "color": "#f8fafc", "x": "center", "y": 240, "animation": { "type": "fadeInUp", "durationMs": 600 } }
+      ],
+      "transitionOut": { "type": "fade", "durationMs": 200 }
+    },
+    {
+      "id": "outro",
+      "durationMs": 1000,
+      "elements": [
+        { "type": "rect", "x": 180, "y": 250, "width": 600, "height": 10, "color": "#334155", "radius": 5 },
+        { "type": "rect", "x": 180, "y": 250, "width": 600, "height": 10, "color": "#38bdf8", "radius": 5, "animation": { "type": "progressBar", "durationMs": 900 } }
+      ],
+      "transitionOut": { "type": "fade", "durationMs": 150 }
+    }
+  ],
+  "subtitles": [
+    { "startMs": 100, "endMs": 900, "text": "冒烟样片：中文字幕烧录" }
+  ]
+}

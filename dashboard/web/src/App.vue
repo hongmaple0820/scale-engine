@@ -45,9 +45,10 @@ import {
 } from 'naive-ui'
 
 echarts.use([GraphChart, LegendComponent, TooltipComponent, CanvasRenderer])
+import MediaStudio from './components/MediaStudio.vue'
 
 type Lang = 'zh' | 'en'
-type PageKey = 'overview' | 'workflow' | 'agentos' | 'topology' | 'monitoring' | 'costs' | 'knowledge' | 'agents' | 'integrations' | 'documents' | 'prompts'
+type PageKey = 'overview' | 'workflow' | 'agentos' | 'topology' | 'monitoring' | 'costs' | 'knowledge' | 'agents' | 'integrations' | 'documents' | 'prompts' | 'media'
 type SourceStatus = 'ready' | 'partial' | 'missing' | 'error'
 type RefreshMode = 'sse' | 'polling' | 'manual' | 'snapshot'
 type MonitorTab = 'overview' | 'detectors' | 'defects' | 'commands'
@@ -1852,6 +1853,7 @@ const menuOptions = computed(() => [
   { label: t('nav.integrations'), key: 'integrations' },
   { label: t('nav.documents'), key: 'documents' },
   { label: t('nav.prompts'), key: 'prompts' },
+  { label: t('nav.media'), key: 'media' },
 ])
 
 const sourceColumns = computed<DataTableColumns<DataSourceSignal>>(() => [
@@ -4773,7 +4775,7 @@ function bootstrapEndpoint<T>(endpoint: string, fallback: T): T {
 }
 
 function isPageKey(value: string): value is PageKey {
-  return ['overview', 'workflow', 'agentos', 'topology', 'monitoring', 'costs', 'knowledge', 'agents', 'integrations', 'documents', 'prompts'].includes(value)
+  return ['overview', 'workflow', 'agentos', 'topology', 'monitoring', 'costs', 'knowledge', 'agents', 'integrations', 'documents', 'prompts', 'media'].includes(value)
 }
 
 function errorMessage(error: unknown): string {
@@ -4846,6 +4848,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.integrations': '集成配置',
     'nav.documents': '文档与原型',
     'nav.prompts': '提示词',
+    'nav.media': '媒体工作台',
     'common.refresh': '刷新',
     'common.copied': '已复制',
     'common.copy': '复制',
@@ -5509,6 +5512,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.integrations': 'Integrations',
     'nav.documents': 'Docs & Prototypes',
     'nav.prompts': 'Prompts',
+    'nav.media': 'Media Studio',
     'common.refresh': 'Refresh',
     'common.copied': 'Copied',
     'common.copy': 'Copy',
@@ -8484,6 +8488,9 @@ const translations: Record<Lang, Record<string, string>> = {
                 </n-card>
               </n-space>
             </div>
+          </section>
+          <section v-else-if="activePage === 'media'" class="page">
+            <MediaStudio />
           </section>
         </n-layout-content>
       </n-layout>

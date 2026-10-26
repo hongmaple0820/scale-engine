@@ -50,6 +50,8 @@ make setup-smoke
 | release, publish, 发版, 发布 | `.scale/skills/release/SKILL.md` |
 | security, audit, vulnerability, owasp | `.scale/skills/security-audit/SKILL.md` |
 | test, tdd, coverage | `.scale/skills/tdd/SKILL.md` |
+| 公众号, 微信文章, 草稿箱, 公众号排版, 一稿多发 | 全局 skill `wewrite`（`~/.agents/skills/wewrite`，路由 `wechatContent` 领域） |
+| 视频, 动画, 宣传片, 分镜, 配乐 | 全局 skill `huashu-motion` / `huashu-art-motion`（`~/.agents/skills/`，路由 `motionVideo` 领域） |
 
 ## SCALE 2.0 三引擎命令
 

@@ -108,7 +108,7 @@ export const DEFAULT_TOOL_POLICY: ResolvedToolPolicy = {
       enabled: true,
       requiredFor: ['desktopAutomation'],
       destructiveActions: 'confirm',
-      command: 'python -c "import cua"',
+      command: 'cua',
       evidenceRequired: true,
     },
     'codex-cli': {
@@ -141,6 +141,38 @@ export const DEFAULT_TOOL_POLICY: ResolvedToolPolicy = {
       recommendedFor: ['externalCli', 'review'],
       destructiveActions: 'confirm',
       command: 'opencode',
+      evidenceRequired: true,
+    },
+    wewrite: {
+      enabled: true,
+      requiredFor: [],
+      recommendedFor: ['wechatContent'],
+      destructiveActions: 'confirm',
+      command: 'wewrite',
+      evidenceRequired: true,
+    },
+    'huashu-motion': {
+      enabled: true,
+      requiredFor: [],
+      recommendedFor: ['motionVideo'],
+      destructiveActions: 'confirm',
+      command: 'npx huashu-motion',
+      evidenceRequired: true,
+    },
+    'huashu-art-motion': {
+      enabled: true,
+      requiredFor: [],
+      recommendedFor: ['motionVideo'],
+      destructiveActions: 'confirm',
+      evidenceRequired: true,
+    },
+    'suno-api': {
+      // 非官方 Suno 封装（LGPL-3.0，依赖账号 Cookie，2026-09 新条款禁止自动化抓取）：
+      // 默认禁用，用户自部署服务并显式开启后才可用（v3 方案 §8.6）。
+      enabled: false,
+      requiredFor: [],
+      recommendedFor: ['motionVideo'],
+      destructiveActions: 'confirm',
       evidenceRequired: true,
     },
   },

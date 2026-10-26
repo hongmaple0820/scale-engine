@@ -153,6 +153,44 @@
       "destructiveActions": "block",
       "command": "opencode",
       "evidenceRequired": true
+    },
+    "wewrite": {
+      "enabled": true,
+      "requiredFor": [],
+      "recommendedFor": [
+        "wechatContent"
+      ],
+      "destructiveActions": "confirm",
+      "command": "wewrite",
+      "evidenceRequired": true
+    },
+    "huashu-motion": {
+      "enabled": true,
+      "requiredFor": [],
+      "recommendedFor": [
+        "motionVideo"
+      ],
+      "destructiveActions": "confirm",
+      "command": "npx huashu-motion",
+      "evidenceRequired": true
+    },
+    "huashu-art-motion": {
+      "enabled": true,
+      "requiredFor": [],
+      "recommendedFor": [
+        "motionVideo"
+      ],
+      "destructiveActions": "confirm",
+      "evidenceRequired": true
+    },
+    "suno-api": {
+      "enabled": false,
+      "requiredFor": [],
+      "recommendedFor": [
+        "motionVideo"
+      ],
+      "destructiveActions": "confirm",
+      "evidenceRequired": true
     }
   }
 }

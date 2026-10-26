@@ -3,7 +3,7 @@
 // the 2026-10-24 one-off audit that found 37/64 references missing and a
 // waiver expired for three months (governance debt the assessment called out).
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, isAbsolute } from 'node:path'
 
@@ -65,13 +65,23 @@ function installedSkillNames(roots: string[]): Set<string> {
   for (const root of roots) {
     try {
       for (const entry of readdirSync(root, { withFileTypes: true })) {
-        if (entry.isDirectory()) names.add(entry.name.toLowerCase())
+        // Skill installers (e.g. wewrite install.sh) symlink skill dirs into
+        // the roots; a symlinked directory does not report isDirectory().
+        if (entry.isDirectory() || isSymlinkedDir(join(root, entry.name))) names.add(entry.name.toLowerCase())
       }
     } catch {
       // root absent — contributes nothing
     }
   }
   return names
+}
+
+function isSymlinkedDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false // broken symlink — contributes nothing
+  }
 }
 
 export function auditSkills(projectDir: string, options: SkillsAuditOptions = {}): SkillsAuditReport {

@@ -61,6 +61,7 @@ import {
   type AgentControlTranscriptSearchReport,
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
+import { registerMediaApi } from './MediaControlPlane.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -1849,6 +1850,7 @@ export class DashboardServer {
     })
 
     this.app.get('/api/agent-control', (c) => c.json(this.getAgentControlReport()))
+    registerMediaApi(this.app, { projectDir: this.projectDir })
     this.app.get('/api/agent-control/transcripts', (c) => c.json(
       this.getAgentControlPlane().searchTranscripts({
         query: c.req.query('query'),

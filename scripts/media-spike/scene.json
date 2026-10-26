@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "0.1-spike",
+  "title": "P0.5 Windows render spike — 15s @ 1080p30, CJK + audio + subtitles",
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "background": "#0f172a"
+  },
+  "output": {
+    "format": "mp4",
+    "videoCodec": "libx264",
+    "pixelFormat": "yuv420p",
+    "audioCodec": "aac",
+    "crf": 20,
+    "preset": "medium"
+  },
+  "scenes": [
+    {
+      "id": "s1-title",
+      "durationMs": 5000,
+      "elements": [
+        {
+          "type": "text",
+          "content": "SCALE 媒体引擎渲染 Spike",
+          "fontFamily": "Microsoft YaHei",
+          "fontSize": 96,
+          "color": "#f8fafc",
+          "x": "center",
+          "y": 430,
+          "animation": { "type": "fadeInUp", "durationMs": 900 }
+        },
+        {
+          "type": "text",
+          "content": "Deterministic Render Spike · Playwright + FFmpeg · 中英混排 ABC abc 123",
+          "fontFamily": "Microsoft YaHei",
+          "fontSize": 38,
+          "color": "#94a3b8",
+          "x": "center",
+          "y": 590,
+          "animation": { "type": "fadeIn", "delayMs": 600, "durationMs": 800 }
+        }
+      ],
+      "transitionOut": { "type": "fade", "durationMs": 500 }
+    },
+    {
+      "id": "s2-motion",
+      "durationMs": 5000,
+      "elements": [
+        {
+          "type": "rect",
+          "x": 260, "y": 320, "width": 420, "height": 400,
+          "color": "#2563eb", "radius": 24,
+          "animation": { "type": "slideUp", "durationMs": 800 }
+        },
+        {
+          "type": "rect",
+          "x": 750, "y": 320, "width": 420, "height": 400,
+          "color": "#7c3aed", "radius": 24,
+          "animation": { "type": "slideUp", "delayMs": 200, "durationMs": 800 }
+        },
+        {
+          "type": "rect",
+          "x": 1240, "y": 320, "width": 420, "height": 400,
+          "color": "#059669", "radius": 24,
+          "animation": { "type": "slideUp", "delayMs": 400, "durationMs": 800 }
+        },
+        {
+          "type": "text",
+          "content": "分镜 · 转场 · 音画对齐",
+          "fontFamily": "Microsoft YaHei",
+          "fontSize": 56,
+          "color": "#f1f5f9",
+          "x": "center",
+          "y": 850,
+          "animation": { "type": "fadeIn", "delayMs": 900, "durationMs": 700 }
+        }
+      ],
+      "transitionOut": { "type": "fade", "durationMs": 500 }
+    },
+    {
+      "id": "s3-outro",
+      "durationMs": 5000,
+      "elements": [
+        {
+          "type": "text",
+          "content": "P0.5 Windows 渲染链路验证",
+          "fontFamily": "Microsoft YaHei",
+          "fontSize": 72,
+          "color": "#f8fafc",
+          "x": "center",
+          "y": 470,
+          "animation": { "type": "fadeInUp", "durationMs": 800 }
+        },
+        {
+          "type": "rect",
+          "x": 660, "y": 640, "width": 600, "height": 12,
+          "color": "#334155", "radius": 6
+        },
+        {
+          "type": "rect",
+          "x": 660, "y": 640, "width": 600, "height": 12,
+          "color": "#38bdf8", "radius": 6,
+          "animation": { "type": "progressBar", "durationMs": 4400 }
+        }
+      ],
+      "transitionOut": { "type": "fade", "durationMs": 400 }
+    }
+  ]
+}

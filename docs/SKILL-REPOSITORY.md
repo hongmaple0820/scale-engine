@@ -58,6 +58,9 @@
 | `gemini-cli` | agent-cli | official | 外部 CLI 审查和命令级证据。 | codex-cli, opencode-cli |
 | `opencode-cli` | agent-cli | ecosystem | 外部 CLI 审查和命令级证据。 | codex-cli, gemini-cli |
 | `agency-agents-zh` | role-library | community | 提供 CEO、CTO、工程、设计、产品等角色预设参考。 | skill-safety-scan |
+| `wewrite` | content | community | 微信公众号内容管道主入口：选题、写作、审稿、配图、排版、草稿箱发布、多平台改写、数据复盘和风格学习，路由到 wewrite-topic/write/review/visual/publish/rewrite/stats/style/learn 十个模块。 | wewrite-topic, wewrite-write, wewrite-review, wewrite-visual, wewrite-publish |
+| `huashu-motion` | motion | community | 动画/发布片/解说视频整片 skill：代码构图（HTML+GSAP）、自写配乐（ABC 记谱+采样器）、om studio 指哪改哪、渲染导出 MP4/WebM/GIF。 | huashu-art-motion, wewrite |
+| `huashu-art-motion` | motion | community | 艺术风格动画 skill：36 风格、9 解说语法、8 参数化片段（JSON spec 驱动），含 qa/film_gate 反 PPT 质检脚本与口播整片参考代码。 | huashu-motion |
 
 ## Third-Party Attribution
 
@@ -70,3 +73,6 @@
 | `liteparse` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
 | `d2-diagram` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
 | `opensquilla` | review-required | external-reference | License and attribution must be verified before installation, vendoring, or redistribution. |
+| `wewrite` | MIT | external-reference | MIT verified from the local clone (v4.2.1, Copyright (c) 2026 OpenClaw). External CLI and skills only; do not vendor upstream files without preserving license text and notices. |
+| `huashu-motion` | MIT | external-reference | MIT verified from the pinned local clone (`52467f99c602`, v0.3.1). External skill only; do not vendor upstream files without preserving license text and notices. |
+| `huashu-art-motion` | MIT | external-reference | MIT verified from the pinned local clone (`8a0d7d72ca65`, v1.2.0). External skill only; do not vendor upstream files without preserving license text and notices. |

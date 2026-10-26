@@ -83,6 +83,11 @@
       "name": "update-docs",
       "path": "update-docs/SKILL.md",
       "description": "Documentation impact analysis and update workflow"
+    },
+    {
+      "name": "media",
+      "path": "media/SKILL.md",
+      "description": "SCALE media engine: Scene DSL render pipeline, image generation, task governance"
     }
   ]
 }

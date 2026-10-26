@@ -1,6 +1,6 @@
 {
   "name": "@hongmaple0820/dsh-scale",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SCALE Engine governance plugin for DeepSeek Harness — Shield (tool interception), Cortex (instinct injection), Evidence (runtime trail)",
   "type": "module",
   "main": "./lib/index.js",

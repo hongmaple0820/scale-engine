@@ -10,6 +10,7 @@ import { GraphifyKnowledgeBase } from '../knowledge/GraphifyKnowledgeBase.js'
 import { ContextBuilder } from '../context/ContextBuilder.js'
 import { wireEffects } from '../orchestration/EffectsWiring.js'
 import { SCALE_ENGINE_VERSION } from '../version.js'
+import { MEDIA_MCP_TOOLS as mediaMcpTools, handleMediaToolCall } from '../media/mcpTools.js'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -41,6 +42,10 @@ export interface MCPTool {
   description: string
   inputSchema: Record<string, unknown>
 }
+
+// media workflow tools (v3 plan §11) — delegated to src/media/mcpTools.ts
+const MEDIA_MCP_TOOLS: MCPTool[] = [...mediaMcpTools]
+const MEDIA_TOOL_NAMES = new Set(MEDIA_MCP_TOOLS.map(tool => tool.name))
 
 export interface MCPRequest {
   jsonrpc: '2.0'
@@ -488,6 +493,7 @@ export class ScaleMCPServer {
           required: ['proposalId', 'approvedBy'],
         },
       },
+      ...MEDIA_MCP_TOOLS,
     ]
   }
 
@@ -869,6 +875,7 @@ export class ScaleMCPServer {
       }
 
       default:
+        if (MEDIA_TOOL_NAMES.has(name)) return handleMediaToolCall(name, args)
         throw new Error(`Unknown tool: ${name}`)
     }
   }

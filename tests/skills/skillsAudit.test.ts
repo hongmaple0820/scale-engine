@@ -4,7 +4,7 @@
 // (waiver validity, config health) everywhere, and full REQUIRED resolution
 // wherever the global skill roots exist (CI runners don't have them).
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -44,6 +44,21 @@ describe('auditSkills (fixture semantics)', () => {
     expect(report.missingRequired).toBe(0)
     expect(report.ok).toBe(true)
     expect(report.present).toBe(3)
+  })
+
+  it('resolves skills installed as directory symlinks (e.g. wewrite install.sh)', () => {
+    const dir = fixture('symlinked', { localSkills: ['impeccable'] })
+    const target = join(root, 'symlink-target', 'code-reviewer')
+    mkdirSync(target, { recursive: true })
+    try {
+      symlinkSync(target, join(dir, '.scale', 'skills', 'code-reviewer'), 'dir')
+    } catch {
+      return // Windows without symlink privilege — the invariant is covered on other platforms
+    }
+    const report = auditSkills(dir, { includeGlobalRoots: false })
+    expect(report.missingRequired).toBe(0)
+    expect(report.ok).toBe(true)
+    expect(report.present).toBe(2)
   })
 
   it('waived recommended entries are deliberate gaps, not failures', () => {

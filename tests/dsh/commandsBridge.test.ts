@@ -2,7 +2,7 @@
 // contract. Handlers must always settle inside CommandResult (never throw).
 
 import { describe, expect, it } from 'vitest'
-import { registerScaleCommands, SCALE_COMMANDS } from '../../packages/dsh-scale/src/commandsBridge.js'
+import { SCALE_COMMANDS, registerScaleCommands } from '../../packages/dsh-scale/src/commandsBridge.js'
 import { resolveScaleCli } from '../../packages/dsh-scale/src/cliExecutor.js'
 import type { CommandResult, CommandsService } from '../../packages/dsh-scale/src/dshTypes.js'
 
@@ -37,11 +37,23 @@ describe('SCALE_COMMANDS allowlist (plan §6 T2.1)', () => {
 })
 
 describe('registerScaleCommands', () => {
-  it('registers all six commands against the service', () => {
+  it('registers all commands against the service', () => {
     const { commands, registered } = makeCommands()
     const count = registerScaleCommands({ commands }, {})
-    expect(count).toBe(6)
-    expect(registered).toHaveLength(6)
+    expect(count).toBe(SCALE_COMMANDS.length)
+    expect(registered).toHaveLength(SCALE_COMMANDS.length)
+  })
+
+  it('keeps media commands read-only (no render/publish in the allowlist)', () => {
+    const names = SCALE_COMMANDS.map(spec => spec.name)
+    expect(names).toContain('scale-media-doctor')
+    expect(names).toContain('scale-media-tasks')
+    expect(names).toContain('scale-media-providers')
+    for (const spec of SCALE_COMMANDS) {
+      const argv = spec.args.join(' ')
+      expect(argv.includes('render')).toBe(false)
+      expect(argv.includes('generate')).toBe(false)
+    }
   })
 
   it('returns 0 when the commands service is unavailable (graceful)', () => {

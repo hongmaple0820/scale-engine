@@ -29,6 +29,9 @@ export const SCALE_COMMANDS: ScaleCommandSpec[] = [
   { name: 'scale-shield-status', description: 'Show Scale Shield hook registration and .scale integrity', args: ['shield', 'status'] },
   { name: 'scale-cortex-metrics', description: 'Show SCALE Cortex governance ROI metrics (30 days)', args: ['cortex', 'metrics', '--days', '30'] },
   { name: 'scale-doctor-env', description: 'Diagnose the SCALE environment', args: ['doctor', 'env'] },
+  { name: 'scale-media-doctor', description: 'Check media pipeline prerequisites (ffmpeg/ffprobe/playwright)', args: ['media', 'doctor'] },
+  { name: 'scale-media-tasks', description: 'List media workflow tasks in this project', args: ['media', 'task', 'list'] },
+  { name: 'scale-media-providers', description: 'List media providers with config status (no secrets)', args: ['media', 'providers', 'list'] },
 ]
 
 /**

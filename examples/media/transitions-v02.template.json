@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.2",
+  "title": "课程 {{n}}（批量模板）",
+  "canvas": { "width": 960, "height": 540, "fps": 30, "background": "#0f172a" },
+  "output": { "videoCodec": "libx264", "pixelFormat": "yuv420p", "audioCodec": "aac", "crf": 22, "preset": "veryfast" },
+  "scenes": [
+    {
+      "id": "intro-{{nn}}",
+      "durationMs": 1200,
+      "elements": [
+        { "type": "text", "content": "第 {{n}} 讲", "fontFamily": "Microsoft YaHei", "fontSize": 56, "color": "#f8fafc", "x": "center", "y": 230, "animation": { "type": "fadeInUp", "durationMs": 500 } }
+      ],
+      "transitionOut": { "type": "slide", "direction": "left", "durationMs": 300 }
+    },
+    {
+      "id": "outro-{{nn}}",
+      "durationMs": 1200,
+      "elements": [
+        { "type": "text", "content": "本讲小结 {{nn}}", "fontFamily": "Microsoft YaHei", "fontSize": 40, "color": "#94a3b8", "x": "center", "y": 250, "animation": { "type": "fadeIn", "durationMs": 400 } }
+      ],
+      "transitionOut": { "type": "wipe", "direction": "right", "durationMs": 250 }
+    }
+  ],
+  "subtitles": [
+    { "startMs": 100, "endMs": 1000, "text": "第 {{n}} 讲：slide 转场" },
+    { "startMs": 1300, "endMs": 2200, "text": "第 {{n}} 讲：wipe 收尾" }
+  ]
+}

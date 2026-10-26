@@ -85,6 +85,7 @@ import { gitCommand } from '../cli/gitCommands.js'
 import { commitSuggestCommand } from '../cli/commitSuggestCommands.js'
 import { orchCommand } from '../cli/orchCommands.js'
 import { cortexCommand } from '../cli/cortexCommands.js'
+import { mediaCommand } from '../cli/mediaCommands.js'
 import { sessionCommand } from '../cli/sessionCommands.js'
 import { gateCommand } from '../cli/gateInlineCommands.js'
 import { metaGovernanceCommand } from '../cli/metaGovernanceCommands.js'
@@ -1843,6 +1844,7 @@ const main = defineCommand({
     'commit-suggest': commitSuggestCommand,
     orch: orchCommand,
     cortex: cortexCommand,
+    media: mediaCommand,
   },
 })
 
