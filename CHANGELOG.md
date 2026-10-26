@@ -9,7 +9,6 @@
 
 ## 0.57.0 - 2026-10-25
 
-
 ### Output governance — docs/workflow templates out of the user's docs/ (final T2.4 subtask)
 - Workflow docs keep their logical governance.lock keys (`docs/workflow/...`) but their physical location now probes: projects with an existing docs/workflow keep it untouched (zero disruption), clean projects get `.scale/reports/workflow/` — the user's docs/ no longer receives generated output. The three lock-key/physical decoupling points are all mapped through `workflowDocPhysicalPath` (drift comparison, lock liveness filter, UpgradeManager backup/restore/changedFiles — the latter two were found by the suite and fixed before reaching users).
 - Readers probe both locations: doctor template checks, TaskArtifactScaffolder, plan/new-task TEMPLATES (own scripts + templates generated for target projects). Target projects' generated `.scale/.gitignore` now ignores `reports/|tmp/|cache/`; legacy-location `docs/workflow/` writes are manifest-registered as regenerable so `scale uninstall` can reclaim them.
