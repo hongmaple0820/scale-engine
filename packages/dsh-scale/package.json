@@ -1,6 +1,6 @@
 {
   "name": "@hongmaple0820/dsh-scale",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "SCALE Engine governance plugin for DeepSeek Harness — Shield (tool interception), Cortex (instinct injection), Evidence (runtime trail)",
   "type": "module",
   "main": "./lib/index.js",
@@ -21,7 +21,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dsh": {
