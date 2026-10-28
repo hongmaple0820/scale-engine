@@ -58,6 +58,12 @@ npm run release:check
 scale doctor env --json
 ```
 
+`scale doctor env` 里有一项 `guardrail-ast`：护栏先跑 regex 预筛，再用 AST 精确确认（排除字符串字面量和注释里的假命中）。AST 需要 `typescript`，它在本包里是**可选 peer**——pnpm 非 hoisted 布局或 `autoInstallPeers: false` 时可能没被装上。这种情况下该项显示 `[WARN] regex-only mode`，检测覆盖面不变（AST 只会收窄 regex 结果，从不新增），但假阳性会变多。想去掉这个告警，在宿主工程里装一下即可：
+
+```bash
+npm install typescript   # 或 pnpm add typescript
+```
+
 ## SCALE 2.0 引擎开发
 
 三引擎开发时的常用命令：

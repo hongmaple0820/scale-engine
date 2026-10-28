@@ -1,3 +1,14 @@
+## 0.58.0-alpha.2 - 2026-10-27
+
+### 严格安装环境下的启动崩溃 — AST 层改为惰性加载
+
+- `src/guardrails/ast/parse.ts` 静态 `import` 了 `@typescript-eslint/typescript-estree`，而后者把 `typescript` 声明为 **peer**。在 `autoInstallPeers: false`（部分 pnpm 配置）、pnpm 非 hoisted 布局、或手工 `--ignore-scripts` 搭建的宿主里，`typescript` 不会被安装，静态 import 于是在**模块加载阶段**抛 `MODULE_NOT_FOUND`，把调用方一起带走——`src/workflow/EngineeringStandards.ts` 一行 import 就足以让整个 workflow 层（`scale status`、门禁、标准检查）无法加载。实测：屏蔽 `typescript` 后 `import('./dist/workflow/EngineeringStandards.js')` 直接 `MODULE_NOT_FOUND`。
+- 改为 `createRequire` 惰性加载并缓存结果：工具链缺失时 `parseSource()` 返回 `null`，调用方按模块注释里早就写好的契约 fail open 回退到 regex。`walk()` 只做结构化遍历，完全不依赖解析器。
+- 这条降级原先是**静默**的，等于安全护栏悄悄少了精度。新增 `isAstParsingAvailable()` 与 `EnvironmentDoctor.inspectAstGuardrailRuntime()`：`scale doctor env` 会显式报 `guardrail-ast` 项，正常为 `[OK] AST confirmation is active`，缺失时降为 `[WARN] regex-only mode` 并给出 `npm install typescript` 的修复指引，整体状态变 `DEGRADED` 而非 `broken`（该项 `required: false`）。
+- 诊断探测刻意不复用全量加载路径：`require('@typescript-eslint/typescript-estree')` 实测 **393ms**（会拉入 TypeScript 编译器），不能塞进每次体检。改用 `require.resolve` 检查两个包是否可解析（约 1ms），只捕获现实中唯一的失败模式——peer 缺失。
+- `package.json` 补 `peerDependencies.typescript` + `peerDependenciesMeta.typescript.optional: true`：不强制给 CLI 装 23MB 的 `typescript`，但让严格安装器知道这条可选依赖，也让 `pnpm` 在宿主已装 `typescript` 时正确 link。
+- 验证：`tests/guardrails/astParse.test.ts`（5 例，覆盖 loader 为 null、注入解析、解析抛错、walk 不依赖解析器）× `tests/env/environmentDoctor.test.ts`（+4 例）共 25/25 通过；端到端用预加载钩子屏蔽 `typescript` 后 `scale status` exit 0、`scale doctor env` 报 `DEGRADED` 且 `guardrail-ast` 为 `[WARN]`，正常环境仍为 `HEALTHY`。
+
 ## 0.58.0-alpha.1 - 2026-10-26
 
 ### Verification reliability — a gate no longer hides its own test stage

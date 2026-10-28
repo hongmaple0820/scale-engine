@@ -5,6 +5,7 @@ import { arch, platform, release } from 'node:os'
 import { delimiter, extname } from 'node:path'
 import { runGbrainCommandSync } from '../core/GbrainRuntime.js'
 import { resolveExternalCommandPath } from '../core/ExternalCommand.js'
+import { isAstParsingAvailable } from '../guardrails/ast/parse.js'
 
 export type EnvironmentCheckStatus = 'ok' | 'warn' | 'missing' | 'fail'
 export type EnvironmentCheckCategory = 'core' | 'shell' | 'runtime' | 'third-party'
@@ -63,6 +64,7 @@ export interface InspectEnvironmentOptions {
   commandResolver?: (command: string) => string | null
   commandRunner?: (command: string, args: string[], resolvedPath?: string) => CommandRunResult
   nativeModuleProbe?: (moduleName: string) => NativeModuleProbeResult
+  astProbe?: () => boolean
 }
 
 interface CommandRunResult {
@@ -258,6 +260,7 @@ export function inspectEnvironment(options: InspectEnvironmentOptions = {}): Env
     currentArch,
     nativeModuleProbe: options.nativeModuleProbe,
   }))
+  checks.push(inspectAstGuardrailRuntime({ astProbe: options.astProbe }))
   const buildTools = inspectWindowsCppBuildTools(currentPlatform, env, resolver)
   if (buildTools) checks.push(buildTools)
   const nodeStatus = nodeVersionStatus(currentNodeVersion)
@@ -442,6 +445,46 @@ export function inspectBetterSqlite3Runtime(input: {
     reason,
     installHint: ARTIFACT_STORE_RUNTIME_FIX,
     requiredFor: ['scale status', 'scale doctor', 'scale preflight', 'artifact store'],
+  }
+}
+
+export function inspectAstGuardrailRuntime(input: {
+  astProbe?: () => boolean
+} = {}): EnvironmentCommandCheck {
+  const probe = input.astProbe ?? (() => isAstParsingAvailable())
+  let available = false
+  try {
+    available = probe()
+  } catch {
+    available = false
+  }
+
+  if (available) {
+    return {
+      id: 'guardrail-ast',
+      label: 'Guardrail AST confirmation',
+      category: 'runtime',
+      status: 'ok',
+      required: false,
+      candidates: ['@typescript-eslint/typescript-estree', 'typescript'],
+      reason: 'AST confirmation is active: guardrail findings are narrowed against real syntax trees, not only regex.',
+      installHint: 'Nothing to do. Keep `typescript` resolvable from the SCALE install to retain AST precision.',
+      requiredFor: ['guardrail precision (ts-ignore / any / eval / empty catch)'],
+    }
+  }
+
+  return {
+    id: 'guardrail-ast',
+    label: 'Guardrail AST confirmation',
+    category: 'runtime',
+    status: 'warn',
+    required: false,
+    candidates: ['@typescript-eslint/typescript-estree', 'typescript'],
+    reason:
+      'AST confirmation is unavailable, so guardrails run in regex-only mode. Detection coverage is unchanged (AST only ever narrows regex hits), but occurrences inside string literals or comments may be reported as findings. This usually means `typescript` is not resolvable from the SCALE install (peer dependency skipped by a strict or `autoInstallPeers: false` package manager).',
+    installHint:
+      'Install TypeScript where SCALE is installed, e.g. `npm install typescript` (or `pnpm add typescript`) in the host project. To force AST precision everywhere, set `autoInstallPeers: true`.',
+    requiredFor: ['guardrail precision (ts-ignore / any / eval / empty catch)'],
   }
 }
 

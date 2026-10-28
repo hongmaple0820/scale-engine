@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inspectEnvironment, probeNativeModule } from '../../src/env/EnvironmentDoctor.js'
+import { inspectAstGuardrailRuntime, inspectEnvironment, probeNativeModule } from '../../src/env/EnvironmentDoctor.js'
 
 describe('inspectEnvironment', () => {
   it('treats recall-ready gbrain doctor output as healthy even when optional checks fail', () => {
@@ -328,5 +328,53 @@ describe('probeNativeModule', () => {
     })
 
     expect(result).toEqual({ ok: true, version: '4.2.0' })
+  })
+})
+
+describe('inspectAstGuardrailRuntime', () => {
+  it('is ok when the AST toolchain resolves', () => {
+    const check = inspectAstGuardrailRuntime({ astProbe: () => true })
+
+    expect(check.id).toBe('guardrail-ast')
+    expect(check.status).toBe('ok')
+    expect(check.required).toBe(false)
+  })
+
+  it('warns (does not fail) when the TypeScript peer is missing', () => {
+    const check = inspectAstGuardrailRuntime({ astProbe: () => false })
+
+    expect(check.status).toBe('warn')
+    expect(check.required).toBe(false)
+    expect(check.reason).toContain('regex-only mode')
+    expect(check.installHint).toContain('typescript')
+  })
+
+  it('warns instead of throwing when the probe itself explodes', () => {
+    const check = inspectAstGuardrailRuntime({
+      astProbe: () => {
+        throw new Error('probe blew up')
+      },
+    })
+
+    expect(check.status).toBe('warn')
+  })
+
+  it('degrades the overall report to `degraded`, never `broken`', () => {
+    const report = inspectEnvironment({
+      env: { PATH: 'C:\\tools' },
+      nodeVersion: 'v22.13.1',
+      execPath: 'C:\\node\\node.exe',
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      commandResolver: () => 'C:\\tools\\bin.exe',
+      commandRunner: () => ({ exitCode: 0, stdout: 'v1', stderr: '' }),
+      nativeModuleProbe: () => ({ ok: true, version: '11.10.0' }),
+      astProbe: () => false,
+    })
+
+    expect(report.ok).toBe(true)
+    expect(report.status).toBe('degraded')
+    expect(report.checks.find(check => check.id === 'guardrail-ast')?.status).toBe('warn')
   })
 })

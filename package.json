@@ -1,6 +1,6 @@
 {
   "name": "@hongmaple0820/scale-engine",
-  "version": "0.58.0-alpha.1",
+  "version": "0.58.0-alpha.2",
   "description": "Executable AI agent governance with workflow gates, evidence, skill/tool orchestration, and traceable HTML artifacts",
   "repository": {
     "type": "git",
@@ -118,5 +118,13 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.8.4 <6.1.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }
