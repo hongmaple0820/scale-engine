@@ -137,7 +137,7 @@ scale git subrepo add packages/local https://example.com/team/local.git --strate
 R4 定向验证：
 
 ```bash
-node node_modules/vitest/vitest.mjs run tests/setup --pool=forks --maxWorkers=1 --minWorkers=1 --testTimeout=120000
+node node_modules/vitest/vitest.mjs run tests/setup --pool=forks --maxWorkers=1 --testTimeout=120000
 npm run typecheck
 npm run docs:health
 ```

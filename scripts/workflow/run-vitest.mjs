@@ -2,10 +2,11 @@
 import { spawn } from 'node:child_process'
 
 const DEFAULT_TIMEOUT_MS = 600_000
-// Pool sizing lives in vitest.config.ts (maxForks) so a single place controls
+// Pool sizing lives in vitest.config.ts (maxWorkers) so a single place controls
 // it; only override when the caller asks (SCALE_VITEST_WORKERS=N).
+// `--minWorkers` was removed in Vitest 4 and must not be forwarded.
 const workerArgs = process.env.SCALE_VITEST_WORKERS
-  ? ['--maxWorkers', process.env.SCALE_VITEST_WORKERS, '--minWorkers', '1']
+  ? ['--maxWorkers', process.env.SCALE_VITEST_WORKERS]
   : []
 const DEFAULT_ARGS = [
   'vitest',

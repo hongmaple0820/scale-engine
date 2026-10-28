@@ -10,23 +10,31 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     chunkSizeWarningLimit: 650,
-    rollupOptions: {
+    // Vite 8 bundles with Rolldown: `rollupOptions`/`manualChunks` still work
+    // as deprecated aliases, but `codeSplitting.groups` is the supported form.
+    // `includeDependenciesRecursively: false` preserves the previous per-module
+    // assignment (a module's dependencies are not dragged into its group).
+    rolldownOptions: {
       output: {
-        manualChunks(id) {
-          const normalized = id.replace(/\\/g, '/')
-          if (!normalized.includes('/node_modules/')) return undefined
-          if (
-            normalized.includes('/node_modules/vue/') ||
-            normalized.includes('/node_modules/@vue/')
-          ) return 'vue'
-          if (
-            normalized.includes('/node_modules/naive-ui/') ||
-            normalized.includes('/node_modules/css-render/') ||
-            normalized.includes('/node_modules/vueuc/') ||
-            normalized.includes('/node_modules/vooks/') ||
-            normalized.includes('/node_modules/seemly/')
-          ) return 'naive-ui'
-          return 'vendor'
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: 'vue',
+              test: /[\\/]node_modules[\\/](vue|@vue)[\\/]/,
+              priority: 20,
+            },
+            {
+              name: 'naive-ui',
+              test: /[\\/]node_modules[\\/](naive-ui|css-render|vueuc|vooks|seemly)[\\/]/,
+              priority: 10,
+            },
+            {
+              name: 'vendor',
+              test: /[\\/]node_modules[\\/]/,
+              priority: 0,
+            },
+          ],
         },
       },
     },

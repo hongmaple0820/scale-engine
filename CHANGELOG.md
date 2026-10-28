@@ -8,7 +8,16 @@
 - 移除 `zod` 直接依赖：全仓（`src`/`tests`/`scripts`/`dashboard`/`packages`）零 `import`、零动态引用，属于幽灵依赖；MCP SDK 自身的 `^3.25 || ^4.0` 约束会把传递版本解析到已修复的 `4.6.7`。保留它只会把一个未使用的包钉在漏洞区间。
 - 同时修复本机 `better-sqlite3` 的 Node 24 ABI 不匹配（bindings 编译于 Node 22 / ABI 127，运行时 ABI 137）：`npm rebuild better-sqlite3` 后 `:memory:` 读写正常，`scale status` 不再因此 DEGRADED。该问题先于本次改动存在。
 - 验证：`npm audit --omit=dev` = **0**；`npm run typecheck` 通过；`npm run lint` 0 error；覆盖 hono / js-yaml / MCP 面的 231 个测试全通过（dashboard、skills、shield、mcpTools、mcpStdioFilter）；`npm run build` 通过（含 Vue SPA）；`npm ci --dry-run` 确认锁文件一致。
-- 剩余 8 个漏洞全部位于 dev 工具链（`vitest` 2.x、`vite` 5.x、`@vitest/coverage-v8`），不随包发布，CI 的 `--omit=dev` 审计门禁已可通过；其 breaking 升级（vitest 5 / vite 8）单独排期，不与本次安全修复混合。
+- 剩余 8 个漏洞全部位于 dev 工具链（`vitest` 2.x、`vite` 5.x、`@vitest/coverage-v8`），不随包发布，CI 的 `--omit=dev` 审计门禁已可通过；其 breaking 升级见下一节。
+
+### 测试与构建工具链升级 — vitest 5 / vite 8，全量审计归零
+
+- `vitest` 2.1.9 → 5.0.5、`@vitest/coverage-v8` 2.1.9 → 5.0.5、`vite` 5.4.21 → 8.3.5、`@vitejs/plugin-vue` 5.2.4 → 6.0.10；`engines.node` 收紧到 `>=22.12.0`（三个新包共同的下限）。`npm audit` 由 **25 → 0**（此前 4 critical / 13 high / 8 moderate），生产与开发依赖均无遗留。最后一个 `brace-expansion` 用按父版本限定的 override 处理：`minimatch@3` 走 `1.1.21`、`minimatch@10` 走 `5.0.12`——不能跨 major 强推，否则会破坏 minimatch@3 依赖的 CJS 1.x API。
+- 配置迁移：`poolOptions.forks.minForks/maxForks` 在 vitest 4 被移除，改为顶层 `maxWorkers: 8`（`minForks` 无替代）；`test:serial` 与 `run-vitest.mjs` 里的 `--minWorkers` 同步移除（vitest 4 已删除该参数，旧写法会直接报错）；`vitest.config.ts` 的 `__dirname` 改为 `import.meta.dirname`，消除 vite 8 原生配置加载器的迁移警告。
+- 构建迁移：`vite.dashboard.config.ts` 从废弃的 `rollupOptions.output.manualChunks` 迁到 Rolldown 的 `codeSplitting.groups`（`includeDependenciesRecursively: false` 保持原先的逐模块归属语义，vue / naive-ui 用 priority 优先于 vendor）。产物布局与升级前一致：vue 78KB、naive-ui 579KB、vendor 550KB，无超大 chunk 警告；构建耗时 7.33s → **0.54s**（Rolldown）。
+- 覆盖率：vitest 4 起 V8 覆盖率改用 AST 重映射，分支口径变化使 `npm run coverage` 从通过变为 64.88%（阈值 75%）。**没有下调门禁**，而是补齐 `tests/workflow/verificationProfile.test.ts`（+12 例，覆盖 policy 归一化兜底、缺失 profile/service 警告、绝对 scaleDir、无 matrix 回退、协议导入导出往返及错误路径），分支覆盖率回到 **86.3%**，语句 99.25%、行 99.15%、函数 100%。
+- 超时语义：vitest 5 对 `testTimeout` 的强制执行比 v2 严格（v2 下事件循环阻塞期间计时器可能不触发，慢用例因此"超时但仍通过"）。仓库标准入口 `npm test` 本就传 `--testTimeout=180000`；现将同一上限写进 `vitest.config.ts`（`testTimeout: 180000`），让 `npx vitest`、`test:serial`、验证脚本等直接入口行为一致，避免 5 秒默认值误杀慢用例。
+- 验证：全量 `npm test` **2391 passed / 1 skipped / 1 failed**，唯一失败是 `tests/memory/memoryLearning.test.ts` 的 `afterEach` 删除临时目录时 Windows `EPERM`——已知 flake，单独复跑 5/5 通过；`npm run build`（含 Vue SPA）、typecheck、lint 0 error、`npm run coverage` exit 0、`npm ci --dry-run` 锁文件一致。
 
 ### 严格安装环境下的启动崩溃 — AST 层改为惰性加载
 

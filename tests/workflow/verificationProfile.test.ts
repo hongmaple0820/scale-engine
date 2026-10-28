@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { resolveVerificationProfile, resolveVerificationTargets } from '../../src/workflow/VerificationProfile.js'
+import {
+  exportProfileToOpenFormat,
+  importProfileFromOpenFormat,
+  resolveVerificationPolicy,
+  resolveVerificationProfile,
+  resolveVerificationTargets,
+} from '../../src/workflow/VerificationProfile.js'
+import type { VerificationMatrix } from '../../src/workflow/VerificationProfile.js'
 
 let dirs: string[] = []
 
@@ -280,5 +287,212 @@ describe('resolveVerificationProfile', () => {
       test: 'python -m pytest',
       coverage: 'python -m pytest --cov=.',
     })
+  })
+})
+
+describe('resolveVerificationPolicy normalization', () => {
+  it('keeps valid gate modes, levels, packs, and skill scope', () => {
+    const policy = resolveVerificationPolicy({
+      profiles: {},
+      policy: {
+        artifactGate: 'off',
+        engineeringStandardsGate: 'warn',
+        productSmokeGate: 'off',
+        ecosystemReadinessGate: 'block',
+        artifactGateLevels: ['M', 'CRITICAL'],
+        ecosystemReadinessPacks: ['ui', 'invalid-pack', 'ui'],
+        ecosystemReadinessSkillScope: 'all',
+      },
+    })
+
+    expect(policy).toMatchObject({
+      artifactGate: 'off',
+      engineeringStandardsGate: 'warn',
+      productSmokeGate: 'off',
+      ecosystemReadinessGate: 'block',
+      artifactGateLevels: ['M', 'CRITICAL'],
+      ecosystemReadinessPacks: ['ui'],
+      ecosystemReadinessSkillScope: 'all',
+    })
+  })
+
+  it('falls back to defaults for unknown gate modes and empty lists', () => {
+    const policy = resolveVerificationPolicy({
+      profiles: {},
+      policy: {
+        artifactGate: 'bogus',
+        engineeringStandardsGate: 'bogus',
+        productSmokeGate: 'bogus',
+        ecosystemReadinessGate: 'bogus',
+        artifactGateLevels: ['X'],
+        ecosystemReadinessPacks: ['unknown-pack'],
+        ecosystemReadinessSkillScope: 'bogus',
+      },
+    } as unknown as VerificationMatrix)
+
+    expect(policy).toMatchObject({
+      artifactGate: 'warn',
+      engineeringStandardsGate: 'block',
+      productSmokeGate: 'warn',
+      ecosystemReadinessGate: 'warn',
+      artifactGateLevels: ['M', 'L', 'CRITICAL'],
+      ecosystemReadinessPacks: ['full'],
+      ecosystemReadinessSkillScope: 'required',
+    })
+  })
+
+  it('treats non-array pack and level values as unset', () => {
+    const policy = resolveVerificationPolicy({
+      profiles: {},
+      policy: {
+        artifactGateLevels: 'L',
+        ecosystemReadinessPacks: 'ui',
+      },
+    } as unknown as VerificationMatrix)
+
+    expect(policy.artifactGateLevels).toEqual(['M', 'L', 'CRITICAL'])
+    expect(policy.ecosystemReadinessPacks).toEqual(['full'])
+  })
+
+  it('returns defaults when no matrix or policy is present', () => {
+    expect(resolveVerificationPolicy(null)).toMatchObject({
+      optionalToolsWarnOnly: true,
+      artifactGate: 'warn',
+      engineeringStandardsGate: 'block',
+      ecosystemReadinessSkillScope: 'required',
+    })
+    expect(resolveVerificationPolicy(undefined)).toEqual(resolveVerificationPolicy(null))
+  })
+})
+
+describe('resolveVerificationProfile fallbacks', () => {
+  it('warns when an explicit profile and service are missing', () => {
+    const dir = makeProject()
+    writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { commands: { test: 'npm test' } } },
+      services: [{ name: 'api', path: 'services/api' }],
+    }), 'utf-8')
+
+    const resolved = resolveVerificationProfile({ projectDir: dir, profile: 'missing', service: 'ghost' })
+
+    expect(resolved.profileName).toBe('missing')
+    expect(resolved.service).toBeUndefined()
+    expect(resolved.config.cwd).toBe(dir)
+    expect(resolved.warnings).toEqual([
+      expect.stringContaining('Verification profile "missing" was not found'),
+      expect.stringContaining('Verification service "ghost" was not found'),
+    ])
+  })
+
+  it('supports an absolute scale directory', () => {
+    const dir = makeProject()
+    const scaleDir = join(dir, 'custom-scale')
+    mkdirSync(scaleDir, { recursive: true })
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      profiles: { default: { commands: { test: 'custom test' } } },
+    }), 'utf-8')
+
+    const resolved = resolveVerificationProfile({ projectDir: dir, scaleDir })
+
+    expect(resolved.config.test).toBe('custom test')
+    expect(resolved.config.cwd).toBe(dir)
+  })
+
+  it('adds no language defaults for custom or missing service types', () => {
+    const dir = makeProject()
+    writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({
+      version: 1,
+      profiles: { default: { commands: {} } },
+      services: [
+        { name: 'custom-tool', path: '.', type: 'custom' },
+        { name: 'plain', path: '.' },
+        { name: 'mystery', path: '.', type: 'rust' },
+      ],
+    }), 'utf-8')
+
+    for (const service of ['custom-tool', 'plain', 'mystery']) {
+      // `toEqual` ignores undefined-valued keys, so this also fails if an
+      // unknown/missing service type starts contributing language defaults.
+      expect(resolveVerificationProfile({ projectDir: dir, service }).config).toEqual({ cwd: dir })
+    }
+  })
+
+  it('falls back to a single auto target when no matrix exists', () => {
+    const dir = makeProject()
+
+    const resolved = resolveVerificationTargets({ projectDir: dir })
+
+    expect(resolved.profileName).toBe('auto')
+    expect(resolved.targets).toHaveLength(1)
+    expect(resolved.targets[0].profileName).toBe('auto')
+    expect(resolved.warnings[0]).toContain('No verification matrix found')
+  })
+
+  it('prefers profile services when all is requested', () => {
+    const dir = makeProject()
+    mkdirSync(join(dir, 'services', 'api'), { recursive: true })
+    mkdirSync(join(dir, 'services', 'worker'), { recursive: true })
+    writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { services: ['api'], commands: { test: 'npm test' } } },
+      services: [
+        { name: 'api', path: 'services/api' },
+        { name: 'worker', path: 'services/worker' },
+      ],
+    }), 'utf-8')
+
+    const resolved = resolveVerificationTargets({ projectDir: dir, service: 'all' })
+
+    expect(resolved.targets.map(target => target.service?.name)).toEqual(['api'])
+  })
+})
+
+describe('open verification protocol', () => {
+  it('round-trips a resolved profile', () => {
+    const dir = makeProject()
+    const resolved = resolveVerificationProfile({ projectDir: dir })
+
+    const protocol = exportProfileToOpenFormat(resolved)
+    const exported = protocol.profiles['auto'].services['root']
+
+    expect(exported.commands).toEqual({ build: '', lint: '', test: '', coverage: '' })
+    expect(exported.policy.mode).toBe('standard')
+
+    const imported = importProfileFromOpenFormat(protocol)
+    expect(imported.config).toEqual({ build: '', lint: '', test: '', coverage: '' })
+    expect(imported.policy.mode).toBe('standard')
+  })
+
+  it('maps minimal and critical policy modes', () => {
+    const dir = makeProject()
+
+    for (const mode of ['minimal', 'critical']) {
+      writeFileSync(join(dir, '.scale', 'verification.json'), JSON.stringify({
+        version: 1,
+        defaultProfile: 'default',
+        profiles: { default: { commands: {} } },
+        policy: { mode },
+      }), 'utf-8')
+
+      const protocol = exportProfileToOpenFormat(resolveVerificationProfile({ projectDir: dir }))
+      expect(protocol.profiles['default'].services['root'].policy.mode).toBe(mode)
+    }
+  })
+
+  it('rejects protocols without a profile or service', () => {
+    const dir = makeProject()
+    const protocol = exportProfileToOpenFormat(resolveVerificationProfile({ projectDir: dir }))
+
+    expect(() => importProfileFromOpenFormat({ ...protocol, profiles: {} }))
+      .toThrow('No profile found in protocol')
+
+    expect(() => importProfileFromOpenFormat({
+      ...protocol,
+      profiles: { empty: { description: 'empty', services: {} } },
+    })).toThrow('No service found in profile')
   })
 })

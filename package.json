@@ -55,7 +55,7 @@
     "build": "tsc && node scripts/workflow/cleanup-dashboard-legacy.mjs && vite build --config vite.dashboard.config.ts",
     "dev": "bun --watch src/api/cli.ts",
     "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 1800000 --testTimeout=180000",
-    "test:serial": "vitest run --reporter dot --pool=forks --poolOptions.forks.maxForks=1 --poolOptions.forks.minForks=1",
+    "test:serial": "vitest run --reporter dot --pool=forks --maxWorkers=1",
     "coverage": "node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/workflow/gateCatalog.test.ts tests/workflow/verificationProfile.test.ts --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=json-summary --coverage.include=src/workflow/GateCatalog.ts --coverage.include=src/workflow/VerificationProfile.ts --testTimeout=120000",
     "docs:health": "node scripts/workflow/docs-health.mjs",
     "learning:health": "node scripts/workflow/learning-health.mjs",
@@ -96,7 +96,13 @@
   "overrides": {
     "content-type": "1.0.5",
     "type-is": "2.1.0",
-    "qs": "6.17.0"
+    "qs": "6.17.0",
+    "minimatch@3": {
+      "brace-expansion": "1.1.21"
+    },
+    "minimatch@10": {
+      "brace-expansion": "5.0.12"
+    }
   },
   "optionalDependencies": {
     "playwright": "^1.50.0"
@@ -107,16 +113,16 @@
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.59.3",
-    "@vitejs/plugin-vue": "^5.2.4",
-    "@vitest/coverage-v8": "2.1.9",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vitest/coverage-v8": "5.0.5",
     "eslint": "^9.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vite": "^5.4.21",
-    "vitest": "^2.0.0"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.12.0"
   },
   "peerDependencies": {
     "typescript": ">=4.8.4 <6.1.0"

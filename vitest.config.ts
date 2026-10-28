@@ -6,7 +6,7 @@ export default defineConfig({
     alias: {
       // Plugin tests (tests/dsh/) exercise packages/dsh-scale source against
       // the live main-package source, not a possibly-stale dist/ build.
-      '@hongmaple0820/scale-engine': resolve(__dirname, 'src/index.ts'),
+      '@hongmaple0820/scale-engine': resolve(import.meta.dirname, 'src/index.ts'),
     },
   },
   test: {
@@ -14,15 +14,18 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        minForks: 1,
-        // 16 physical cores on the primary dev box; 8 forks halved the full
-        // suite wall time vs 4 while leaving headroom for child processes the
-        // heavier suites spawn (adapter init / dashboard / CLI e2e).
-        maxForks: 8,
-      },
-    },
+    // 16 physical cores on the primary dev box; 8 workers halved the full
+    // suite wall time vs 4 while leaving headroom for child processes the
+    // heavier suites spawn (adapter init / dashboard / CLI e2e).
+    // Vitest 4 removed `poolOptions.forks.minForks` (no replacement) and
+    // flattened `maxForks` to the pool-agnostic `maxWorkers`.
+    maxWorkers: 8,
+    // Vitest 5 enforces timeouts even while the event loop is blocked, unlike
+    // v2 where several dashboard/CLI suites ran past the 5s default unnoticed.
+    // `npm test` already passed 180000 via the CLI; setting it here gives the
+    // direct entrypoints (`npx vitest`, `test:serial`, validation scripts) the
+    // same ceiling.
+    testTimeout: 180000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],
