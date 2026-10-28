@@ -97,3 +97,12 @@ packages/*
 packages/dsh-scale/node_modules/
 packages/dsh-scale/lib/
 test-fixtures/
+# Machine-local runtime state and release artifacts
+.hook-state/
+.scale/agents/messages/
+.scale/ledger/
+.scale/tasks/
+.workbuddy/
+.workbuddy-ai/
+output/
+*.tgz
