@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Install-time native binding self-check.
 //
-// better-sqlite3 ships a .node binary compiled for one Node ABI. After a Node
-// major upgrade, require('better-sqlite3') still succeeds (it only evaluates
-// the JS wrapper) but the first `new Database()` fails to dlopen. The visible
-// symptom is `scale status` reporting DEGRADED while `scale doctor` looked
-// healthy. Surfacing it at install time turns a confusing runtime failure into
-// one readable line.
+// better-sqlite3 ships a prebuilt .node binary. Up to 11.x that binary was a
+// V8 addon compiled for exactly one Node ABI, so a Node major upgrade left
+// require('better-sqlite3') succeeding (it only evaluates the JS wrapper) while
+// the first `new Database()` failed to dlopen. 13.x is an N-API addon, so the
+// binding is ABI-stable, but a missing or unusable prebuild fails the same way.
+// Either way the visible symptom is `scale status` reporting DEGRADED while
+// `scale doctor` looked healthy; surfacing it at install time turns a confusing
+// runtime failure into one readable line.
 //
 // Contract: never block an install. Every path exits 0.
 

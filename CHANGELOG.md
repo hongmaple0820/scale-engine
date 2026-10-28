@@ -1,5 +1,12 @@
 ## 0.58.0-alpha.2 - 2026-10-27
 
+### 原生依赖升级 — better-sqlite3 11 → 13（N-API）
+
+- `better-sqlite3` `^11.10.0 → ^13.0.3`。11.x 是 V8 addon：预编译 `.node` 绑定单一 Node ABI，在非 Node 宿主里直接失效——DSH 桌面端的 Electron 44 运行时要 ABI 149，而 11.x 的预编译是 127，`new Database()` 报 `ERR_DLOPEN_FAILED`，artifact store / dashboard / knowledge base 全部不可用；11.10.0 的 C++ 源码又依赖已被 V8 14 移除的 API（`v8::External::Value()`、`v8::Context::GetIsolate` 等），无法为本机 Electron 重编。
+- 13.x 改为 N-API（`node-addon-api`），预编译二进制跨 ABI 稳定，`engines.node` 为 `>=22`，与仓库既有的 `>=22.12.0` 一致。依赖树同时收缩：移除 `prebuild-install` / `bindings` / `node-abi` / `tar-fs` 等 **26** 个安装期包，仅新增 `node-addon-api@8.9.2`。
+- 自检保留：`scripts/workflow/check-native-abi.mjs` 与 `scale doctor` / `scale status` 仍会在安装期和运行时真实打开 `:memory:` 句柄——ABI 不匹配不再是 13.x 的失败模式，但预编译缺失或损坏仍会在首个 `new Database()` 暴露。`docs/workflow/GATES_AND_SCORE.md` 的 Native Module Self-Check 一节同步改写。
+- 验证：sqlite 相关 4 个测试文件（sqliteStore / sqliteKnowledgeBase / dashboardServer / environmentDoctor）**58/58**；全量 `npm test` **2378 passed / 1 skipped / 14 failed**，14 个失败全部是 Windows 临时目录 `EPERM` 与 `afterEach` hook 超时的并发 flake（openclaw/qcoder/trae/vsc adapter、memoryFabric、memoryLearning、agentOsMultiAgentOrchestrator 共 7 个文件），串行复跑 **65/65** 通过；`npm run typecheck`、`npm run build`（含 Vue SPA）通过；`npm run lint` **0 error**（2392 条既存 warning）；`npm audit --omit=dev`（registry.npmjs.org）**0** 漏洞；`npm run docs:health` 六项全过。
+
 ### 依赖安全修复 — 生产依赖漏洞清零（18 → 0）
 
 - `npm audit --omit=dev` 此前报 **18 个漏洞（1 critical / 12 high / 5 moderate）**，全部来自随包发布的运行时依赖；其中 critical 是 `proxy-addr` 的 IPv4-mapped IPv6 信任子网绕过（经 `@modelcontextprotocol/sdk → express` 传递引入）。

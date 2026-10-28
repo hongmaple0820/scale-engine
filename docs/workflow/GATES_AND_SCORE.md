@@ -43,20 +43,26 @@ Two rules matter when reading gate results:
 
 ## Native Module Self-Check
 
-The artifact store, dashboard, and knowledge base load `better-sqlite3`, whose
-`.node` binary is bound to one Node ABI. `require('better-sqlite3')` still succeeds
-when the binding was compiled for a different Node major — the loader only fails at
-the first `new Database()`. SCALE therefore opens a real handle in two places:
+The artifact store, dashboard, and knowledge base load `better-sqlite3`. Up to
+11.x its `.node` binary was a V8 addon bound to one Node ABI, and
+`require('better-sqlite3')` still succeeded when that binary had been built for a
+different Node major — the loader only failed at the first `new Database()`.
+SCALE now depends on `better-sqlite3` 13.x, an N-API addon whose shipped prebuild
+is ABI-stable (Node >= 22), so a Node upgrade no longer invalidates the binding.
+A missing or unusable prebuild still fails the same way at the first handle, so
+SCALE opens a real one in two places:
 
 - At install time, `scripts/workflow/check-native-abi.mjs` (a `postinstall` hook)
-  prints the runtime ABI, the ABI the binding was built for, and the fix. It never
-  blocks the install, and stays silent when the binding matches.
+  prints the runtime ABI, the ABI the binding was built for (when the loader
+  reports one), and the fix. It never blocks the install, and stays silent when
+  the binding opens.
 - At runtime, `scale doctor` and `scale status` open an in-memory database before
-  reporting the runtime as healthy, so a mismatched binding shows up as a failure
+  reporting the runtime as healthy, so a broken binding shows up as a failure
   instead of a false green.
 
-Fix: `npm rebuild better-sqlite3`, or run SCALE on the Node major that built the
-binding.
+Fix: reinstall the package (`npm install better-sqlite3`) so its prebuilt binary
+is restored, or rebuild from source with `npm rebuild better-sqlite3` when a C++
+toolchain is available.
 
 ## Architecture Standards Gate
 
