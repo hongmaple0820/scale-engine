@@ -1,5 +1,15 @@
 ## 0.58.0-alpha.2 - 2026-10-27
 
+### 依赖安全修复 — 生产依赖漏洞清零（18 → 0）
+
+- `npm audit --omit=dev` 此前报 **18 个漏洞（1 critical / 12 high / 5 moderate）**，全部来自随包发布的运行时依赖；其中 critical 是 `proxy-addr` 的 IPv4-mapped IPv6 信任子网绕过（经 `@modelcontextprotocol/sdk → express` 传递引入）。
+- 根因之一是 `overrides.qs` 自己过期了：锁在 `6.15.2`，而该版本正落在漏洞区间 `2.2.5 - 6.16.0` 内，等于这条安全 override 反过来固定了一个已知有问题的版本。已升至 `6.17.0`。
+- 升级（均无 breaking）：`@modelcontextprotocol/sdk` `1.29.0 → 1.32.2`（同时修掉 express / body-parser / ip-address / fast-uri 链路）、`js-yaml` `^4.2.0 → ^4.3.2`（CVE-2026-59870 系列 CPU 耗尽）、`vue` `^3.5.38 → ^3.5.44`（@vue/server-renderer）、`hono` `^4.5.0 → ^4.13.14` 与 `@hono/node-server` `^2.0.4 → ^2.1.5`（Windows 编码反斜杠路径遍历、重复请求头去重缺陷）。
+- 移除 `zod` 直接依赖：全仓（`src`/`tests`/`scripts`/`dashboard`/`packages`）零 `import`、零动态引用，属于幽灵依赖；MCP SDK 自身的 `^3.25 || ^4.0` 约束会把传递版本解析到已修复的 `4.6.7`。保留它只会把一个未使用的包钉在漏洞区间。
+- 同时修复本机 `better-sqlite3` 的 Node 24 ABI 不匹配（bindings 编译于 Node 22 / ABI 127，运行时 ABI 137）：`npm rebuild better-sqlite3` 后 `:memory:` 读写正常，`scale status` 不再因此 DEGRADED。该问题先于本次改动存在。
+- 验证：`npm audit --omit=dev` = **0**；`npm run typecheck` 通过；`npm run lint` 0 error；覆盖 hono / js-yaml / MCP 面的 231 个测试全通过（dashboard、skills、shield、mcpTools、mcpStdioFilter）；`npm run build` 通过（含 Vue SPA）；`npm ci --dry-run` 确认锁文件一致。
+- 剩余 8 个漏洞全部位于 dev 工具链（`vitest` 2.x、`vite` 5.x、`@vitest/coverage-v8`），不随包发布，CI 的 `--omit=dev` 审计门禁已可通过；其 breaking 升级（vitest 5 / vite 8）单独排期，不与本次安全修复混合。
+
 ### 严格安装环境下的启动崩溃 — AST 层改为惰性加载
 
 - `src/guardrails/ast/parse.ts` 静态 `import` 了 `@typescript-eslint/typescript-estree`，而后者把 `typescript` 声明为 **peer**。在 `autoInstallPeers: false`（部分 pnpm 配置）、pnpm 非 hoisted 布局、或手工 `--ignore-scripts` 搭建的宿主里，`typescript` 不会被安装，静态 import 于是在**模块加载阶段**抛 `MODULE_NOT_FOUND`，把调用方一起带走——`src/workflow/EngineeringStandards.ts` 一行 import 就足以让整个 workflow 层（`scale status`、门禁、标准检查）无法加载。实测：屏蔽 `typescript` 后 `import('./dist/workflow/EngineeringStandards.js')` 直接 `MODULE_NOT_FOUND`。
