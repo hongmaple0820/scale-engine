@@ -97,6 +97,11 @@
         "command": "bash .claude/hooks/session-end-gate.sh",
         "timeout": 5000,
         "description": "Summarize uncommitted code changes and verification expectations before handoff."
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/shield-require-clean-worktree.cjs",
+        "timeout": 10000
       }
     ]
   }

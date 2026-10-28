@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/shield-pre-tool.cjs",
+        "timeout": 5000
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/shield-require-clean-worktree.cjs",
+        "timeout": 10000
+      }
+    ]
+  }
+}

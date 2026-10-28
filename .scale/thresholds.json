@@ -1,0 +1,18 @@
+{
+  "coverage": {
+    "minimum": 80,
+    "unit": "percent"
+  },
+  "gates": {
+    "G6_coverage": {
+      "minimum": 80
+    }
+  },
+  "retry": {
+    "bruteMaximum": 3,
+    "unit": "count"
+  },
+  "severity": {
+    "blockLevel": "CRITICAL"
+  }
+}
