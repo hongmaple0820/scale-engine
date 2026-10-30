@@ -7,6 +7,22 @@
 #
 # Note: stdio child-process env is scrubbed (KEY|PASSWORD|SECRET|TOKEN / DSH_*);
 # pass any SCALE_* variables explicitly via config.env if ever needed.
+#
+# ── toolCallTimeoutMs: 60000 (M5 review) ─────────────────────────────────
+# 60s covers every synchronous tool (list/validate/estimate/get/create all
+# finish in <10s; create performs only validation + cost estimation, never
+# rendering). LONG TASKS MUST BE ASYNC — render/generate_video/generate_speech
+# take minutes and are designed for the create → run → wait chain:
+#   1. media_create_task          (fast, returns taskId immediately)
+#   2. media_run_task             (starts execution in the background, returns
+#                                  immediately with the current snapshot)
+#   3. media_wait_task            (polls, ≤50s per call — fits the 60s timeout;
+#                                  call repeatedly until status is terminal)
+# Never call a synchronous convenience tool (media_render_storyboard,
+# media_generate_image) for long jobs: a timeout there kills the tool call but
+# NOT the underlying run (the lock keeps executing server-side), leaving the
+# conversation without a result and the task still running. The convenience
+# tools exist only for sub-10s local work (mock providers, tiny storyboards).
 - insert:
     - id: mcp-scale
       name: '@deepseek-ai/dsh-mcp-client'

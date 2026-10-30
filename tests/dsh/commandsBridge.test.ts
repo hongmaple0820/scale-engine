@@ -49,10 +49,12 @@ describe('registerScaleCommands', () => {
     expect(names).toContain('scale-media-doctor')
     expect(names).toContain('scale-media-tasks')
     expect(names).toContain('scale-media-providers')
+    expect(names).toContain('scale-media-approvals') // M5: approvals inbox view (list only)
     for (const spec of SCALE_COMMANDS) {
       const argv = spec.args.join(' ')
       expect(argv.includes('render')).toBe(false)
       expect(argv.includes('generate')).toBe(false)
+      expect(argv.includes('decide')).toBe(false) // decisions stay on dashboard/CLI
     }
   })
 

@@ -40,6 +40,32 @@ export interface Observation {
   resolution?: string
   tokensUsed: number
   modelUsed: string
+  /** Optional discriminator (media plan M5): 'gate' observations predate this field and omit it. */
+  domain?: 'gate' | 'media'
+  /**
+   * Structured media context (plan 2026-10-29 M5). Present only when
+   * `domain === 'media'`; everything else stays gate-shaped so existing
+   * pattern extraction keeps working unchanged.
+   */
+  media?: MediaObservationContext
+}
+
+export type MediaObservationKind =
+  | 'job_failed'
+  | 'provider_timeout'
+  | 'cost_overrun'
+  | 'approval_rejected'
+  | 'validation_failed'
+
+export interface MediaObservationContext {
+  kind: MediaObservationKind
+  jobId: string
+  actionId: string
+  providerId?: string
+  errorCode?: string
+  estimatedCny?: number | null
+  actualCny?: number
+  attempt: number
 }
 
 export interface PatternMatch {

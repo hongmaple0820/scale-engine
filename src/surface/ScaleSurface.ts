@@ -404,6 +404,39 @@ export function listSurface(projectDir: string, scaleDir = join(projectDir, '.sc
     { path: '.scale/reports/', kind: 'reports', note: '可再生 — clean 候选' },
     { path: '.scale/tmp/', kind: 'tmp', note: '72h TTL 自愈' },
     { path: '.scale/cache/', kind: 'cache', note: '可再生 — clean 候选' },
+    ...mediaSurfaceRoots(projectDir),
   ]
   return { roots, external, unregistered, missing, scaleEntryCount }
+}
+
+// ---------------------------------------------------------------------------
+// Media plane registration (M4): media task dirs participate in the same
+// governance surface. Task records and evidence are state/evidence (never
+// auto-cleaned); render/ intermediates are tmp (media GC's only writable
+// scope). The media gc module reads the CLASSIFICATION contract from here —
+// it never invents its own deletion rules (plan §M4, ADR-8).
+// ---------------------------------------------------------------------------
+
+/** Exists so the listing stays honest even when the media plane is unused. */
+export function mediaSurfaceRoots(projectDir: string): Array<{ path: string; kind: SurfaceKind; note?: string }> {
+  const tasksDir = join(projectDir, 'media', 'projects')
+  if (!existsSync(tasksDir)) return []
+  return [
+    { path: 'media/projects/', kind: 'state', note: '媒体任务记录 — media gc 永不清理 task.json/events.jsonl' },
+    { path: 'media/projects/*/tasks/*/evidence/', kind: 'evidence', note: '媒体任务证据 — 永不清理' },
+    { path: 'media/projects/*/tasks/*/output/', kind: 'state', note: '媒体生成产物 — 仅随任务记录管理，gc 不触碰' },
+    { path: 'media/projects/*/tasks/*/render/', kind: 'tmp', note: '渲染中间产物 — media gc --apply 的唯一可删范围（默认 dry-run，14 天年龄门槛）' },
+  ]
+}
+
+/**
+ * The machine-readable contract behind the listing above: what media paths
+ * scale clean / media gc may ever delete. Anything not matching stays put.
+ */
+export function classifyMediaPath(rel: string): SurfaceKind | 'protected' {
+  const p = rel.replace(/\\/g, '/')
+  if (!p.startsWith('media/')) return 'protected'
+  if (p.includes('/evidence/')) return 'evidence'
+  if (/\/tasks\/[^/]+\/render(\/|$)/.test(p)) return 'tmp'
+  return 'state'
 }

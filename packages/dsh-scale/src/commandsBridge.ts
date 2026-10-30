@@ -32,6 +32,7 @@ export const SCALE_COMMANDS: ScaleCommandSpec[] = [
   { name: 'scale-media-doctor', description: 'Check media pipeline prerequisites (ffmpeg/ffprobe/playwright)', args: ['media', 'doctor'] },
   { name: 'scale-media-tasks', description: 'List media workflow tasks in this project', args: ['media', 'task', 'list'] },
   { name: 'scale-media-providers', description: 'List media providers with config status (no secrets)', args: ['media', 'providers', 'list'] },
+  { name: 'scale-media-approvals', description: 'List pending media approval requests (decisions happen on the dashboard or CLI)', args: ['media', 'approvals', 'list'] },
 ]
 
 /**
