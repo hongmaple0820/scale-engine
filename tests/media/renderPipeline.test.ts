@@ -9,6 +9,7 @@ import { createRequire } from 'node:module'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createJob, runJob, readJobStoryboard } from '../../src/media/jobs/JobService.js'
 import { resolveMediaBin, probeVideo } from '../../src/media/render/FfmpegAdapter.js'
+import { EvidenceWriter, assetRefFrom, parseAssetRef } from '../../src/media/index.js'
 import type { Storyboard } from '../../src/media/types.js'
 
 const nodeRequire = createRequire(import.meta.url)
@@ -74,7 +75,6 @@ describe('render pipeline (integration, bins required)', () => {
 
     // frozen storyboard + evidence exist
     expect(readJobStoryboard(root, undefined, created.job.id).canvas.width).toBe(960)
-    const { EvidenceWriter } = await import('../../src/media/evidence/EvidenceWriter.js')
     const evidence = new EvidenceWriter(join(root, 'media', 'projects', 'default', 'tasks', created.job.id), created.job.id).readAll()
     expect(evidence.some(event => event.action === 'commit_asset' && event.result === 'ok')).toBe(true)
     expect(evidence.some(event => event.action === 'bin_versions')).toBe(true)
@@ -83,6 +83,41 @@ describe('render pipeline (integration, bins required)', () => {
     const again = createJob({ root, storyboard, idempotencyKey: 'pipeline-smoke' })
     expect(again.deduplicated).toBe(true)
     expect(again.job.id).toBe(created.job.id)
+  }, 120000)
+
+  it.runIf(binsReady && playwrightReady)('materializes an asset:// ref and renders it end to end', async () => {
+    const image = createJob({
+      root,
+      type: 'generate_image',
+      imageRequest: { prompt: 'pipeline asset source', size: '1024x1024', providerId: 'mock' },
+      idempotencyKey: 'pipeline-asset-image',
+    })
+    const imageJob = await runJob({ root, taskId: image.job.id })
+    expect(imageJob.status).toBe('succeeded')
+    const ref = assetRefFrom(imageJob.id, imageJob.outputs[0].path)
+
+    const board: Storyboard = {
+      schemaVersion: '0.3',
+      title: 'asset ref smoke',
+      canvas: { width: 640, height: 360, fps: 24, background: '#0f172a' },
+      output: { crf: 30, preset: 'veryfast' },
+      scenes: [
+        {
+          id: 'asset',
+          durationMs: 500,
+          elements: [{ type: 'image', src: ref, x: 'center', y: 0, width: 640, height: 360 }],
+        },
+      ],
+    }
+    const created = createJob({ root, storyboard: board, idempotencyKey: 'pipeline-asset-render' })
+    const job = await runJob({ root, taskId: created.job.id })
+    expect(job.status).toBe('succeeded')
+
+    const parsed = parseAssetRef(ref)
+    expect(existsSync(join(created.taskDir, 'assets', 'external', imageJob.id, parsed.rest))).toBe(true)
+    const evidence = new EvidenceWriter(created.taskDir, job.id).readAll()
+    expect(evidence.some(event => event.action === 'asset_materialized' && event.result === 'ok')).toBe(true)
+    expect(evidence.some(event => event.action === 'commit_asset' && event.result === 'ok')).toBe(true)
   }, 120000)
 
   it.skipIf(binsReady && playwrightReady)('skips when Chromium/FFmpeg are unavailable (CI-safe)', () => {

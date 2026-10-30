@@ -7,10 +7,15 @@
 
 import type { ElementAnimation, SceneElement, Storyboard } from '../types.js'
 
+/** Elements the HTML renderer can draw; video is composited by ffmpeg instead. */
+type HtmlElement = Exclude<SceneElement, { type: 'video' }>
+
+const isHtmlElement = (element: SceneElement): element is HtmlElement => element.type !== 'video'
+
 const escapeHtml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-function elementStyle(element: SceneElement): string {
+function elementStyle(element: HtmlElement): string {
   const left = element.x === 'center' ? 'left:0;width:100%;text-align:center;' : `left:${element.x}px;`
   const base = `position:absolute;top:${element.y}px;${base_box(element)}`
   if (element.type === 'text') {
@@ -22,16 +27,21 @@ function elementStyle(element: SceneElement): string {
   return `${base}${left}height:${element.height}px;`
 }
 
-function base_box(element: SceneElement): string {
+function base_box(element: HtmlElement): string {
   // images carry explicit width/height; text uses the centering box; rect uses width
   if (element.type === 'rect') return `width:${element.width}px;`
   if (element.type === 'image') return `width:${element.width}px;`
   return ''
 }
 
-function elementContent(element: SceneElement, assetsPrefix: string): string {
+function elementContent(element: HtmlElement, assetsPrefix: string): string {
   if (element.type === 'text') return escapeHtml(element.content)
-  if (element.type === 'image') return `<img src="${assetsPrefix}/${element.src.split('\\').join('/')}" style="width:100%;height:100%;object-fit:fill;display:block;">`
+  if (element.type === 'image') {
+    // src is validated, but escaping is the last line of defence: a legacy
+    // board accepted before the charset rule must not inject attributes.
+    const src = escapeHtml(`${assetsPrefix}/${element.src.split('\\').join('/')}`)
+    return `<img src="${src}" style="width:100%;height:100%;object-fit:fill;display:block;">`
+  }
   return ''
 }
 
@@ -58,27 +68,36 @@ function animationScript(): string {
 export interface BuildPageOptions {
   /** prefix for image src resolution relative to the page location (default: task assets) */
   assetsPrefix?: string
+  /** transparent stage, used for overlay layers composited by ffmpeg */
+  transparent?: boolean
 }
 
 export function buildPageHtml(storyboard: Storyboard, options: BuildPageOptions = {}): string {
   const assetsPrefix = options.assetsPrefix ?? '../assets'
-  const { width, height, background } = storyboard.canvas
+  const { width, height } = storyboard.canvas
+  const background = options.transparent ? 'transparent' : storyboard.canvas.background
   const scenesHtml = storyboard.scenes
     .map(
       (scene, index) =>
         `<div class="scene" id="scene-${index}" style="position:absolute;inset:0;display:none;">` +
-        scene.elements.map(el => `<div class="el" style="${elementStyle(el)}">${elementContent(el, assetsPrefix)}</div>`).join('') +
+        scene.elements
+          .filter(isHtmlElement)
+          .map(el => `<div class="el" style="${elementStyle(el)}">${elementContent(el, assetsPrefix)}</div>`)
+          .join('') +
         '</div>',
     )
     .join('\n')
 
   const scenesPayload = JSON.stringify(
-    storyboard.scenes.map(scene => ({
-      durationMs: scene.durationMs,
-      transitionOut: scene.transitionOut ?? null,
-      animations: scene.elements.map(el => (el as { animation?: ElementAnimation }).animation ?? null),
-      rectWidths: scene.elements.map(el => (el.type === 'rect' ? el.width : 0)),
-    })),
+    storyboard.scenes.map(scene => {
+      const elements = scene.elements.filter(isHtmlElement)
+      return {
+        durationMs: scene.durationMs,
+        transitionOut: scene.transitionOut ?? null,
+        animations: elements.map(el => (el as { animation?: ElementAnimation }).animation ?? null),
+        rectWidths: elements.map(el => (el.type === 'rect' ? el.width : 0)),
+      }
+    }),
   )
 
   return `<!doctype html>

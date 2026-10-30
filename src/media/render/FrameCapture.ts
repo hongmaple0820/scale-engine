@@ -16,6 +16,13 @@ export interface CaptureOptions {
   height: number
   fps: number
   totalFrames: number
+  /**
+   * Global storyboard time at local frame 0 (ms). Per-scene segment capture
+   * passes the scene's start so the page's `__renderFrame` sees absolute time.
+   */
+  timeOffsetMs?: number
+  /** first file index (per-scene segments keep 0; global capture keeps 0) */
+  frameStart?: number
   /** called every ~30 frames with (completed, total) for progress reporting */
   onProgress?: (completed: number, total: number) => void
   /** return true to abort between frames (cooperative cancel) */
@@ -33,7 +40,7 @@ export interface CaptureResult {
 interface PlaywrightPage {
   goto(url: string): Promise<unknown>
   evaluate<R>(fn: (t: number) => R, arg: number): Promise<R>
-  screenshot(options: { path: string; type: 'png' }): Promise<unknown>
+  screenshot(options: { path: string; type: 'png'; omitBackground?: boolean }): Promise<unknown>
 }
 interface PlaywrightBrowser {
   newPage(options: { viewport: { width: number; height: number }; deviceScaleFactor: number }): Promise<PlaywrightPage>
@@ -59,6 +66,8 @@ export async function captureFrames(options: CaptureOptions): Promise<CaptureRes
   const browser = await chromium.launch({ headless: true })
   const started = Date.now()
   let completed = 0
+  const timeOffsetMs = options.timeOffsetMs ?? 0
+  const frameStart = options.frameStart ?? 0
   try {
     const page = await browser.newPage({
       viewport: { width: options.width, height: options.height },
@@ -67,8 +76,9 @@ export async function captureFrames(options: CaptureOptions): Promise<CaptureRes
     await page.goto('file:///' + options.pageHtmlPath.replace(/\\/g, '/'))
     for (let frame = 0; frame < options.totalFrames; frame++) {
       if (options.isCancelled?.()) throw new MediaError('MEDIA_JOB_CANCELLED', 'capture cancelled by request', { retryable: false })
-      await page.evaluate((t: number) => (globalThis as unknown as { __renderFrame(t: number): void }).__renderFrame(t), Math.round((frame * 1000) / options.fps))
-      const padded = String(frame).padStart(5, '0')
+      const globalMs = timeOffsetMs + Math.round((frame * 1000) / options.fps)
+      await page.evaluate((t: number) => (globalThis as unknown as { __renderFrame(t: number): void }).__renderFrame(t), globalMs)
+      const padded = String(frameStart + frame).padStart(5, '0')
       await page.screenshot({ path: join(options.framesDir, `f${padded}.png`), type: 'png' })
       completed = frame + 1
       if (completed % 30 === 0) options.onProgress?.(completed, options.totalFrames)
@@ -78,4 +88,32 @@ export async function captureFrames(options: CaptureOptions): Promise<CaptureRes
   }
   const captureMs = Date.now() - started
   return { framesDir: options.framesDir, totalFrames: completed, captureMs, avgMsPerFrame: Math.round(captureMs / Math.max(1, completed)) }
+}
+
+export interface StillCaptureOptions {
+  pageHtmlPath: string
+  outPath: string
+  width: number
+  height: number
+}
+
+/**
+ * Capture one frame with a transparent background (video-scene overlay layer).
+ * The page's own boot call renders t=0; overlays are static by construction.
+ */
+export async function captureStill(options: StillCaptureOptions): Promise<{ captureMs: number }> {
+  const chromium = loadChromium()
+  const started = Date.now()
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage({
+      viewport: { width: options.width, height: options.height },
+      deviceScaleFactor: 1,
+    })
+    await page.goto('file:///' + options.pageHtmlPath.replace(/\\/g, '/'))
+    await page.screenshot({ path: options.outPath, type: 'png', omitBackground: true })
+  } finally {
+    await browser.close().catch(() => undefined)
+  }
+  return { captureMs: Date.now() - started }
 }

@@ -124,6 +124,9 @@ describe('generate_image job (OpenAI-compatible wire format, local mock)', () =>
     process.env.MEDIA_OPENAI_BASE_URL = baseUrl
     process.env.MEDIA_OPENAI_API_KEY = 'test-key-local'
     process.env.MEDIA_PROVIDER_ALLOW_LOCAL = '1'
+    // Provider wire format is what this test covers; the approval gate is
+    // exercised in tests/media/approvals*.test.ts.
+    process.env.MEDIA_APPROVAL_MODE = 'off'
     try {
       const created = createJob({
         root,
@@ -151,12 +154,52 @@ describe('generate_image job (OpenAI-compatible wire format, local mock)', () =>
       delete process.env.MEDIA_OPENAI_BASE_URL
       delete process.env.MEDIA_OPENAI_API_KEY
       delete process.env.MEDIA_PROVIDER_ALLOW_LOCAL
+      delete process.env.MEDIA_APPROVAL_MODE
+    }
+  }, 60000)
+
+  it('never persists the API key in the task record, evidence, events, or ledger', async () => {
+    const secret = 'sk-media-secret-do-not-persist-42'
+    process.env.MEDIA_OPENAI_BASE_URL = baseUrl
+    process.env.MEDIA_OPENAI_API_KEY = secret
+    process.env.MEDIA_PROVIDER_ALLOW_LOCAL = '1'
+    process.env.MEDIA_APPROVAL_MODE = 'off'
+    try {
+      const created = createJob({
+        root,
+        type: 'generate_image',
+        imageRequest: { prompt: 'secret scan', size: '1024x1024', providerId: 'openai-compatible' },
+        idempotencyKey: 'img-secret-scan',
+      })
+      const job = await runJob({ root, taskId: created.job.id })
+      expect(job.status).toBe('succeeded')
+
+      const { readdirSync, readFileSync, existsSync } = await import('node:fs')
+      const walk = (dir: string): string[] =>
+        readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
+          entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)],
+        )
+      const files = [
+        ...walk(created.taskDir),
+        ...(existsSync(join(root, '.scale', 'ledger', 'events.jsonl')) ? [join(root, '.scale', 'ledger', 'events.jsonl')] : []),
+        ...(existsSync(join(root, '.scale', 'model-usage', 'usage.jsonl')) ? [join(root, '.scale', 'model-usage', 'usage.jsonl')] : []),
+      ]
+      expect(files.length).toBeGreaterThan(5)
+      for (const file of files) {
+        expect(readFileSync(file, 'utf-8'), `secret leaked into ${file}`).not.toContain(secret)
+      }
+    } finally {
+      delete process.env.MEDIA_OPENAI_BASE_URL
+      delete process.env.MEDIA_OPENAI_API_KEY
+      delete process.env.MEDIA_PROVIDER_ALLOW_LOCAL
+      delete process.env.MEDIA_APPROVAL_MODE
     }
   }, 60000)
 
   it('fails cleanly when the key is absent', async () => {
     process.env.MEDIA_OPENAI_BASE_URL = baseUrl
     process.env.MEDIA_PROVIDER_ALLOW_LOCAL = '1'
+    process.env.MEDIA_APPROVAL_MODE = 'off'
     delete process.env.MEDIA_OPENAI_API_KEY
     try {
       const created = createJob({
@@ -172,6 +215,7 @@ describe('generate_image job (OpenAI-compatible wire format, local mock)', () =>
     } finally {
       delete process.env.MEDIA_OPENAI_BASE_URL
       delete process.env.MEDIA_PROVIDER_ALLOW_LOCAL
+      delete process.env.MEDIA_APPROVAL_MODE
     }
   }, 60000)
 })

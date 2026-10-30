@@ -6,7 +6,8 @@ import type { MediaJobStatus } from '../types.js'
 import { MediaError } from '../errors.js'
 
 const TRANSITIONS: Record<MediaJobStatus, readonly MediaJobStatus[]> = {
-  created: ['validated', 'failed_validation', 'cancelled'],
+  created: ['validated', 'awaiting_approval', 'failed_validation', 'cancelled'],
+  awaiting_approval: ['created', 'cancelled'],
   validated: ['running', 'cancelled'],
   running: ['packaging', 'failed', 'cancelled', 'interrupted'],
   packaging: ['succeeded', 'failed', 'interrupted'],

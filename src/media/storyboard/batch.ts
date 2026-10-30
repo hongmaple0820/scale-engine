@@ -33,9 +33,10 @@ export function expandStoryboardTemplate(template: Storyboard, count: number, op
     const stamped = JSON.parse(JSON.stringify(template.scenes)) as Storyboard['scenes']
     for (const scene of stamped) {
       scene.id = substitute(scene.id, index, padded)
+      if (scene.narrationText) scene.narrationText = substitute(scene.narrationText, index, padded)
       for (const element of scene.elements) {
         if (element.type === 'text') element.content = substitute(element.content, index, padded)
-        if (element.type === 'image') element.src = substitute(element.src, index, padded)
+        if (element.type === 'image' || element.type === 'video') element.src = substitute(element.src, index, padded)
       }
     }
     scenes.push(...stamped)

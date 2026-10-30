@@ -114,10 +114,33 @@ export function recoverInterruptedJobs(workspace: MediaWorkspace): string[] {
       continue // unreadable snapshot — leave for manual inspection, do not delete
     }
     if (INTERRUPTIBLE_STATUSES.includes(job.status)) {
+      const fromStatus = job.status
+      const handle = job.provider
+      const handleDeadline = handle?.deadlineAt ? Date.parse(handle.deadlineAt) : Number.NaN
+      // Plan M2: a video handle whose provider deadline already passed can
+      // never complete by polling — settle it as provider_timeout instead of
+      // resuming a doomed poll.
+      if (job.type === 'generate_video' && handle && Number.isFinite(handleDeadline) && handleDeadline <= Date.now()) {
+        job.status = 'failed'
+        job.error = {
+          code: 'MEDIA_PROVIDER_TIMEOUT',
+          message: `video provider handle expired at ${handle.deadlineAt}`,
+          retryable: false,
+        }
+        job.finishedAt = new Date().toISOString()
+        writeSnapshot(dir, job)
+        appendJobEvent(dir, {
+          at: new Date().toISOString(),
+          type: 'provider_handle_expired',
+          data: { providerJobId: handle.jobId, deadlineAt: handle.deadlineAt, fromStatus },
+        })
+        recovered.push(job.id)
+        continue
+      }
       job.status = 'interrupted'
       job.error = { code: 'MEDIA_JOB_INTERRUPTED', message: 'process exited mid-render; inspect render/ and retry', retryable: true }
       writeSnapshot(dir, job)
-      appendJobEvent(dir, { at: new Date().toISOString(), type: 'recovered_interrupted', data: { fromStatus: job.status } })
+      appendJobEvent(dir, { at: new Date().toISOString(), type: 'recovered_interrupted', data: { fromStatus } })
       recovered.push(job.id)
     }
   }

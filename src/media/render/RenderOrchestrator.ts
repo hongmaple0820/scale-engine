@@ -1,23 +1,35 @@
-// Render orchestrator (v3 plan §7.1): validate → prepare → capture → audio →
-// encode → inspect → commit. Every stage is bounded, logged to the task event
-// log and to evidence; success is only declared after output inspection and
-// asset commit (v3 §4.2 gate). Cancellation is cooperative between stages.
+// Render orchestrator (v3 plan §7.1, M3 extension).
+//
+// Legacy path (0.1–0.3, and 0.4 boards with neither video nor audio):
+//   validate → prepare → capture → audio(440Hz placeholder) → encode → inspect → commit
+// Composed path (any video element or audio track, DSL 0.4):
+//   validate → prepare → compose_segments → audio_mix → mux → inspect → commit
+//
+// Scene durations are authoritative; every stage is bounded, logged to the task
+// event log and to evidence, and success is only declared after output
+// inspection and asset commit (v3 §4.2 gate).
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { MediaError } from '../errors.js'
 import type { AssetProbe, AssetRecord, Storyboard } from '../types.js'
-import { storyboardAssetRefs, storyboardTotalMs } from '../validation/validateStoryboard.js'
+import { storyboardAssetRefs, storyboardTotalMs, validateStoryboard } from '../validation/validateStoryboard.js'
+import { collectAssetRefs } from '../assets/refs.js'
+import { materializeAssets } from '../assets/materialize.js'
 import { EvidenceWriter } from '../evidence/EvidenceWriter.js'
-import { appendJobEvent } from '../jobs/JobStore.js'
+import { appendJobEvent, type MediaWorkspace } from '../jobs/JobStore.js'
 import { buildPageHtml, buildSrt } from './SceneRenderer.js'
 import { captureFrames } from './FrameCapture.js'
+import { withAutoSubtitles } from './SubtitleBuilder.js'
+import { composeSegments } from './ClipComposer.js'
+import { mixStoryboardAudio } from './AudioMixer.js'
 import {
   encodeVideo,
   extractStill,
   hasSubtitleFilter,
   mediaBinVersion,
+  muxAudio,
   probeVideo,
   requireMediaBin,
   synthesizeAudio,
@@ -29,6 +41,8 @@ export interface RenderStageInfo {
 }
 
 export interface RenderOrchestratorOptions {
+  /** present when asset:// refs may need materializing (same-project source lookup) */
+  workspace?: MediaWorkspace
   taskDir: string
   taskId: string
   storyboard: Storyboard
@@ -43,15 +57,23 @@ export interface RenderOrchestratorOptions {
 export interface RenderOutcome {
   status: 'succeeded'
   output: AssetRecord
+  /** sidecar deliverables (e.g. `output/subtitles.srt` for srt/both) */
+  extras?: AssetRecord[]
   stages: RenderStageInfo[]
   probe: AssetProbe
 }
 
-function stage<T>(name: string, fn: () => T, hooks: Pick<RenderOrchestratorOptions, 'onStage' | 'isCancelled'>, evidence: EvidenceWriter, taskDir: string): T {
+async function stage<T>(
+  name: string,
+  fn: () => T | Promise<T>,
+  hooks: Pick<RenderOrchestratorOptions, 'onStage' | 'isCancelled'>,
+  evidence: EvidenceWriter,
+  taskDir: string,
+): Promise<T> {
   if (hooks.isCancelled?.()) throw new MediaError('MEDIA_JOB_CANCELLED', `cancelled before stage "${name}"`)
   const started = Date.now()
   try {
-    const result = fn()
+    const result = await fn()
     const info = { stage: name, ms: Date.now() - started }
     hooks.onStage?.(info)
     appendJobEvent(taskDir, { at: new Date().toISOString(), type: 'stage_done', data: info })
@@ -70,99 +92,204 @@ function sha256File(path: string): string {
 }
 
 /** Task-relative paths must resolve inside the task dir (v3 §5.2 SafePath). */
-function assertInsideTaskDir(taskDir: string, relative: string, label: string): string {
-  const resolved = join(taskDir, relative)
-  const normalized = resolved.split(/[\\/]+/).join('\\')
-  const base = taskDir.split(/[\\/]+/).join('\\')
-  if (!normalized.toLowerCase().startsWith(base.toLowerCase())) {
-    throw new MediaError('MEDIA_ASSET_REF_INVALID', `${label} escapes the task directory: ${relative}`)
+function assertInsideTaskDir(taskDir: string, relativePath: string, label: string): string {
+  const base = resolve(taskDir)
+  const resolved = resolve(base, relativePath)
+  // path.relative (not a string prefix) keeps sibling dirs that share a
+  // prefix — job-1 vs job-10 — from being treated as inside.
+  const rel = relative(base, resolved)
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new MediaError('MEDIA_ASSET_REF_INVALID', `${label} escapes the task directory: ${relativePath}`)
   }
   return resolved
 }
 
+function hasVideoElement(board: Storyboard): boolean {
+  return board.scenes.some(scene => scene.elements.some(element => element.type === 'video'))
+}
+
 export async function renderStoryboard(options: RenderOrchestratorOptions): Promise<RenderOutcome> {
   const { taskDir, taskId, storyboard } = options
+  // Re-validate at render time: the board on disk may predate a validator
+  // upgrade or have been tampered with after create-time validation.
+  const validation = validateStoryboard(storyboard)
+  if (!validation.ok) {
+    throw new MediaError('MEDIA_STORYBOARD_INVALID', `storyboard failed validation at render time: ${validation.errors.join('; ')}`)
+  }
   const evidence = new EvidenceWriter(taskDir, taskId)
   const stages: RenderStageInfo[] = []
+  const hooks: RenderOrchestratorOptions = {
+    ...options,
+    onStage: info => {
+      stages.push(info)
+      options.onStage?.(info)
+    },
+  }
 
-  const ffmpeg = stage('resolve_bins', () => requireMediaBin('ffmpeg', options.ffmpegBin), options, evidence, taskDir)
-  const ffprobe = stage('resolve_bins', () => requireMediaBin('ffprobe', options.ffprobeBin), options, evidence, taskDir)
+  const ffmpeg = await stage('resolve_bins', () => requireMediaBin('ffmpeg', options.ffmpegBin), hooks, evidence, taskDir)
+  const ffprobe = await stage('resolve_bins', () => requireMediaBin('ffprobe', options.ffprobeBin), hooks, evidence, taskDir)
   evidence.append('bin_versions', 'ok', { ffmpeg: mediaBinVersion(ffmpeg), ffprobe: mediaBinVersion(ffprobe) })
 
-  const totalMs = storyboardTotalMs(storyboard)
+  // 1) external asset refs → task-local copies. Every later stage uses the
+  // rewritten board; the caller's storyboard is never mutated.
+  const board = await stage('materialize', () => {
+    if (collectAssetRefs(storyboard).length === 0) return storyboard
+    if (!options.workspace) {
+      throw new MediaError('MEDIA_ASSET_REF_INVALID', 'asset:// references require workspace context')
+    }
+    return materializeAssets({
+      workspace: options.workspace,
+      taskDir,
+      taskId,
+      storyboard,
+      evidence,
+      isCancelled: options.isCancelled,
+    }).storyboard
+  }, hooks, evidence, taskDir)
+
+  const totalMs = storyboardTotalMs(board)
   const durationSec = totalMs / 1000
   const framesDir = join(taskDir, 'render', 'frames')
+  const renderDir = join(taskDir, 'render')
   const outputPath = join(taskDir, 'output', 'final.mp4')
+  const srtPath = join(renderDir, 'subtitles.srt')
+  const pageHtmlPath = join(renderDir, 'page.html')
 
-  // 1) asset references must exist and stay inside the task
-  stage('validate_assets', () => {
-    for (const ref of storyboardAssetRefs(storyboard)) {
-      const resolved = assertInsideTaskDir(taskDir, join('assets', ref), 'image src')
+  // 2) materialized asset references must exist and stay inside the task
+  await stage('validate_assets', () => {
+    for (const ref of storyboardAssetRefs(board)) {
+      const resolved = assertInsideTaskDir(taskDir, join('assets', ref), 'media src')
       if (!existsSync(resolved)) {
         throw new MediaError('MEDIA_ASSET_REF_INVALID', `referenced asset missing: ${ref}`)
       }
     }
-  }, options, evidence, taskDir)
+  }, hooks, evidence, taskDir)
 
-  // 2) trusted page + optional subtitles
-  stage('prepare', () => {
-    const renderDir = join(taskDir, 'render')
-    writeFileSync(join(renderDir, 'page.html'), buildPageHtml(storyboard, { assetsPrefix: join('..', 'assets') }), 'utf-8')
-    const srt = buildSrt(storyboard)
-    if (srt) writeFileSync(join(renderDir, 'subtitles.srt'), srt, 'utf-8')
-  }, options, evidence, taskDir)
+  // 3) trusted page + subtitles. Retries must not inherit a stale SRT.
+  const enrichedBoard = await stage('prepare', () => {
+    const spec = board.subtitleOptions
+    const autoCues = spec !== undefined && (spec.source ?? 'auto') === 'auto' && spec.mode !== 'none'
+    const next = autoCues ? withAutoSubtitles(board) : board
+    if (existsSync(srtPath)) rmSync(srtPath, { force: true })
+    writeFileSync(pageHtmlPath, buildPageHtml(next, { assetsPrefix: join('..', 'assets') }), 'utf-8')
 
-  // 3) deterministic frame capture
-  const totalFrames = Math.round((totalMs / 1000) * storyboard.canvas.fps)
-  const capture = await stage('capture', () => {
-    return captureFrames({
-      pageHtmlPath: join(taskDir, 'render', 'page.html'),
+    // Legacy boards (no subtitleOptions) keep the historical behaviour: write
+    // cues when present and burn them if the build supports the filter.
+    const mode = board.subtitleOptions?.mode ?? 'burn'
+    const source = board.subtitleOptions?.source ?? 'auto'
+    if (mode !== 'none') {
+      if (source === 'file') {
+        const src = board.subtitleOptions?.src
+        if (!src) throw new MediaError('MEDIA_STORYBOARD_INVALID', 'subtitleOptions.src is required when source is "file"')
+        const abs = assertInsideTaskDir(taskDir, join('assets', src), 'subtitle src')
+        if (!existsSync(abs)) throw new MediaError('MEDIA_ASSET_REF_INVALID', `subtitle file is missing: ${src}`)
+        copyFileSync(abs, srtPath)
+      } else {
+        const srt = buildSrt(next)
+        if (srt) writeFileSync(srtPath, srt, 'utf-8')
+      }
+    }
+    return next
+  }, hooks, evidence, taskDir)
+
+  const subtitleMode = enrichedBoard.subtitleOptions?.mode ?? 'burn'
+  const wantsBurn = subtitleMode === 'burn' || subtitleMode === 'both'
+  const wantsSidecar = subtitleMode === 'srt' || subtitleMode === 'both'
+  const composedPath = hasVideoElement(enrichedBoard) || (enrichedBoard.audioTracks?.length ?? 0) > 0
+
+  if (composedPath) {
+    // --- composed path (DSL 0.4 video / audio) --------------------------------
+    const composed = await stage('compose_segments', () => composeSegments({
+      ffmpeg,
+      ffprobe,
+      taskDir,
+      taskId,
+      storyboard: enrichedBoard,
+      pageHtmlPath,
+      isCancelled: options.isCancelled,
+      onProgress: (done, total) => appendJobEvent(taskDir, { at: new Date().toISOString(), type: 'segment_progress', data: { done, total } }),
+    }), hooks, evidence, taskDir)
+
+    const audioPath = join(renderDir, 'audio.wav')
+    await stage('audio_mix', () => {
+      const mixed = mixStoryboardAudio({
+        ffmpeg,
+        storyboard: enrichedBoard,
+        taskDir,
+        totalMs,
+        clipAudios: composed.clipAudios,
+        outPath: audioPath,
+      })
+      evidence.append('audio_mix', 'ok', { inputs: mixed.plan.inputs.map(input => input.label), ms: mixed.ms })
+    }, hooks, evidence, taskDir)
+
+    await stage('mux', () => {
+      const burn = wantsBurn && existsSync(srtPath) && hasSubtitleFilter(ffmpeg)
+      const result = muxAudio({
+        ffmpeg,
+        videoPath: composed.videoPath,
+        audioPath,
+        outputPath,
+        totalSec: durationSec,
+        storyboard: enrichedBoard,
+        subtitlePath: burn ? 'subtitles.srt' : undefined,
+        workCwd: renderDir,
+      })
+      if (result.code !== 0) {
+        throw new MediaError('MEDIA_ENCODE_FAILED', `ffmpeg mux exited ${result.code}: ${result.stderrTail}`)
+      }
+      if (!existsSync(outputPath) || statSync(outputPath).size === 0) {
+        throw new MediaError('MEDIA_ENCODE_FAILED', 'mux reported success but the output file is missing or empty')
+      }
+      evidence.append('mux', 'ok', { burnedSubtitles: burn, segments: composed.segmentCount })
+    }, hooks, evidence, taskDir)
+  } else {
+    // --- legacy pure-image path (unchanged 440Hz placeholder) ------------------
+    const totalFrames = Math.round((totalMs / 1000) * enrichedBoard.canvas.fps)
+    await stage('capture', () => captureFrames({
+      pageHtmlPath,
       framesDir,
-      width: storyboard.canvas.width,
-      height: storyboard.canvas.height,
-      fps: storyboard.canvas.fps,
+      width: enrichedBoard.canvas.width,
+      height: enrichedBoard.canvas.height,
+      fps: enrichedBoard.canvas.fps,
       totalFrames,
       isCancelled: options.isCancelled,
       onProgress: (completed, total) => appendJobEvent(taskDir, { at: new Date().toISOString(), type: 'capture_progress', data: { completed, total } }),
-    })
-  }, options, evidence, taskDir)
-  stages.push({ stage: 'capture', ms: capture.captureMs })
+    }), hooks, evidence, taskDir)
 
-  // 4) audio bed
-  const audioPath = join(taskDir, 'render', 'audio.wav')
-  stage('audio', () => {
-    const result = synthesizeAudio({ ffmpeg, durationSec, outPath: audioPath })
-    if (result.code !== 0) throw new MediaError('MEDIA_RENDER_FAILED', `audio synthesis failed: ${result.stderrTail}`)
-  }, options, evidence, taskDir)
+    const audioPath = join(renderDir, 'audio.wav')
+    await stage('audio', () => {
+      const result = synthesizeAudio({ ffmpeg, durationSec, outPath: audioPath })
+      if (result.code !== 0) throw new MediaError('MEDIA_RENDER_FAILED', `audio synthesis failed: ${result.stderrTail}`)
+    }, hooks, evidence, taskDir)
 
-  // 5) encode (+ burned subtitles when the build supports it)
-  const srtPath = join(taskDir, 'render', 'subtitles.srt')
-  stage('encode', () => {
-    const burn = existsSync(srtPath) && hasSubtitleFilter(ffmpeg)
-    const result = encodeVideo({
-      ffmpeg,
-      framesDir,
-      fps: storyboard.canvas.fps,
-      audioPath,
-      outputPath,
-      subtitlePath: burn ? 'subtitles.srt' : undefined,
-      workCwd: join(taskDir, 'render'),
-      storyboard,
-    })
-    if (result.code !== 0) {
-      throw new MediaError('MEDIA_ENCODE_FAILED', `ffmpeg exited ${result.code}: ${result.stderrTail}`)
-    }
-    if (!existsSync(outputPath) || statSync(outputPath).size === 0) {
-      throw new MediaError('MEDIA_ENCODE_FAILED', 'ffmpeg reported success but the output file is missing or empty')
-    }
-    evidence.append('encode', 'ok', { ms: undefined, burnedSubtitles: burn })
-  }, options, evidence, taskDir)
+    await stage('encode', () => {
+      const burn = wantsBurn && existsSync(srtPath) && hasSubtitleFilter(ffmpeg)
+      const result = encodeVideo({
+        ffmpeg,
+        framesDir,
+        fps: enrichedBoard.canvas.fps,
+        audioPath,
+        outputPath,
+        subtitlePath: burn ? 'subtitles.srt' : undefined,
+        workCwd: renderDir,
+        storyboard: enrichedBoard,
+      })
+      if (result.code !== 0) {
+        throw new MediaError('MEDIA_ENCODE_FAILED', `ffmpeg exited ${result.code}: ${result.stderrTail}`)
+      }
+      if (!existsSync(outputPath) || statSync(outputPath).size === 0) {
+        throw new MediaError('MEDIA_ENCODE_FAILED', 'ffmpeg reported success but the output file is missing or empty')
+      }
+      evidence.append('encode', 'ok', { burnedSubtitles: burn })
+    }, hooks, evidence, taskDir)
+  }
 
-  // 6) output inspection
-  const probe = stage('inspect', () => {
+  // 4) output inspection (same contract for both paths)
+  const probe = await stage('inspect', () => {
     const inspected = probeVideo(ffprobe, outputPath)
-    const expectedWidth = storyboard.canvas.width
-    const expectedHeight = storyboard.canvas.height
+    const expectedWidth = enrichedBoard.canvas.width
+    const expectedHeight = enrichedBoard.canvas.height
     if (inspected.videoCodec !== 'h264') throw new MediaError('MEDIA_OUTPUT_INVALID', `unexpected video codec: ${inspected.videoCodec}`)
     if (inspected.width !== expectedWidth || inspected.height !== expectedHeight) {
       throw new MediaError('MEDIA_OUTPUT_INVALID', `output is ${inspected.width}x${inspected.height}, expected ${expectedWidth}x${expectedHeight}`)
@@ -170,11 +297,14 @@ export async function renderStoryboard(options: RenderOrchestratorOptions): Prom
     if (inspected.durationSec === undefined || Math.abs(inspected.durationSec - durationSec) > 0.5) {
       throw new MediaError('MEDIA_OUTPUT_INVALID', `output duration ${inspected.durationSec}s deviates from expected ${durationSec}s by more than 0.5s`)
     }
+    if (composedPath && inspected.audioCodec !== 'aac') {
+      throw new MediaError('MEDIA_OUTPUT_INVALID', `composed output has no AAC audio stream (found ${inspected.audioCodec ?? 'none'})`)
+    }
     return inspected
-  }, options, evidence, taskDir)
+  }, hooks, evidence, taskDir)
 
-  // 7) commit asset record (status flip happens in JobService, after commit)
-  const output = stage('commit', () => {
+  // 5) commit asset record (status flip happens in JobService, after commit)
+  const committed = await stage('commit', () => {
     const record: AssetRecord = {
       id: `asset-${taskId}-final`,
       path: 'output/final.mp4',
@@ -188,9 +318,29 @@ export async function renderStoryboard(options: RenderOrchestratorOptions): Prom
       const still = extractStill({ ffmpeg, input: outputPath, atSec, outPath: join(taskDir, 'output', `still-${atSec.toFixed(2)}s.png`) })
       if (still.code !== 0) evidence.append('still_extract', 'error', { atSec })
     }
+    const extras: AssetRecord[] = []
+    if (wantsSidecar && existsSync(srtPath)) {
+      const sidecarPath = join(taskDir, 'output', 'subtitles.srt')
+      copyFileSync(srtPath, sidecarPath)
+      const sidecar: AssetRecord = {
+        id: `asset-${taskId}-subtitles`,
+        path: 'output/subtitles.srt',
+        kind: 'other',
+        bytes: statSync(sidecarPath).size,
+        sha256: sha256File(sidecarPath),
+      }
+      extras.push(sidecar)
+      evidence.append('commit_subtitles', 'ok', { path: sidecar.path, bytes: sidecar.bytes })
+    }
     evidence.append('commit_asset', 'ok', { path: record.path, bytes: record.bytes, sha256: record.sha256 })
-    return record
-  }, options, evidence, taskDir)
+    return { record, extras }
+  }, hooks, evidence, taskDir)
 
-  return { status: 'succeeded', output, stages, probe }
+  return {
+    status: 'succeeded',
+    output: committed.record,
+    ...(committed.extras.length > 0 ? { extras: committed.extras } : {}),
+    stages,
+    probe,
+  }
 }
