@@ -145,7 +145,7 @@ DSH 走的是**插件路线**，不经过本仓库的 adapter 体系（`src/adap
 | MCP stdio 入口 | `src/api/mcpStdio.ts`（`npm run mcp:stdio`） | 27 个 SCALE 工具进 DSH 工具表；默认收窄 `shell_run`/`shell_plan`（`SCALE_MCP_EXPOSE_SHELL=1` 恢复），过滤只发生在该 DSH 专属入口，其他 MCP 客户端不受影响 |
 | 治理插件 | `packages/dsh-scale/`（独立 npm 包 `@hongmaple0820/dsh-scale`） | `tools/pre-execute`（block→deny、warn→ask、`pwsh→Bash` 等工具名映射、`mcp__scale__` 解包）、`systemPrompt.context`（InstinctStore/SessionInjector 注入）、`tools/post-execute`（异步证据落盘，默认 failures-only） |
 | 插件 T2 | 同上 | 6 个治理斜杠命令（`/scale-preflight` 等，真实拉起 scale CLI，参数 allowlist 固定）+ `.scale/skills/` 阶段工作流技能进 DSH skills 注册表（provider 懒加载正文） |
-| 插件 T3 | 同上（`exports["./client"]`） | 25 张 `mcp__scale__*` 工具的 `tool.call.toolview` 卡片（轻量 React，纯展示，不触文件系统）；动态数据面板（sidebar/settings）已评估并推迟——需宿主 typert Remote 通道 |
+| 插件 T3 | 同上（`exports["./client"]`） | 40 张 `mcp__scale__*` 工具的 `tool.call.toolview` 卡片（25 核心 + 15 媒体；轻量 React，纯展示，不触文件系统）；动态数据面板（sidebar/settings）已评估并推迟——需宿主 typert Remote 通道 |
 
 验证入口：
 
