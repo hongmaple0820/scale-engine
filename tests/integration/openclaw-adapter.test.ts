@@ -13,13 +13,13 @@ describe('OpenClawAdapter', () => {
   let adapter: OpenClawAdapter
 
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     mkdirSync(TMP, { recursive: true })
     adapter = new OpenClawAdapter()
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('agentType is openclaw', () => {
@@ -117,12 +117,12 @@ describe('createAdapter / SUPPORTED_AGENTS — openclaw', () => {
 
 describe('SkillDiscovery — openclaw platform', () => {
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     mkdirSync(TMP, { recursive: true })
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('detectPlatform returns openclaw when .openclaw/settings.json exists', async () => {
@@ -143,12 +143,12 @@ describe('SkillDiscovery — openclaw platform', () => {
 
 describe('Doctor — openclaw-aware', () => {
   beforeEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     mkdirSync(TMP, { recursive: true })
   })
 
   afterEach(() => {
-    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true })
+    if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('reports healthy after scale init --agent openclaw', async () => {

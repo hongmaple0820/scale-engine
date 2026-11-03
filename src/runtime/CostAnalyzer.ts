@@ -8,7 +8,9 @@ export interface CostBreakdown {
   byTaskType: Record<string, { tokens: number; cost: number; calls: number }>
   byGate: Record<string, { tokens: number; cost: number; calls: number }>
   byDay: Record<string, { tokens: number; cost: number; calls: number }>
-  total: { tokens: number; cost: number; calls: number }
+  /** Cost domain (`llm` by default; media writes metadata.domain='media') */
+  byDomain: Record<string, { tokens: number; cost: number; calls: number; costCny: number }>
+  total: { tokens: number; cost: number; calls: number; costCny: number }
 }
 
 export interface OptimizationSuggestion {
@@ -54,7 +56,8 @@ export class CostAnalyzer {
       byTaskType: {},
       byGate: {},
       byDay: {},
-      total: { tokens: 0, cost: 0, calls: 0 },
+      byDomain: {},
+      total: { tokens: 0, cost: 0, calls: 0, costCny: 0 },
     }
 
     for (const r of recent) {
@@ -63,6 +66,8 @@ export class CostAnalyzer {
       const day = r.timestamp ? new Date(r.timestamp).toISOString().slice(0, 10) : 'unknown'
       const model = r.model ?? r.provider
       const taskType = r.taskId ?? 'uncategorized'
+      const domain = typeof r.metadata?.domain === 'string' ? r.metadata.domain : 'llm'
+      const costCny = typeof r.metadata?.costCny === 'number' && Number.isFinite(r.metadata.costCny) ? r.metadata.costCny : 0
 
       // By model
       if (!breakdown.byModel[model]) breakdown.byModel[model] = { tokens: 0, cost: 0, calls: 0 }
@@ -82,9 +87,16 @@ export class CostAnalyzer {
       breakdown.byDay[day].cost += cost
       breakdown.byDay[day].calls++
 
+      if (!breakdown.byDomain[domain]) breakdown.byDomain[domain] = { tokens: 0, cost: 0, calls: 0, costCny: 0 }
+      breakdown.byDomain[domain].tokens += tokens
+      breakdown.byDomain[domain].cost += cost
+      breakdown.byDomain[domain].calls++
+      breakdown.byDomain[domain].costCny += costCny
+
       breakdown.total.tokens += tokens
       breakdown.total.cost += cost
       breakdown.total.calls++
+      breakdown.total.costCny += costCny
     }
 
     return breakdown
@@ -155,6 +167,7 @@ export class CostAnalyzer {
     const lines: string[] = [
       'SCALE Cost Report',
       `Total: ${breakdown.total.calls} calls, ${breakdown.total.tokens.toLocaleString()} tokens, $${breakdown.total.cost.toFixed(2)}`,
+      ...(breakdown.total.costCny > 0 ? [`Media spend: ¥${breakdown.total.costCny.toFixed(2)} CNY (metadata.costCny)`] : []),
       '',
       '--- By Model ---',
       ...Object.entries(breakdown.byModel)

@@ -8,15 +8,20 @@ import { createRequire } from 'node:module'
 import {
   cancelJob,
   createJob,
+  decideJobApproval,
   expandStoryboardTemplate,
   getJob,
+  listProjectApprovals,
   listProjectJobs,
   listProviders,
+  openWorkspace,
   recoverJobs,
   retryJob,
   resolveMediaBin,
   runJob,
+  runGc,
   validateStoryboard,
+  isExportProfileId,
   EvidenceWriter,
   MediaError,
 } from '../media/index.js'
@@ -354,6 +359,190 @@ const batchCommand = defineCommand({
   },
 })
 
+const exportCommand = defineCommand({
+  meta: { name: 'export', description: 'Create and run an export job: multi-profile re-encode + cover (+ publish manifest)' },
+  args: {
+    source: { type: 'positional', required: true, description: 'Source render task id (must be succeeded)' },
+    profiles: { type: 'string', default: '16x9-1080p,9x16-1080p,1x1-1080p', description: 'Comma-separated profile ids' },
+    'cover-at': { type: 'string', default: '0', description: 'Seconds into the film for the cover still' },
+    subtitles: { type: 'string', default: 'srt', description: 'none | srt (side-car) | burn' },
+    title: { type: 'string', required: false, description: 'Publish title (user input, never generated) — enables the publish manifest' },
+    description: { type: 'string', required: false, description: 'Publish description' },
+    tags: { type: 'string', required: false, description: 'Comma-separated publish tags' },
+    'platform-hints': { type: 'string', required: false, description: 'Comma-separated platform hints (no upload happens)' },
+    root: { type: 'string', default: '.' },
+    project: { type: 'string', default: 'default' },
+    'idempotency-key': { type: 'string', required: false },
+    ffmpeg: { type: 'string', required: false },
+    ffprobe: { type: 'string', required: false },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    try {
+      const profiles = String(args.profiles)
+        .split(',')
+        .map(profile => profile.trim())
+        .filter(isExportProfileId)
+      const publish = args.title
+        ? {
+            title: String(args.title),
+            ...(args.description ? { description: String(args.description) } : {}),
+            ...(args.tags
+              ? { tags: String(args.tags).split(',').map(tag => tag.trim()).filter(Boolean) }
+              : {}),
+            ...(args['platform-hints']
+              ? { platformHints: String(args['platform-hints']).split(',').map(hint => hint.trim()).filter(Boolean) }
+              : {}),
+          }
+        : undefined
+      const created = createJob({
+        root: String(args.root),
+        projectId: String(args.project),
+        type: 'export',
+        exportRequest: {
+          sourceTaskId: String(args.source),
+          ...(profiles.length ? { profiles } : {}),
+          coverAtSec: Number(args['cover-at']) || 0,
+          subtitles: (['none', 'srt', 'burn'].includes(String(args.subtitles)) ? String(args.subtitles) : 'srt') as
+            | 'none'
+            | 'srt'
+            | 'burn',
+          ...(publish ? { publish } : {}),
+        },
+        requestedBy: 'cli',
+        idempotencyKey: args['idempotency-key'] ? String(args['idempotency-key']) : undefined,
+      })
+      if (!args.json) {
+        console.log(created.deduplicated ? `↩︎ idempotent hit — returning existing task ${created.job.id}` : `task created: ${created.job.id}`)
+      }
+      const job = await runJob({
+        root: String(args.root),
+        projectId: String(args.project),
+        taskId: created.job.id,
+        ffmpegBin: args.ffmpeg ? String(args.ffmpeg) : undefined,
+        ffprobeBin: args.ffprobe ? String(args.ffprobe) : undefined,
+      })
+      printJob(job, Boolean(args.json))
+      if (job.status !== 'succeeded') process.exitCode = 1
+    } catch (error) {
+      fail(error)
+    }
+  },
+})
+
+const approvalsCommand = defineCommand({
+  meta: { name: 'approvals', description: 'Approval inbox: list pending requests, decide approve/reject' },
+  args: {},
+  subCommands: {
+    list: defineCommand({
+      meta: { name: 'list', description: 'List approval requests (pending first)' },
+      args: {
+        root: { type: 'string', default: '.' },
+        project: { type: 'string', default: 'default' },
+        json: { type: 'boolean', default: false },
+      },
+      run({ args }) {
+        const approvals = listProjectApprovals(String(args.root), String(args.project))
+        if (args.json) {
+          console.log(JSON.stringify(approvals, null, 1))
+          return
+        }
+        if (approvals.length === 0) {
+          console.log('(no approvals)')
+          return
+        }
+        for (const approval of approvals) {
+          console.log(
+            `${approval.id}  ${approval.status.padEnd(8)}  task ${approval.taskId}  ${approval.actionId ?? approval.jobType}  ` +
+              `cost ${approval.estimatedCny ?? 'unknown'} CNY  requested ${approval.requestedAt}  expires ${approval.expiresAt}`,
+          )
+        }
+      },
+    }),
+    decide: defineCommand({
+      meta: { name: 'decide', description: 'Approve or reject a pending request' },
+      args: {
+        id: { type: 'positional', required: true },
+        decision: { type: 'positional', required: true, description: 'approve | reject' },
+        reason: { type: 'string', required: false, description: 'Decision note (recorded in evidence)' },
+        root: { type: 'string', default: '.' },
+        project: { type: 'string', default: 'default' },
+        json: { type: 'boolean', default: false },
+      },
+      run({ args }) {
+        try {
+          const decision = String(args.decision)
+          if (decision !== 'approve' && decision !== 'reject') {
+            console.error(`decision must be "approve" or "reject", got "${decision}"`)
+            process.exitCode = 1
+            return
+          }
+          const result = decideJobApproval({
+            root: String(args.root),
+            projectId: String(args.project),
+            approvalId: String(args.id),
+            approve: decision === 'approve',
+            decidedBy: 'cli',
+            ...(args.reason ? { reason: String(args.reason) } : {}),
+          })
+          if (args.json) {
+            console.log(JSON.stringify(result, null, 1))
+            return
+          }
+          console.log(`${decision}d ${result.approval.id} → task ${result.approval.taskId} (${result.approval.status})`)
+        } catch (error) {
+          fail(error)
+        }
+      },
+    }),
+  },
+})
+
+const gcCommand = defineCommand({
+  meta: { name: 'gc', description: 'List GC candidates (dry-run default; --apply only removes render/ intermediates and orphan external copies)' },
+  args: {
+    apply: { type: 'boolean', default: false, description: 'Actually delete (never touches task.json/events/evidence/output/assets)' },
+    'min-age-days': { type: 'string', required: false, description: 'Override MEDIA_GC_MIN_AGE_DAYS (default 14)' },
+    root: { type: 'string', default: '.' },
+    project: { type: 'string', default: 'default' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    try {
+      const workspace = openWorkspace(String(args.root), String(args.project))
+      const plan = runGc(workspace, {
+        apply: Boolean(args.apply),
+        ...(args['min-age-days'] !== undefined && args['min-age-days'] !== null && String(args['min-age-days']) !== ''
+          ? { minAgeDays: Math.max(0, Number(args['min-age-days']) || 0) }
+          : {}),
+      })
+      if (args.json) {
+        console.log(JSON.stringify(plan, null, 1))
+        return
+      }
+      console.log(`GC plan (${plan.dryRun ? 'DRY-RUN — nothing deleted' : 'APPLIED'})  min age ${plan.minAgeDays}d`)
+      console.log(`  ${plan.scopeNote}`)
+      if (plan.candidates.length === 0) {
+        console.log('  (no candidates)')
+        return
+      }
+      for (const candidate of plan.candidates) {
+        console.log(
+          `  ${candidate.taskId}  ${candidate.category.padEnd(16)}  ${(candidate.bytes / 1024 / 1024).toFixed(1)} MB  ` +
+            `age ${candidate.ageDays}d  ${candidate.path}`,
+        )
+      }
+      console.log(
+        plan.dryRun
+          ? `  → ${plan.candidates.length} candidates, rerun with --apply to remove`
+          : `  → removed ${plan.removed}/${plan.candidates.length}, freed ${(plan.freedBytes / 1024 / 1024).toFixed(1)} MB`,
+      )
+    } catch (error) {
+      fail(error)
+    }
+  },
+})
+
 export const mediaCommand = defineCommand({
   meta: { name: 'media', description: 'Media workflow: storyboard render pipeline (v3 plan)' },
   args: {},
@@ -362,6 +551,9 @@ export const mediaCommand = defineCommand({
     render: renderCommand,
     batch: batchCommand,
     task: taskCommand,
+    export: exportCommand,
+    approvals: approvalsCommand,
+    gc: gcCommand,
     providers: providersCommand,
     image: imageCommand,
     doctor: doctorCommand,

@@ -99,6 +99,8 @@ export interface EncodeOptions {
   /** burned via libass when provided; engine writes the SRT next to the frames */
   subtitlePath?: string
   subtitleFont?: string
+  /** hard cut at an exact duration (segments must sum to the film length) */
+  durationSec?: number
   storyboard: Storyboard
   workCwd: string
 }
@@ -121,9 +123,217 @@ export function encodeVideo(options: EncodeOptions): SpawnResult {
     '-preset', output.preset ?? 'medium',
     '-crf', String(output.crf ?? 20),
     '-pix_fmt', output.pixelFormat ?? 'yuv420p',
+    // fixed timebase so concat -c copy can stitch segments from different runs
+    '-video_track_timescale', '90000',
   )
   if (options.audioPath) args.push('-c:a', output.audioCodec ?? 'aac', '-b:a', '160k')
+  if (options.durationSec !== undefined) args.push('-t', String(options.durationSec))
   args.push('-shortest', options.outputPath)
+  return runProcess(options.ffmpeg, args, { cwd: options.workCwd, timeoutMs: 600000 })
+}
+
+/** Encode a per-scene segment from captured PNG frames (video only). */
+export function encodeSegment(options: Omit<EncodeOptions, 'audioPath' | 'subtitlePath'>): SpawnResult {
+  return encodeVideo(options)
+}
+
+export interface NormalizeClipOptions {
+  ffmpeg: string
+  input: string
+  outputPath: string
+  width: number
+  height: number
+  fps: number
+  /** scene duration the segment must cover */
+  durationSec: number
+  trimStartMs: number
+  /** loop the trimmed range when it is shorter than the scene */
+  loop: boolean
+  fit: 'cover' | 'contain'
+  /** pad colour for fit=contain */
+  background: string
+  storyboard: Storyboard
+}
+
+/** Trim/scale/pad a provider clip into a canvas-sized, silent segment. */
+export function normalizeClip(options: NormalizeClipOptions): SpawnResult {
+  const output = options.storyboard.output ?? {}
+  const filters = options.fit === 'cover'
+    ? `scale=${options.width}:${options.height}:force_original_aspect_ratio=increase,crop=${options.width}:${options.height}`
+    : `scale=${options.width}:${options.height}:force_original_aspect_ratio=decrease,pad=${options.width}:${options.height}:(ow-iw)/2:(oh-ih)/2:color=${options.background}`
+  const args = ['-y']
+  if (options.loop) args.push('-stream_loop', '-1')
+  args.push(
+    '-ss', String(options.trimStartMs / 1000),
+    '-i', options.input,
+    '-t', String(options.durationSec),
+    '-an',
+    '-vf', `${filters},fps=${options.fps},setsar=1`,
+    '-c:v', output.videoCodec ?? 'libx264',
+    '-preset', output.preset ?? 'medium',
+    '-crf', String(output.crf ?? 20),
+    '-pix_fmt', output.pixelFormat ?? 'yuv420p',
+    '-video_track_timescale', '90000',
+    options.outputPath,
+  )
+  return runProcess(options.ffmpeg, args, { timeoutMs: 600000 })
+}
+
+/** Extract a clip's audio (trimmed to the scene) for the global mix. */
+export function extractClipAudio(options: {
+  ffmpeg: string
+  input: string
+  outputPath: string
+  trimStartMs: number
+  durationSec: number
+  volume: number
+  /** loop the trimmed range when the scene outlasts the clip */
+  loop?: boolean
+}): SpawnResult {
+  const args = ['-y']
+  if (options.loop) args.push('-stream_loop', '-1')
+  args.push(
+    '-ss', String(options.trimStartMs / 1000),
+    '-i', options.input,
+    '-t', String(options.durationSec),
+    '-vn',
+    '-af', `volume=${options.volume}`,
+    '-ar', '48000', '-ac', '2',
+    '-c:a', 'pcm_s16le',
+    options.outputPath,
+  )
+  return runProcess(options.ffmpeg, args, { timeoutMs: 300000 })
+}
+
+/** Overlay a transparent PNG (text/rect layer) onto a scene segment. */
+export function overlayPng(options: {
+  ffmpeg: string
+  input: string
+  overlay: string
+  outputPath: string
+  durationSec: number
+  storyboard: Storyboard
+}): SpawnResult {
+  const output = options.storyboard.output ?? {}
+  return runProcess(options.ffmpeg, [
+    '-y',
+    '-i', options.input,
+    '-i', options.overlay,
+    '-filter_complex', '[0:v][1:v]overlay=0:0:format=auto:eof_action=repeat',
+    '-t', String(options.durationSec),
+    '-c:v', output.videoCodec ?? 'libx264',
+    '-preset', output.preset ?? 'medium',
+    '-crf', String(output.crf ?? 20),
+    '-pix_fmt', output.pixelFormat ?? 'yuv420p',
+    '-video_track_timescale', '90000',
+    options.outputPath,
+  ], { timeoutMs: 600000 })
+}
+
+/** Concatenate uniform segments (concat demuxer, stream copy). */
+export function concatSegments(options: { ffmpeg: string; listPath: string; outputPath: string; cwd: string }): SpawnResult {
+  return runProcess(options.ffmpeg, [
+    '-y',
+    '-f', 'concat',
+    '-safe', '0',
+    '-i', options.listPath,
+    '-c', 'copy',
+    options.outputPath,
+  ], { cwd: options.cwd, timeoutMs: 600000 })
+}
+
+export interface AudioInput {
+  path: string
+  volume: number
+  /** loop until the film ends (bgm) */
+  loop: boolean
+  /** start offset in the film timeline */
+  delayMs: number
+  fadeInMs?: number
+  fadeOutMs?: number
+}
+
+/** Mix narration/BGM/clip audio into one stereo WAV spanning the film. */
+export function mixAudio(options: { ffmpeg: string; inputs: AudioInput[]; totalSec: number; outPath: string }): SpawnResult {
+  if (options.inputs.length === 0) return ensureSilentAudio(options)
+  const args = ['-y']
+  options.inputs.forEach(input => {
+    if (input.loop) args.push('-stream_loop', '-1')
+    args.push('-i', input.path)
+  })
+  const filters: string[] = []
+  options.inputs.forEach((input, index) => {
+    const chain = [`volume=${input.volume}`]
+    if (input.fadeInMs && input.fadeInMs > 0) chain.push(`afade=t=in:st=0:d=${input.fadeInMs / 1000}`)
+    if (input.fadeOutMs && input.fadeOutMs > 0) {
+      chain.push(`afade=t=out:st=${Math.max(0, options.totalSec - input.fadeOutMs / 1000)}:d=${input.fadeOutMs / 1000}`)
+    }
+    if (input.delayMs > 0) chain.push(`adelay=${input.delayMs}|${input.delayMs}`)
+    filters.push(`[${index}:a]${chain.join(',')}[a${index}]`)
+  })
+  const mix = options.inputs.length === 1
+    ? '[a0]apad[mix]'
+    : `${options.inputs.map((_, index) => `[a${index}]`).join('')}amix=inputs=${options.inputs.length}:duration=longest:dropout_transition=0,apad[mix]`
+  filters.push(mix)
+  args.push(
+    '-filter_complex', filters.join(';'),
+    '-map', '[mix]',
+    '-t', String(options.totalSec),
+    '-ar', '48000', '-ac', '2',
+    '-c:a', 'pcm_s16le',
+    options.outPath,
+  )
+  return runProcess(options.ffmpeg, args, { timeoutMs: 600000 })
+}
+
+/** Silence bed when the board declares no audio at all. */
+export function ensureSilentAudio(options: { ffmpeg: string; totalSec: number; outPath: string }): SpawnResult {
+  return runProcess(options.ffmpeg, [
+    '-y',
+    '-f', 'lavfi',
+    '-i', 'anullsrc=r=48000:cl=stereo',
+    '-t', String(options.totalSec),
+    '-c:a', 'pcm_s16le',
+    options.outPath,
+  ], { timeoutMs: 300000 })
+}
+
+/** Mux concatenated video with the mixed audio bed; optionally burn subtitles. */
+export function muxAudio(options: {
+  ffmpeg: string
+  videoPath: string
+  audioPath: string
+  outputPath: string
+  totalSec: number
+  storyboard: Storyboard
+  subtitlePath?: string
+  subtitleFont?: string
+  workCwd: string
+}): SpawnResult {
+  const output = options.storyboard.output ?? {}
+  const args = [
+    '-y',
+    '-i', options.videoPath,
+    '-i', options.audioPath,
+  ]
+  if (options.subtitlePath) {
+    args.push('-vf', `subtitles=${options.subtitlePath}:force_style='FontName=${options.subtitleFont ?? 'Microsoft YaHei'}'`)
+    args.push(
+      '-c:v', output.videoCodec ?? 'libx264',
+      '-preset', output.preset ?? 'medium',
+      '-crf', String(output.crf ?? 20),
+      '-pix_fmt', output.pixelFormat ?? 'yuv420p',
+    )
+  } else {
+    args.push('-c:v', 'copy')
+  }
+  args.push(
+    '-c:a', output.audioCodec ?? 'aac',
+    '-b:a', '160k',
+    '-t', String(options.totalSec),
+    '-shortest',
+    options.outputPath,
+  )
   return runProcess(options.ffmpeg, args, { cwd: options.workCwd, timeoutMs: 600000 })
 }
 
@@ -158,6 +368,35 @@ export function hasSubtitleFilter(ffmpeg: string): boolean {
 
 export function extractStill(options: { ffmpeg: string; input: string; atSec: number; outPath: string }): SpawnResult {
   return runProcess(options.ffmpeg, ['-y', '-ss', String(options.atSec), '-i', options.input, '-frames:v', '1', options.outPath], { timeoutMs: 120000 })
+}
+
+/**
+ * Export transcode (M4): center-crop/pad the source film to a fixed profile
+ * canvas, re-encode both streams, and optionally burn the source SRT (which
+ * the caller copies to `<workCwd>/subtitles.srt`). Center composition only —
+ * v1 has no per-profile reframing.
+ */
+export function transcodeExport(options: {
+  ffmpeg: string
+  input: string
+  outputPath: string
+  width: number
+  height: number
+  fps?: number
+  /** burn `<workCwd>/subtitles.srt` into the picture */
+  subtitleFile?: string
+  workCwd: string
+}): SpawnResult {
+  const filters = `scale=${options.width}:${options.height}:force_original_aspect_ratio=increase,crop=${options.width}:${options.height},fps=${options.fps ?? 30},setsar=1`
+  const args = ['-y', '-i', options.input]
+  args.push('-vf', options.subtitleFile ? `${filters},subtitles=${options.subtitleFile}:force_style='FontName=${'Microsoft YaHei'}'` : filters)
+  args.push(
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2',
+    '-movflags', '+faststart',
+    options.outputPath,
+  )
+  return runProcess(options.ffmpeg, args, { cwd: options.workCwd, timeoutMs: 600000 })
 }
 
 export function outputExists(path: string): boolean {
