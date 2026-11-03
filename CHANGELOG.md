@@ -1,3 +1,55 @@
+## 0.58.0 - 2026-11-03
+
+本版本把「受治理动作」从内核契约落成第一个完整域实现：媒体。此前 alpha.1 / alpha.2 的验证可靠性、
+依赖升级与 AST 惰性加载修复已并入本版，条目见下方两节。
+
+### 受治理动作平台 v2 — 媒体作为首个域（M0–M5）
+
+- **M1 动作目录 + 异步语义**：`src/media/actions/manifests.ts` 成为媒体动作的唯一元数据源（id / risk / cost /
+  approval / longRunning / availableIn / surfaces / paramsSchema）。`availableIn` 未到期的动作不会出现在
+  `media_create_task` 的枚举、REST 类型或 DSH 卡片里，`tests/media/actions/registry.test.ts` 同时校验目录
+  完整性与工具枚举漂移。长任务不再占用一次 MCP 调用：`create → run → wait` 三段式，60 秒同步工具上限只作便利包装。
+- **M1 素材回流**：`asset://` 跨任务引用 + 渲染前物化，带路径穿越防护；纯图片 0.4 分镜仍走旧的
+  capture/audio/encode 管线（`composedPipeline` 用例断言无 `compose_segments/mux`）。
+- **M2 治理闸门**：审批（threshold / always / 过期语义）、每日预算预留与结算、存储配额守卫、统一成本账本
+  （复用 `ExecutionLedger`，`metadata.domain='media'`，ADR-8 不建第二本账）。成本执行是「估算 → 预留 → 结算」，
+  超支中止而不是事后记账。`JobService` 是 CLI / REST / MCP / DSH 四个入口共用的唯一业务层，带跨进程 run 锁、
+  幂等键与中断任务恢复。
+- **M2 provider 面**：OpenAI 兼容 image adapter（本地 mock server 做 wire 测试）、异步 video adapter
+  （submit/poll/download + 持久化 handle）、speech adapter，按 provider 的特性开关 `MEDIA_FEATURE_VIDEO` /
+  `MEDIA_FEATURE_SPEECH`（off / mock / live），默认全部关闭。
+- **M3 成片**：clip composer、audio mixer、subtitle builder、overlay renderer、storyboard 模板（校验 + 展开）、
+  Scene DSL 0.4（video / voiceover / subtitle）。视频场景间硬切，图片场景保留原有转场。
+- **M4 交付层**：多规格导出（`media.export`）、纯本地的发布包（`media.publish_prepare`，只产包不直发第三方平台）、
+  审批收件箱（只读列表，决定仍在 dashboard/CLI 的 approve/deny）、按 `ScaleSurface` 作用域的存储 GC
+  （默认 dry-run，evidence/specs 永不清理）、`AssetIndex`。
+- **M5 DSH 升维 + Cortex 回流**：dsh-scale 的 13 个媒体工具渲染结构化卡片（taskId + 状态 chip + 输出路径 + 错误码）
+  而不是裸 JSON，兼容 flat / `wait {done,job}` / `list {tasks}` 三种载荷；`JobService` 把失败/取消/审批拒绝的
+  媒体任务作为 gate observation 回流（domain `media`，按 job+attempt+kind 去重，写入尽力而为且从不抛错）。
+- 全部新能力默认关闭，按里程碑逐项开启。设计、ADR 与逐项验收证据见
+  [docs/plans/2026-10-29-media-platform-v2-plan.md](docs/plans/2026-10-29-media-platform-v2-plan.md)，
+  使用说明见 [docs/guides/MEDIA_ACTIONS.md](docs/guides/MEDIA_ACTIONS.md)。
+
+### 发版卫生
+
+- `FALLBACK_SCALE_ENGINE_VERSION` 修正为与 `package.json` 一致。该常量在 0.58.0-alpha.3 时漏改，仍写着
+  `0.58.0-alpha.2`：`package.json` 读取失败（打包异常、安装不完整）时 CLI 会自报旧版本号。`tests/version.test.ts`
+  本来就是这条一致性的守卫，alpha.3 的手工发布绕过了它。
+- README / README.en 的版本徽章与标题同步到 0.58.0。
+- `@typescript-eslint/typescript-estree` 的 `minimatch` 覆盖到 `^11.0.4`：GHSA-g3hv-75wg-m249（globparts
+  放大导致 DoS，moderate）影响 `minimatch <11.0.1`，而 typescript-estree 声明的 `^10.2.2` 解析到了 `10.2.5`。
+  该包是生产依赖（AST 护栏），`npm audit --omit=dev` 因此从 0 变成 2 moderate 并让 `release:check` 失败。
+  minimatch 11 仍提供 CJS 入口且 `minimatch()` 签名未变，覆盖后 `scale doctor env` 的 `guardrail-ast`
+  仍报 AST 生效；`tests/guardrails` + `tests/env` 115/115 通过。
+
+### 验证边界
+
+- `npm run release:check` 在本机跑到全量测试阶段：`2578 passed / 5 failed / 9 skipped`。5 个失败中 4 个是已知的
+  Windows 临时目录 `EPERM` 并发 flake（`memoryFabric`、`openclaw-adapter` ×2、`phaseCli`），串行复跑 66/67 通过；
+  第 5 个是上文的版本常量 bug，已修复。
+- live 视频 provider 未验证：本机无 `MEDIA_SEEDANCE_API_KEY` / `ARK_API_KEY` / `VOLCENGINE_API_KEY`，S0 的真实
+  提交、轮询、结果 URL 与失败码无法执行，因此只交付 Mock 与契约测试，live 状态标记为未覆盖。
+
 ## 0.58.0-alpha.2 - 2026-10-27
 
 ### 原生依赖升级 — better-sqlite3 11 → 13（N-API）
