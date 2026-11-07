@@ -1,4 +1,5 @@
 import { defineCommand } from 'citty'
+import { join } from 'node:path'
 import {
   ensureDashboardService,
   installDashboardService,
@@ -13,8 +14,68 @@ import {
 } from '../dashboard/DashboardServiceSupervisor.js'
 
 export const dashboardCommand = defineCommand({
-  meta: { name: 'dashboard', description: 'Dashboard service, resident daemon, and watchdog controls' },
+  meta: { name: 'dashboard', description: 'Dashboard service, resident daemon, watchdog controls, and capability overview' },
   subCommands: {
+    serve: defineCommand({
+      meta: { name: 'serve', description: 'Run the dashboard HTTP server in the foreground (canonical entry, replaces `npm run serve`)' },
+      args: commonArgs(),
+      async run({ args }) {
+        const { DashboardServer } = await import('../dashboard/DashboardServer.js')
+        const { resolveDashboardLaunchPlan } = await import('../api/DashboardHttpConfig.js')
+        const env = {
+          ...process.env,
+          SCALE_DASHBOARD_PROJECT_DIR: String(args.dir),
+          SCALE_DASHBOARD_PORT: String(args.port),
+          SCALE_DASHBOARD_HOST: String(args.host),
+        }
+        const plan = await resolveDashboardLaunchPlan(env, String(args.dir))
+        const servers: Array<{ stop: () => void }> = []
+        for (const project of plan.projects) {
+          const server = new DashboardServer({
+            port: project.port,
+            host: project.host,
+            projectDir: project.projectDir,
+            scaleDir: project.scaleDir,
+            projectName: project.name,
+            projectUrl: project.url,
+            currentProjectId: project.id,
+            projects: plan.projects,
+          })
+          await server.start()
+          servers.push(server)
+          console.log(`SCALE Dashboard is running: ${project.url}/ (${project.projectDir})`)
+        }
+        const stop = () => {
+          for (const server of servers) server.stop()
+          process.exit(0)
+        }
+        process.once('SIGINT', stop)
+        process.once('SIGTERM', stop)
+        await new Promise<void>(() => { /* keep the process alive until signal */ })
+      },
+    }),
+    capabilities: defineCommand({
+      meta: { name: 'capabilities', description: 'Show capability tier and dashboard data-source readiness (first-screen overview data)' },
+      args: commonArgs(),
+      async run({ args }) {
+        const { buildCapabilityOverview } = await import('../dashboard/CapabilityOverview.js')
+        const projectDir = String(args.dir)
+        const scaleDir = args['scale-dir'] ? String(args['scale-dir']) : join(projectDir, '.scale')
+        const overview = buildCapabilityOverview({ projectDir, scaleDir })
+        if (args.json) {
+          console.log(JSON.stringify(overview, null, 2))
+          return
+        }
+        console.log('\nSCALE Capability Overview')
+        console.log(`  Tier: ${overview.tier.label}`)
+        console.log(`  ${overview.tier.summary}`)
+        console.log(`  Upgrade: ${overview.tier.upgradeCommand}`)
+        console.log(`  Data sources ready: ${overview.readyRatio}`)
+        for (const source of overview.sources) {
+          console.log(`  [${source.ready ? 'ready' : 'empty'}] ${source.label} — ${source.reason}`)
+        }
+      },
+    }),
     daemon: defineCommand({
       meta: { name: 'daemon', description: 'Manage the resident dashboard watchdog' },
       subCommands: {

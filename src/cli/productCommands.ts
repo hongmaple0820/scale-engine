@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path'
+import { buildScenarioMatrix } from '../product/ScenarioMatrix.js'
 import {
   createProductProjectBlueprintPlan,
   createExistingProjectOnboardingPlan,
@@ -198,12 +199,37 @@ const productOnboardExisting = defineCommand({
   },
 })
 
+const productScenarios = defineCommand({
+  meta: { name: 'scenarios', description: 'P2-C: show the scenario × governance-pack coverage matrix and gaps' },
+  args: { json: { type: 'boolean', default: false } },
+  run({ args }) {
+    const report = buildScenarioMatrix()
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2))
+      return
+    }
+    console.log(`\nScenario × governance-pack matrix (covered ${report.summary.covered} / partial ${report.summary.partial} / gap ${report.summary.gap} of ${report.summary.total})`)
+    for (const row of report.rows) {
+      const tag = row.coverage === 'covered' ? 'COVERED' : row.coverage === 'partial' ? 'PARTIAL' : 'GAP'
+      const packs = row.packs.length > 0 ? row.packs.join(', ') : '(no pack)'
+      console.log(`  [${tag}] ${row.scenarioLabel} · ${row.form}`)
+      console.log(`         packs: ${packs}`)
+      console.log(`         note: ${row.note}`)
+    }
+    if (report.gaps.length > 0) {
+      console.log('\n  Gaps to close:')
+      for (const gap of report.gaps) console.log(`    - ${gap}`)
+    }
+  },
+})
+
 export const productCommand = defineCommand({
-  meta: { name: 'product', description: 'Reusable product module templates and scaffold generation' },
+  meta: { name: 'product', description: 'Reusable product module templates, scaffold generation, and scenario matrix' },
   subCommands: {
     modules: productModules,
     scaffold: productScaffold,
     blueprint: productBlueprint,
     'onboard-existing': productOnboardExisting,
+    scenarios: productScenarios,
   },
 })

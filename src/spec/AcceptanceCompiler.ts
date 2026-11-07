@@ -65,7 +65,7 @@ const VAGUE_MARKERS =
 
 /** 可度量的数值/边界判据——适合 property-based 断言。 */
 const NUMERIC_MARKERS =
-  /(\d+(?:\.\d+)?\s*(ms|millisecond|second|sec|s|%|percent|bytes?|kb|mb|gb|times?|requests?|rps|qps)\b)|(\b(at most|at least|no more than|no fewer than|no less than|greater than|less than)\b)|(<=|>=|≤|≥|\bexceed\b)/i
+  /(\d+(?:\.\d+)?\s*(ms|milliseconds?|seconds?|secs?|s|%|percent|bytes?|kb|mb|gb|times?|requests?|rps|qps)\b)|(\b(at most|at least|no more than|no fewer than|no less than|greater than|less than)\b)|(<=|>=|≤|≥|\bexceed\b)/i
 
 /** 明确的、可被测试断言的动词（成功/失败/状态变化/副作用）。 */
 const ASSERTIVE_VERBS =

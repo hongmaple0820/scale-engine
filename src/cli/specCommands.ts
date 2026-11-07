@@ -28,6 +28,7 @@ import {
 } from '../spec/MySpecImporter.js'
 import { compileAcceptanceChecks } from '../spec/AcceptanceCompiler.js'
 import { detectSpecDrift } from '../spec/SpecDriftDetector.js'
+import { intakeBrainstorm } from '../spec/BrainstormIntake.js'
 
 const BUNDLE_FILES = ['constitution.md', 'requirements.md', 'solution.md', 'tasks.md'] as const
 
@@ -310,12 +311,42 @@ export const specDriftCommand = defineCommand({
   },
 })
 
+export const specIntakeBrainstormCommand = defineCommand({
+  meta: { name: 'intake-brainstorm', description: 'P2-D: translate superpowers/BMAD brainstorm output (GWT / checklists) into EARS+ and optionally compile to executable checks' },
+  args: {
+    file: { type: 'positional', required: true, description: 'Brainstorm output file (Given/When/Then, bullet checklists, or EARS lines)' },
+    compile: { type: 'boolean', default: false, description: 'Also compile into executable acceptance checks' },
+    'id-prefix': { type: 'string', default: 'BS', description: 'Generated criterion id prefix' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const file = String(args.file)
+    if (!existsSync(file)) throw new Error(`file not found: ${file}`)
+    const text = readFileSync(file, 'utf-8')
+    const intake = intakeBrainstorm(text, { idPrefix: String(args['id-prefix']) })
+
+    if (args.compile) {
+      const compiled = compileAcceptanceChecks(intake.criteria)
+      if (args.json) { console.log(JSON.stringify({ intake, compiled }, null, 2)); return }
+      console.log(`\nBrainstorm intake: ${intake.converted} criteria (${intake.dropped.length} dropped)`)
+      console.log(`Compiled: ${compiled.summary.automatable} automatable / ${compiled.summary.needsHuman} needsHuman (coverage ${(compiled.coverage * 100).toFixed(0)}%)`)
+      for (const c of compiled.checks) console.log(`  [${c.needsHuman ? 'HUMAN' : c.kind.toUpperCase()}] ${c.checkId} <- ${c.clauseId}: ${c.clauseText.slice(0, 70)}`)
+      return
+    }
+    if (args.json) { console.log(JSON.stringify(intake, null, 2)); return }
+    console.log(`\nBrainstorm intake: ${intake.converted} criteria, ${intake.dropped.length} dropped`)
+    for (const c of intake.criteria) console.log(`  [${c.kind}] ${c.id}: ${c.text}`)
+    if (intake.dropped.length > 0) console.log(`  dropped: ${intake.dropped.slice(0, 5).join(' | ')}`)
+  },
+})
+
 export const specCommand = defineCommand({
-  meta: { name: 'spec', description: 'Spec bundle ingestion, conformance and acceptance-check compilation' },
+  meta: { name: 'spec', description: 'Spec bundle ingestion, conformance, acceptance-check compilation, drift, and brainstorm intake' },
   subCommands: {
     'import-myspec': specImportMySpecCommand,
     conformance: specConformanceCommand,
     'compile-checks': specCompileChecksCommand,
     drift: specDriftCommand,
+    'intake-brainstorm': specIntakeBrainstormCommand,
   },
 })

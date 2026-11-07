@@ -68,6 +68,29 @@
   specDriftDetector 6 + 既有 9）、`tests/eval/goldenEval` 全绿；真实 CLI：`scale eval golden --json`
   对仓库产物 25/25 断言通过。
 
+### P2 产品体验层（v0.63–v0.64 阶段）
+
+- **P2-A 面板产品化**：新增 `scale dashboard serve`（前台 HTTP server 正式入口，取代 `npm run serve`）
+  与 `scale dashboard capabilities [--json]`（首屏「能力阶梯 + 数据源就绪」数据）。新增
+  `src/dashboard/CapabilityOverview.ts`（纯函数）——复用能力阶梯，并把 runtime-evidence / command-runs /
+  review-evidence（P1-A）/ model-usage / memory / knowledge / golden-evals（P1-D）七类数据源的就绪状态
+  显式化，空态附原因，避免「空图表被当健康」。
+- **P2-B dsh 插件能力矩阵**：新增 `scripts/qa/check-dsh-plugin-abi.mjs` + `docs/DSH_PLUGIN_CAPABILITY_MATRIX.md`。
+  实测发现插件 README 的「Electron ABI 149 vs 主包 137 不兼容」前提**已随主包升级失效**——`better-sqlite3`
+  已升至 13.x N-API（跨 ABI 稳定，`abiAssumptionStale=true`），插件核心治理能力（拦截/注入/证据/命令/
+  skills/卡片）在 DSH 内满血，仅 Artifact store / Memory Brain 为可升级的降级；升级路径已文档化（代码
+  改动 + 真实 Electron 验证）。
+- **P2-C 场景 × 规范矩阵**：新增 `src/product/ScenarioMatrix.ts` + `scale product scenarios [--json]` +
+  `docs/SCENARIO_MATRIX.md`——9 行覆盖编程/自媒体/办公/Agent OS × 单体/微服务/MOE/桌面，covered 6 /
+  partial 3 / gap 0，partial（自媒体 content-media、办公 office-automation、MOE pack）的补齐策略成文。
+- **P2-D 头脑风暴前置互操作**：新增 `src/spec/BrainstormIntake.ts`（纯函数）+ `scale spec intake-brainstorm
+  <file> [--compile] [--json]`——把 superpowers/BMAD 头脑风暴产物（Given/When/Then、验收清单、既有 EARS）
+  翻译为 EARS+ 并可直接喂 AcceptanceCompiler，形成「头脑风暴 → 可执行检查」的端到端衔接（只做翻译层，
+  不重写头脑风暴）。
+- **验证**：`tsc --noEmit`=0、`tsc` build=0；`tests/spec` + `tests/product` + `tests/dashboard` 全绿；
+  真实 CLI 冒烟 `product scenarios` / `dashboard capabilities` / `spec intake-brainstorm --compile` /
+  `eval golden`（回归 27/27）全部通过。
+
 ### Guardrail 修复 — issues #34 / #35 / #36
 
 - **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码
