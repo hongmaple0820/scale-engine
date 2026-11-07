@@ -1,5 +1,33 @@
 ## Unreleased
 
+### P0 第一公里修复 — 安装可信度（v0.59 阶段）
+
+- **P0-1 install 验收与 doctor env 依赖解析口径不一致**（真实安装烟测复现）：npx 安装时验收层
+  因原生绑定在 npx 临时缓存（`C:\Program Files\nodejs\node_cache\_npx\...`）缺预构建二进制而报
+  blocker 并 `exit 1`，而紧随其后的 `doctor env` 用全局解析对同一绑定报 `ok`；且验收层把该失败
+  升级为 hard blocker，违反 `check-native-abi.mjs` 的 "never block an install" 契约。修复：
+  `SetupVerification` 新增 `isAutoFixableRuntimeCheck`——`category==='runtime'` 且 `id` 以 `-native`
+  结尾的可修复检查（rebuild 即恢复）降级为 warning + `autoFixCommands`，不再阻断安装；判据用 id
+  后缀而非硬编码包名。`SetupVerificationReport` 新增 `autoFixCommands` 字段，install 报告渲染
+  「可自动修复：<命令>」。`CustomerInstall` 同步透传。回归测试 `tests/setup/SetupVerification.test.ts`
+  新增两条：`-native` 必需检查失败不产生 blocker + 带 autoFixCommand；非可修复的必需失败（git 缺失）
+  仍正确阻断。
+- **P0-2 Windows 安装文档**：`docs/start/npx-interactive-install.md` 与 `README.md` 补充
+  PowerShell 默认执行策略导致 `npx.ps1` 被拒的说明（改用 `npx.cmd` 或
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`）——中文 Windows 首次安装最常见的一道坎。
+- **P0-3 安装烟测进 release:check**：新增 `scripts/workflow/install-smoke.mjs`（隔离临时目录跑
+  真实 install，断言 exit 0 / JSON 可解析 / ok=true / 无 hard blocker / `.scale` 与 agent 入口生成）
+  与对应的 `npm run smoke:install`，纳入 `release:check` 流水线守护「首次安装 exit 0」这一 P0 不变量。
+- **P0-5 能力阶梯 + agent 自装烟测**：`CustomerInstallReport` 新增 `capabilityTier`（Level 1 core /
+  Level 2 full / Level 3 extreme），install 报告显式告知用户「装到了哪一档、怎么升级」；新增
+  `scripts/workflow/agent-install-smoke.mjs`（`npm run smoke:agent-install`）模拟 agent 按
+  `agent-full-workflow.md` 提示词自主安装，断言 `setup --verify --pack full` 必须显式暴露缺失/降级
+  信号与可执行修复建议（不静默降级），纳入 `release:check`。
+- **P0-4 自评体系补位**：`docs/workflow/EXECUTIVE_SUMMARY.md` 增加 Tier1 #14「安装第一公里」，
+  记录此前 13 项改进无一指向首次安装成功率这一自评盲区。
+- 验证：`tsc --noEmit` / `tsc` build 0 错误；`install-smoke` 6/6、`agent-install-smoke` 见下方结果；
+  `tests/setup/SetupVerification.test.ts` 10/10（含 2 条新回归）。
+
 ### Guardrail 修复 — issues #34 / #35 / #36
 
 - **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码

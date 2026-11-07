@@ -1090,3 +1090,187 @@ describe('verifySetup', () => {
     expect(report.summary.availableCodeProviders).toBe(0)
   })
 })
+
+// P0-1：install 验收与 doctor env 的依赖解析口径统一（GitHub issue 实测复现）
+describe('verifySetup auto-fixable runtime checks (P0-1)', () => {
+  beforeEach(() => {
+    bootstrap.bootstrapDependencies.mockReset()
+    codeIntelligence.inspectCodeIntelligence.mockReset()
+    environmentDoctor.inspectEnvironment.mockReset()
+    memoryProviders.inspectMemoryProviders.mockReset()
+    toolCapabilities.inspectToolCapabilities.mockReset()
+  })
+
+  function mockCleanInstall() {
+    bootstrap.bootstrapDependencies.mockResolvedValue({
+      ok: true,
+      complete: true,
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      packIds: ['core'],
+      includeIds: [],
+      apply: false,
+      runtimeChecks: [],
+      items: [],
+      summary: {
+        total: 0,
+        installed: 0,
+        ready: 0,
+        manualReview: 0,
+        needsInit: 0,
+        versionDrift: 0,
+        installedNow: 0,
+        failed: 0,
+      },
+      postActions: [],
+      postChecks: [],
+      postCheckSummary: { total: 0, passed: 0, warned: 0, failed: 0 },
+      postCheckCommands: [],
+      rollbackHints: [],
+      recommendations: [],
+    })
+
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: true,
+      status: 'healthy',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.20.0',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: { defaultShell: 'powershell', comspec: 'cmd.exe', detected: [] },
+      path: { delimiter: ';', entryCount: 1, entriesPreview: ['C:\\tools'] },
+      checks: [],
+      warnings: [],
+      recommendations: [],
+    })
+
+    memoryProviders.inspectMemoryProviders.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/memory-providers.json',
+      configExists: false,
+      routing: {
+        mode: 'local-only',
+        defaultOrder: ['hrain', 'gbrain'],
+        allowExternalWrite: false,
+        requireEvidence: true,
+        maxResultsPerProvider: 5,
+      },
+      providers: [],
+      availableProviderCount: 0,
+      warnings: [],
+    })
+
+    codeIntelligence.inspectCodeIntelligence.mockReturnValue({
+      projectDir: process.cwd(),
+      scaleDir: '.scale',
+      configPath: '.scale/code-intelligence.json',
+      configExists: false,
+      projectIndexPath: '.codegraph',
+      projectIndexExists: false,
+      providers: [],
+      fallback: { enabled: true, tools: ['rg'], available: true, reason: 'fallback available' },
+      availableProviderCount: 1,
+      recommendations: [],
+    })
+
+    toolCapabilities.inspectToolCapabilities.mockReturnValue({
+      ok: true,
+      summary: { total: 0, installed: 0, missing: 0 },
+      tools: [],
+    })
+  }
+
+  it('does not block install when a required -native runtime check fails but has a fix hint', async () => {
+    mockCleanInstall()
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: false,
+      status: 'broken',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v22.20.0',
+        execPath: 'C:\\node\\node.exe',
+        status: 'ok',
+        reason: 'Node is healthy.',
+      },
+      shell: { defaultShell: 'powershell', comspec: 'cmd.exe', detected: [] },
+      path: { delimiter: ';', entryCount: 1, entriesPreview: ['C:\\tools'] },
+      checks: [
+        {
+          id: 'sqlite-native',
+          label: 'sqlite native binding',
+          category: 'runtime',
+          status: 'fail',
+          required: true,
+          candidates: ['sqlite'],
+          reason: 'sqlite native binding cannot load under Node.js v22.20.0 on win32/x64.',
+          installHint: 'npm rebuild sqlite',
+          requiredFor: ['scale status', 'artifact store'],
+        },
+      ],
+      warnings: [],
+      recommendations: [],
+    })
+
+    const report = await verifySetup({ packIds: ['core'] })
+
+    expect(report.ok).toBe(true)
+    expect(report.summary.blockingIssues).toEqual([])
+    expect(report.autoFixCommands).toEqual(['npm rebuild sqlite'])
+    expect(report.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('sqlite native binding'),
+    ]))
+  })
+
+  it('still blocks install for non-auto-fixable required failures', async () => {
+    mockCleanInstall()
+    environmentDoctor.inspectEnvironment.mockReturnValue({
+      ok: false,
+      status: 'broken',
+      generatedAt: new Date().toISOString(),
+      platform: 'win32',
+      arch: 'x64',
+      release: '10.0.19045',
+      node: {
+        version: 'v18.0.0',
+        execPath: 'C:\\node\\node.exe',
+        status: 'fail',
+        reason: 'Node.js v18.0.0 is below the required 22.x baseline.',
+      },
+      shell: { defaultShell: 'powershell', comspec: 'cmd.exe', detected: [] },
+      path: { delimiter: ';', entryCount: 1, entriesPreview: ['C:\\tools'] },
+      checks: [
+        {
+          id: 'git',
+          label: 'Git',
+          category: 'core',
+          status: 'missing',
+          required: true,
+          candidates: ['git'],
+          reason: 'Git was not detected on PATH.',
+          installHint: 'Install Git.',
+          requiredFor: ['repository workflow'],
+        },
+      ],
+      warnings: [],
+      recommendations: [],
+    })
+
+    const report = await verifySetup({ packIds: ['core'] })
+
+    expect(report.ok).toBe(false)
+    expect(report.summary.blockingIssues).toEqual(expect.arrayContaining([
+      expect.stringContaining('Git'),
+    ]))
+    expect(report.autoFixCommands).toEqual([])
+  })
+})

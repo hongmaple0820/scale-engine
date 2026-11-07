@@ -27,6 +27,7 @@ export interface SetupVerificationReport {
   memoryProviders: MemoryProviderStatusReport
   codeIntelligence: CodeIntelligenceStatusReport
   toolCapabilities: ToolCapabilityReport
+  autoFixCommands: string[]
   summary: {
     blockingIssues: string[]
     dependencyStatus: {
@@ -123,8 +124,19 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
   const brokenEnvironmentChecks = environment.checks.filter(check =>
     check.required && (check.status === 'missing' || check.status === 'fail'),
   )
+  const autoFixCommands: string[] = []
   for (const check of brokenEnvironmentChecks) {
-    blockingIssues.push(`Required environment check failed: ${check.label} - ${check.reason}`)
+    const message = `Required environment check failed: ${check.label} - ${check.reason}`
+    // 可自动修复的运行时缺陷（如原生绑定缺失、rebuild 即可恢复）降级为
+    // warning + autoFixCommand，不阻断安装——对齐 check-native-abi.mjs 的
+    // "never block an install" 契约（GitHub issue 实测：npx 缓存缺二进制
+    // 曾让 install exit 1，而 doctor env 用全局解析却报 ok）。
+    if (isAutoFixableRuntimeCheck(check)) {
+      warnings.push(compactMessage(`${message}（可自动修复）`))
+      if (check.installHint) autoFixCommands.push(check.installHint)
+      continue
+    }
+    blockingIssues.push(message)
   }
 
   if (!toolCapabilities.ok) {
@@ -177,6 +189,7 @@ export async function verifySetup(options: SetupVerificationOptions = {}): Promi
     memoryProviders,
     codeIntelligence,
     toolCapabilities,
+    autoFixCommands: uniqueStrings(autoFixCommands),
     summary: {
       blockingIssues,
       dependencyStatus,
@@ -244,6 +257,15 @@ function resolveNonBlockingDependencyIds(
 
 function isBuiltInVerificationCapability(id: string): boolean {
   return id === 'hrain'
+}
+
+/**
+ * 可自动修复的运行时缺陷：安装完成后一行命令（npm rebuild / 重装指引）
+ * 即可恢复，不应把首次安装判定为失败。当前覆盖原生绑定类（-native 后缀）。
+ * 判据用 id 后缀而非硬编码包名，避免与新原生依赖的耦合。
+ */
+function isAutoFixableRuntimeCheck(check: EnvironmentCommandCheck): boolean {
+  return check.category === 'runtime' && check.id.endsWith('-native')
 }
 
 function shouldBlockMemoryProviderUnavailability(dependencyBootstrap: DependencyBootstrapReport): boolean {

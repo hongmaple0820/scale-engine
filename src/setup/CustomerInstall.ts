@@ -71,6 +71,17 @@ export interface CustomerInstallSelection {
   language: ScaleLanguage
 }
 
+/**
+ * 能力阶梯（P0-5）：让用户与 agent 明确「现在装到了哪一档、差哪一档、怎么补」，
+ * 而不是笼统的「已安装」。对应方案 P0-5。
+ */
+export interface CustomerCapabilityTier {
+  level: 1 | 2 | 3
+  label: string
+  summary: string
+  upgradeCommand: string
+}
+
 export interface CustomerInstallInitReport {
   settingsPath: string
   knowledgeDocPath: string
@@ -87,6 +98,7 @@ export interface CustomerInstallReport {
   lang: ScaleLanguage
   projectDir: string
   selection: CustomerInstallSelection
+  capabilityTier: CustomerCapabilityTier
   init: CustomerInstallInitReport
   setup?: SetupWizardReport
   verification?: SetupVerificationReport
@@ -291,6 +303,9 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
       })
       warnings.push(...verification.warnings)
       if (!verification.ok) warnings.push(...verification.summary.blockingIssues)
+      if (verification.autoFixCommands.length > 0) {
+        warnings.push(...verification.autoFixCommands.map(command => compactInstallMessage(`可自动修复：${command}`)))
+      }
       emit(verification.ok ? 'ok' : 'warn', lang === 'zh' ? '安装验收完成' : 'Verification finished', verification.ok ? 'passed' : `${verification.summary.blockingIssues.length} blocker(s)`)
     }
 
@@ -323,6 +338,7 @@ export async function runCustomerInstall(options: CustomerInstallOptions = {}): 
       lang,
       projectDir,
       selection,
+      capabilityTier: computeCapabilityTier(dependencyPacks, lang),
       init,
       setup,
       verification,
@@ -643,6 +659,50 @@ function buildCustomerNextSteps(selection: CustomerInstallSelection): string[] {
 
 function uniqueStrings(items: string[]): string[] {
   return [...new Set(items.map(item => item.trim()).filter(Boolean))]
+}
+
+function compactInstallMessage(value: string, maxLength = 200): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength - 3)}...`
+}
+
+/**
+ * 能力阶梯映射（P0-5）：
+ * - Level 1 core：无第三方依赖，门禁/证据/工作流可用
+ * - Level 2 full：本地记忆(hrain) + 代码/知识图谱，无需额外工具链
+ * - Level 3 extreme：+ rtk/gbrain/graphify 等外部引擎（需 cargo/bun/uv）
+ */
+function computeCapabilityTier(dependencyPacks: string[], lang: ScaleLanguage): CustomerCapabilityTier {
+  const packs = new Set(dependencyPacks)
+  if (packs.size === 0) {
+    return {
+      level: 1,
+      label: lang === 'zh' ? 'Level 1 · core（核心工作流）' : 'Level 1 · core',
+      summary: lang === 'zh'
+        ? '门禁、证据、工作流全部可用；不依赖任何第三方 CLI。'
+        : 'Gates, evidence, and workflow are available; no third-party CLI required.',
+      upgradeCommand: 'scale install --pack memory,external-cli --dir .',
+    }
+  }
+  if (packs.has('external-cli') || packs.has('full')) {
+    return {
+      level: 3,
+      label: lang === 'zh' ? 'Level 3 · extreme（全能力）' : 'Level 3 · extreme',
+      summary: lang === 'zh'
+        ? '含 rtk/gbrain/graphify 等外部引擎，需要 cargo/bun/uv 工具链。'
+        : 'Includes rtk/gbrain/graphify external engines; requires cargo/bun/uv toolchains.',
+      upgradeCommand: 'scale setup --verify --pack full --dir . --json',
+    }
+  }
+  return {
+    level: 2,
+    label: lang === 'zh' ? 'Level 2 · full（本地增强）' : 'Level 2 · full',
+    summary: lang === 'zh'
+      ? '本地记忆(hrain) + 代码/知识图谱已就绪，无需额外工具链。'
+      : 'Local memory (hrain) + code/knowledge graph ready; no extra toolchain needed.',
+    upgradeCommand: 'scale install --pack external-cli --dir .',
+  }
 }
 
 function escapeRegExp(value: string): string {

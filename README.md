@@ -121,6 +121,8 @@ scale tdd slice --task-id TASK-001 --behavior "拒绝过期 OAuth state" --faili
 npx -y @hongmaple0820/scale-engine@latest install --dir .
 ```
 
+> **Windows 提示**：若 PowerShell 报 `npx.ps1 … 禁止运行脚本`，改用 `npx.cmd -y @hongmaple0820/scale-engine@latest install --dir .`，或先执行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`。
+
 长期高频使用再安装全局 CLI：
 
 ```bash

@@ -63,6 +63,9 @@ SERT (8.2/10)    ← 学术领先，Google 内部秘密武器
 | 2 | 升级自动化 | P0 | L | 升级成功率↑50% | M1-M2 |
 | 3 | Cortex 验证 | P0 | L | 验证效果、发布案例 | W9-12+M1-2 |
 | 4 | DSL 统一 | P1 | XL | 配置复杂度↓50% | M5-M6 |
+| 14 | **安装第一公里**（2026-11-07 新增） | P0 | M | 首次安装 exit 0 率≥99%；消除 install/doctor 口径矛盾 | v0.59 |
+
+> **#14 背景（2026-11-07 真实安装烟测发现，此前自评盲区）**：npx 安装时验收层因原生绑定在 npx 临时缓存缺预构建二进制而报 blocker 并 `exit 1`，但紧随其后的 `doctor env` 用全局解析对同一绑定报 ok——install 与 doctor 依赖解析口径不一致；且验收层违反 `check-native-abi.mjs` 的 "never block an install" 契约。修法：可自动修复的 `-native` 运行时检查降级为 warning + autoFixCommand（已在 v0.59 落地），并新增 `install-smoke` / `agent-install-smoke` 进 release:check 守护。**这是本自评此前完全没有覆盖的维度：13 项改进无一指向首次安装成功率。**
 
 ### Tier 2: 应做（中等问题，改善体验）
 | # | 改进项 | 优先级 | 工作量 | 完成时间 |
