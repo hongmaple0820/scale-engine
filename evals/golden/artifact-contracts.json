@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "id": "artifact-contracts",
+  "name": "SCALE artifact contracts (deterministic CI layer)",
+  "cases": [
+    {
+      "id": "package-manifest",
+      "description": "package.json exposes the scale bin, is ESM, and declares citty",
+      "assertions": [
+        { "type": "file-exists", "path": "package.json", "description": "root manifest present" },
+        { "type": "json-field", "path": "package.json", "field": "bin.scale", "fieldType": "string" },
+        { "type": "json-field", "path": "package.json", "field": "type", "equals": "module" },
+        { "type": "json-field", "path": "package.json", "field": "dependencies.citty", "fieldType": "string" },
+        { "type": "json-field", "path": "package.json", "field": "engines.node", "fieldType": "string" }
+      ]
+    },
+    {
+      "id": "readme-install",
+      "description": "README documents the install entry points",
+      "assertions": [
+        { "type": "file-exists", "path": "README.md" },
+        { "type": "text-contains", "path": "README.md", "contains": "scale install" },
+        { "type": "text-contains", "path": "README.md", "contains": "npx" }
+      ]
+    },
+    {
+      "id": "changelog-tracks-p1",
+      "description": "CHANGELOG records the P1-A clean-context review work",
+      "assertions": [
+        { "type": "file-exists", "path": "CHANGELOG.md" },
+        { "type": "text-contains", "path": "CHANGELOG.md", "contains": "P1-A" }
+      ]
+    },
+    {
+      "id": "verification-matrix",
+      "description": ".scale/verification.json is a valid matrix with a default profile",
+      "assertions": [
+        { "type": "file-exists", "path": ".scale/verification.json" },
+        { "type": "json-field", "path": ".scale/verification.json", "field": "defaultProfile", "fieldType": "string" },
+        { "type": "json-field", "path": ".scale/verification.json", "field": "profiles", "fieldType": "object" }
+      ]
+    },
+    {
+      "id": "workflow-templates",
+      "description": "workflow plan template ships a Plan heading",
+      "assertions": [
+        { "type": "file-exists", "path": "docs/workflow/templates/plan.md" },
+        { "type": "markdown-section", "path": "docs/workflow/templates/plan.md", "contains": "Plan" }
+      ]
+    },
+    {
+      "id": "skills-contract",
+      "description": "core workflow skills are present with SKILL.md files",
+      "assertions": [
+        { "type": "file-exists", "path": ".scale/skills/code-review/SKILL.md" },
+        { "type": "file-exists", "path": ".scale/skills/planning/SKILL.md" },
+        { "type": "file-exists", "path": ".scale/skills/debugging/SKILL.md" }
+      ]
+    },
+    {
+      "id": "effort-tuned-doc",
+      "description": "P1 effort-tuned verification doc documents the matrix and fresh-gate",
+      "assertions": [
+        { "type": "file-exists", "path": "docs/EFFORT_TUNED_VERIFICATION.md" },
+        { "type": "text-contains", "path": "docs/EFFORT_TUNED_VERIFICATION.md", "contains": "fresh-gate" },
+        { "type": "text-contains", "path": "docs/EFFORT_TUNED_VERIFICATION.md", "contains": "verificationSurface" }
+      ]
+    },
+    {
+      "id": "p1-modules",
+      "description": "P1 modules (fresh gate, acceptance compiler, drift detector, golden eval) exist",
+      "assertions": [
+        { "type": "file-exists", "path": "src/review/freshReviewGate.ts" },
+        { "type": "file-exists", "path": "src/spec/AcceptanceCompiler.ts" },
+        { "type": "file-exists", "path": "src/spec/SpecDriftDetector.ts" },
+        { "type": "file-exists", "path": "src/eval/GoldenEval.ts" }
+      ]
+    },
+    {
+      "id": "smoke-scripts",
+      "description": "install and agent-install smoke scripts are present",
+      "assertions": [
+        { "type": "file-exists", "path": "scripts/workflow/install-smoke.mjs" },
+        { "type": "file-exists", "path": "scripts/workflow/agent-install-smoke.mjs" }
+      ]
+    }
+  ]
+}

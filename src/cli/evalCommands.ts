@@ -2,7 +2,7 @@
 // Extracted from api/cli.ts: workflow eval baseline, failure replay, and comparison commands.
 
 import { defineCommand } from 'citty'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import {
   WorkflowEvalStore,
@@ -11,6 +11,7 @@ import {
   runWorkflowEvalSuite,
 } from '../eval/WorkflowEval.js'
 import { createBenchmarkFromWorkflowEval, publishBenchmark } from '../eval/BenchmarkPublisher.js'
+import { runGoldenSuite, type GoldenSuite } from '../eval/GoldenEval.js'
 import { PROJECT_DIR, isTruthyFlag, resolveScaleDirForProject } from './engineBootstrap.js'
 import { SCALE_ENGINE_VERSION } from '../version.js'
 
@@ -265,6 +266,33 @@ const evalPromoteFailure = defineCommand({
   },
 })
 
+const evalGolden = defineCommand({
+  meta: { name: 'golden', description: 'P1-D: run the deterministic golden artifact-contract suite (CI merge gate)' },
+  args: {
+    suite: { type: 'string', default: 'evals/golden/artifact-contracts.json', description: 'Golden suite JSON path' },
+    dir: { type: 'string', default: process.cwd(), description: 'Project root the assertions run against' },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const suitePath = resolve(String(args.suite))
+    if (!existsSync(suitePath)) throw new Error(`golden suite not found: ${suitePath}`)
+    const suite = JSON.parse(readFileSync(suitePath, 'utf-8')) as GoldenSuite
+    const report = runGoldenSuite(suite, resolve(String(args.dir)))
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2))
+      if (!report.ok) process.exitCode = 1
+      return
+    }
+    console.log(`\nGolden suite: ${report.suiteName} (${report.suiteId})`)
+    for (const c of report.cases) {
+      console.log(`  [${c.passed ? 'OK' : 'FAIL'}] ${c.id} — ${c.description}`)
+      if (!c.passed) for (const a of c.assertions) if (!a.passed) console.log(`       x ${a.detail}`)
+    }
+    console.log(`\n  ${report.passedAssertions}/${report.totalAssertions} assertions passed (${report.cases.filter(c => c.passed).length}/${report.cases.length} cases)`)
+    if (!report.ok) process.exitCode = 1
+  },
+})
+
 // ---------------------------------------------------------------------------
 // Composite eval command (exported)
 // ---------------------------------------------------------------------------
@@ -279,5 +307,6 @@ export const evalCommand = defineCommand({
     failures: evalFailures,
     replay: evalReplay,
     'promote-failure': evalPromoteFailure,
+    golden: evalGolden,
   },
 })

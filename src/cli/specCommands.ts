@@ -21,10 +21,13 @@ import {
   checkTraceability,
   mapToSpecPayload,
   parseMySpecBundle,
+  parseRequirements,
   slugifyBundleName,
   type MySpecBundleFiles,
   type ParsedMySpecBundle,
 } from '../spec/MySpecImporter.js'
+import { compileAcceptanceChecks } from '../spec/AcceptanceCompiler.js'
+import { detectSpecDrift } from '../spec/SpecDriftDetector.js'
 
 const BUNDLE_FILES = ['constitution.md', 'requirements.md', 'solution.md', 'tasks.md'] as const
 
@@ -215,10 +218,104 @@ export const specConformanceCommand = defineCommand({
   },
 })
 
+export const specCompileChecksCommand = defineCommand({
+  meta: { name: 'compile-checks', description: 'P1-B: 把 EARS+ 验收标准编译为可执行检查（command/property/checklist，供 verification.json 承载）' },
+  args: {
+    path: { type: 'positional', required: true, description: 'MySpec bundle 目录（含 requirements.md）或直接 requirements.md 文件' },
+    'test-runner': { type: 'string', default: 'npm test --', description: '可执行 check 的命令模板前缀（会拼 --grep "<checkId>"）' },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const p = String(args.path)
+    let requirementsText: string
+    if (existsSync(join(p, 'requirements.md'))) {
+      requirementsText = readFileSync(join(p, 'requirements.md'), 'utf-8')
+    } else if (existsSync(p)) {
+      requirementsText = readFileSync(p, 'utf-8')
+    } else {
+      throw new Error(`requirements not found: ${p}`)
+    }
+
+    const stories = parseRequirements(requirementsText)
+    const criteria = stories.flatMap(s => s.criteria)
+    const result = compileAcceptanceChecks(
+      criteria.map(c => ({ id: c.id, text: c.text, kind: c.kind })),
+      { testRunner: String(args['test-runner']) },
+    )
+
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    console.log(`\nAcceptance checks: ${result.summary.total} total — ${result.summary.automatable} automatable, ${result.summary.needsHuman} needsHuman (coverage ${(result.coverage * 100).toFixed(0)}%)`)
+    console.log(`  by kind: command=${result.summary.byKind.command} property=${result.summary.byKind.property} checklist=${result.summary.byKind.checklist}`)
+    for (const c of result.checks) {
+      const tag = c.needsHuman ? 'HUMAN' : c.kind.toUpperCase()
+      console.log(`  [${tag}] ${c.checkId} <- ${c.clauseId}: ${c.clauseText.slice(0, 80)}`)
+      if (c.commandTemplate) console.log(`         ${c.commandTemplate}`)
+    }
+  },
+})
+
+export const specDriftCommand = defineCommand({
+  meta: { name: 'drift', description: 'P1-C: 检测 spec↔code 漂移并产出 append-only 草拟更新（不自动改 spec，人工确认）' },
+  args: {
+    'spec-file': { type: 'string', description: 'requirements.md / spec 文件路径（其解析出的条款参与匹配）' },
+    changed: { type: 'string', description: '逗号分隔的变更文件；不传则用 --base 的 git diff，再否则用 git status' },
+    base: { type: 'string', description: 'git ref（如 HEAD~1），用于计算变更文件' },
+    'min-token': { type: 'string', default: '4' },
+    json: { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const { execSync } = await import('node:child_process')
+    let changedFiles: string[] = []
+    if (args.changed) {
+      changedFiles = String(args.changed).split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+    } else {
+      try {
+        changedFiles = args.base
+          ? execSync(`git diff --name-only ${String(args.base)}`, { encoding: 'utf-8' }).split(/\r?\n/).filter(Boolean)
+          : execSync('git status --porcelain', { encoding: 'utf-8' }).split(/\r?\n/).map(l => l.slice(3).trim()).filter(Boolean)
+      } catch {
+        changedFiles = []
+      }
+    }
+
+    const specFile = args['spec-file'] ? String(args['spec-file']) : undefined
+    let clauses: Array<{ id: string; text: string }> = []
+    if (specFile && existsSync(specFile)) {
+      const stories = parseRequirements(readFileSync(specFile, 'utf-8'))
+      clauses = stories.flatMap(s => s.criteria).map(c => ({ id: c.id, text: c.text }))
+    }
+
+    const report = detectSpecDrift({
+      clauses,
+      changedFiles,
+      specFiles: specFile ? [specFile] : [],
+      minTokenLength: Number.parseInt(String(args['min-token']), 10) || 4,
+    })
+
+    if (args.json) {
+      console.log(JSON.stringify({ ...report, changedFiles }, null, 2))
+      if (!report.ok) process.exitCode = 1
+      return
+    }
+    console.log(`\nSpec drift: ${report.driftCount} finding(s), specTouched=${report.specTouched}`)
+    for (const f of report.findings) {
+      console.log(`  [DRIFT] ${f.clauseId} — ${f.reason}`)
+      console.log(`     draft: ${f.suggestedUpdate}`)
+    }
+    if (report.ok) console.log('  No drift detected (or spec updated in this change set).')
+    if (!report.ok) process.exitCode = 1
+  },
+})
+
 export const specCommand = defineCommand({
-  meta: { name: 'spec', description: 'Spec bundle ingestion and conformance (MySpec SDD integration)' },
+  meta: { name: 'spec', description: 'Spec bundle ingestion, conformance and acceptance-check compilation' },
   subCommands: {
     'import-myspec': specImportMySpecCommand,
     conformance: specConformanceCommand,
+    'compile-checks': specCompileChecksCommand,
+    drift: specDriftCommand,
   },
 })

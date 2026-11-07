@@ -47,6 +47,27 @@
   全覆盖）、`tests/workflow/reviewStore.test.ts` 新增 contextIsolation 落盘用例；`tests/review` +
   `reviewStore` 22/22 通过；phaseCli review 主流程（ship-before-review）回归通过。
 
+### P1-B/C/D 验证深度（v0.61–v0.62 阶段）
+
+- **P1-B 验收标准 → 可执行检查编译器**：新增 `src/spec/AcceptanceCompiler.ts`（纯函数）——把
+  EARS+ 条款编译为 verification.json 可承载的 check（kind: command|property|checklist，含
+  needsHuman 与 commandTemplate），并对每条 clause 建双向 traceability、输出 coverage
+  （可自动化占比）。原则：可测句式编译为可执行 check，主观/模糊措辞降级 checklist 并标 needsHuman
+  ——不假装都能自动化。新增 CLI `scale spec compile-checks <bundle|requirements.md> [--json]`。
+  对标 CMU/Google SDD 研究（arXiv 2608.25202）点名的工具缺口。
+- **P1-C spec↔code drift 持续检测**：新增 `src/spec/SpecDriftDetector.ts`（纯函数）——给定 spec
+  条款与本次变更文件，若代码触及 spec 引用的路径/模块而 spec 文件未同步更新，产出 **append-only
+  草拟更新建议**（人工确认，绝不自动改 spec），避免 CMU 研究指出的「完成后才查漂移」失败模式。
+  新增 CLI `scale spec drift --spec-file <req.md> --changed <files>|--base <ref> [--json]`。
+- **P1-D evals-in-CI 金数据集（确定性层）**：新增 `src/eval/GoldenEval.ts`（纯函数 runner）+
+  `evals/golden/artifact-contracts.json`（9 case / 25 断言，校验本仓库关键产物契约）+
+  CLI `scale eval golden [--suite <path>] [--json]`；`npm run eval:golden` 纳入 `release:check`
+  （build 之后）。断言类型：file-exists / json-field / text-contains / markdown-section / regex。
+  model-in-loop 层为后续 roadmap。
+- **验证**：`tsc --noEmit`=0、`tsc` build=0；`tests/spec` 24/24（acceptanceCompiler 9 +
+  specDriftDetector 6 + 既有 9）、`tests/eval/goldenEval` 全绿；真实 CLI：`scale eval golden --json`
+  对仓库产物 25/25 断言通过。
+
 ### Guardrail 修复 — issues #34 / #35 / #36
 
 - **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码
