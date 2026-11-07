@@ -5,6 +5,12 @@ import type { IDetector, DetectorContext } from './Gateway.js'
 import type { ToolUseInput, ToolResultInput, StopInput, DetectorResult } from '../artifact/types.js'
 import { createHash } from 'node:crypto'
 import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
+import {
+  loadVerificationCommandCatalog,
+  isVerificationCommand,
+  verificationSuggestion,
+  type VerificationCommandCatalog,
+} from './verificationCommands.js'
 
 const hashArgs = (args: unknown): string =>
   createHash('md5').update(JSON.stringify(args)).digest('hex').slice(0, 8)
@@ -107,6 +113,8 @@ export class PrematureDoneDetector implements IDetector {
   name = 'premature-done'
 
   async check(input: StopInput, ctx: DetectorContext): Promise<DetectorResult> {
+    // #36：验证命令判定优先读 .scale/verification.json；无矩阵时退回关键词正则。
+    const catalog = loadVerificationCommandCatalog()
     const edits = await ctx.eventBus.query({
       sessionId: input.sessionId,
       types: ['tool.completed'],
@@ -116,17 +124,15 @@ export class PrematureDoneDetector implements IDetector {
     const lastEditTimestamp = Math.max(...edits.map(event => event.timestamp))
 
     // Harness: 检查验证命令是否运行
+    // #36：不限定 tool === 'Bash'，凡携带命令文本的 shell 类工具（Bash/PowerShell 等）
+    // 与 verification.recorded 事件都计入；命令是否算验证由 catalog 决定。
     const verifications = await ctx.eventBus.query({
       sessionId: input.sessionId,
       types: ['tool.completed', 'tool.failed', 'verification.recorded'],
-      filter: (e) => {
-        const p = e.payload as { tool?: string; args?: { command?: string }; command?: string }
-        const command = p.args?.command ?? p.command
-        return (p.tool === 'Bash' || e.type === 'verification.recorded') && isVerificationCommand(command)
-      },
+      filter: (e) => isVerificationCommand(commandFromVerificationEvent(e.payload), catalog),
     })
 
-    const latestRuntimeVerification = latestRuntimeVerificationForSession(input.sessionId, lastEditTimestamp)
+    const latestRuntimeVerification = latestRuntimeVerificationForSession(input.sessionId, lastEditTimestamp, catalog)
 
     // 情况1：完全未验证
     if (verifications.length === 0 && !latestRuntimeVerification) {
@@ -134,8 +140,8 @@ export class PrematureDoneDetector implements IDetector {
       return {
         triggered: true,
         severity: 'block',
-        reason: '检测到「声称完成但未验证」：本会话修改了代码，但未运行任何 test/lint/build。请先运行验证命令。',
-        suggestion: 'pnpm test && pnpm lint && pnpm build',
+        reason: '检测到「声称完成但未验证」：本会话修改了代码，但未运行任何验证命令。请先运行项目配置的验证命令。',
+        suggestion: verificationSuggestion(catalog),
       }
     }
 
@@ -209,7 +215,11 @@ export class PrematureDoneDetector implements IDetector {
   }
 }
 
-function latestRuntimeVerificationForSession(sessionId: string, afterTimestamp: number): RuntimeEvidenceRecord | null {
+function latestRuntimeVerificationForSession(
+  sessionId: string,
+  afterTimestamp: number,
+  catalog: VerificationCommandCatalog,
+): RuntimeEvidenceRecord | null {
   const evidence = new RuntimeEvidenceLedger({
     projectDir: process.env.SCALE_PROJECT_DIR ?? process.cwd(),
     scaleDir: process.env.SCALE_DIR ?? '.scale',
@@ -218,7 +228,7 @@ function latestRuntimeVerificationForSession(sessionId: string, afterTimestamp: 
 
   const records = evidence.list({ sessionId, limit: 100 })
     .filter(record => record.kind === 'command')
-    .filter(record => isVerificationCommand(record.command))
+    .filter(record => isVerificationCommand(record.command, catalog))
     .filter(record => Date.parse(record.createdAt) >= afterTimestamp)
 
   return records[0] ?? null
@@ -239,11 +249,6 @@ function commandFromVerificationEvent(payload: unknown): string | undefined {
     event.cmd,
     event.script,
   )
-}
-
-function isVerificationCommand(command: unknown): boolean {
-  return typeof command === 'string'
-    && /\b(test|lint|build|typecheck|tsc|vitest|jest|playwright|preflight|verify)\b/i.test(command)
 }
 
 function firstString(...values: unknown[]): string | undefined {

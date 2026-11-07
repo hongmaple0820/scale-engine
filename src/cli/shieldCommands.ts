@@ -11,6 +11,7 @@ const compiler = new PolicyCompiler()
 
 interface ClaudeHookEntry {
   command?: string
+  hooks?: Array<{ command?: string }>
 }
 
 interface ClaudeSettings {
@@ -123,14 +124,17 @@ export const shieldStatusCommand = defineCommand({
     // Verify .scale/ integrity
     const integrity = verifyScaleIntegrity(projectDir)
 
-    // Check settings.json hook registration
+    // Check settings.json hook registration（#34：官方 schema 为嵌套 hooks 数组，两种形态都识别）
     const settingsPath = join(projectDir, '.claude', 'settings.json')
     let hookRegistered = false
     if (existsSync(settingsPath)) {
       try {
         const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as ClaudeSettings
         const hooks = Array.isArray(settings.hooks?.PreToolUse) ? settings.hooks.PreToolUse : []
-        hookRegistered = hooks.some(h => h.command?.includes('shield-pre-tool') ?? false)
+        hookRegistered = hooks.some(h =>
+          (h.command?.includes('shield-pre-tool') ?? false)
+          || (h.hooks?.some(nested => nested.command?.includes('shield-pre-tool') ?? false) ?? false),
+        )
       } catch (err) {
         logger.debug({ err, settingsPath }, 'Unable to inspect Shield hook registration')
       }

@@ -258,6 +258,7 @@ settings:
     const dir = makeDir('shield-e2e-settings-')
     mkdirSync(join(dir, '.scale'), { recursive: true })
     mkdirSync(join(dir, '.claude'), { recursive: true })
+    // 混入旧版平铺 shield 条目 ×2：应升级为官方嵌套形态且去重为 1
     writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({
       hooks: {
         PreToolUse: [
@@ -275,9 +276,49 @@ settings:
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
     const preToolHooks = settings.hooks.PreToolUse as Array<Record<string, unknown>>
-    const shieldHooks = preToolHooks.filter(hook => String(hook.command ?? '').includes('shield-pre-tool'))
+    const referencesShield = (hook: Record<string, unknown>) =>
+      String(hook.command ?? '').includes('shield-pre-tool')
+      || (Array.isArray(hook.hooks) && hook.hooks.some((nested: Record<string, unknown>) =>
+        String(nested.command ?? '').includes('shield-pre-tool')))
+    const shieldHooks = preToolHooks.filter(referencesShield)
+    // 去重后仅一条，且为官方嵌套 schema（#34）
     expect(shieldHooks).toHaveLength(1)
+    expect(Array.isArray(shieldHooks[0].hooks)).toBe(true)
+    expect(shieldHooks[0].hooks[0].command).toContain('shield-pre-tool.cjs')
+    expect(shieldHooks[0].hooks[0].timeout).toBe(5000)
+    // 用户自定义 hook 原样保留
     expect(preToolHooks.some(hook => hook.command === 'bash scripts/hooks/check-tdd.sh')).toBe(true)
+  })
+
+  it('upgrades legacy flat Stop hook entries to the nested schema (#34)', () => {
+    const dir = makeDir('shield-e2e-stop-upgrade-')
+    mkdirSync(join(dir, '.scale'), { recursive: true })
+    mkdirSync(join(dir, '.claude'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({
+      hooks: {
+        Stop: [
+          { type: 'command', command: 'node .claude/hooks/shield-require-clean-worktree.cjs', timeout: 10000 },
+          { matcher: '', command: 'notify-send done', timeout: 2000 },
+        ],
+      },
+    }, null, 2), 'utf-8')
+
+    const compiler = new PolicyCompiler()
+    compiler.writeSettingsPatches(compiler.compile(dir))
+    compiler.writeSettingsPatches(compiler.compile(dir))
+
+    const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
+    const stopHooks = settings.hooks.Stop as Array<Record<string, unknown>>
+    // 旧平铺 shield Stop 条目升级为嵌套且不重复注册
+    const shieldStops = stopHooks.filter(hook =>
+      String(hook.command ?? '').includes('shield-require-clean-worktree')
+      || (Array.isArray(hook.hooks) && hook.hooks.some((nested: Record<string, unknown>) =>
+        String(nested.command ?? '').includes('shield-require-clean-worktree'))))
+    expect(shieldStops).toHaveLength(1)
+    expect(Array.isArray(shieldStops[0].hooks)).toBe(true)
+    expect(shieldStops[0].hooks[0].timeout).toBe(10000)
+    // 用户自定义 Stop hook 原样保留
+    expect(stopHooks.some(hook => hook.command === 'notify-send done')).toBe(true)
   })
 
   it('recognizes no-patch flag variants from CLI args', () => {
@@ -351,10 +392,11 @@ describe('Shield Stop hook — dirty worktree', () => {
     compiler.writeSettingsPatches(compiler.compile(dir))
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
+    // #34：官方嵌套 schema { matcher, hooks: [{ type, command }] }
     expect(Array.isArray(settings.hooks.PreToolUse)).toBe(true)
-    expect(settings.hooks.PreToolUse[0].command).toContain('shield-pre-tool.cjs')
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('shield-pre-tool.cjs')
     expect(Array.isArray(settings.hooks.Stop)).toBe(true)
-    expect(settings.hooks.Stop[0].command).toContain('shield-require-clean-worktree.cjs')
+    expect(settings.hooks.Stop[0].hooks[0].command).toContain('shield-require-clean-worktree.cjs')
 
     // Idempotent: compiling again must not duplicate the Stop entries.
     compiler.writeSettingsPatches(compiler.compile(dir))

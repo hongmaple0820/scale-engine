@@ -677,19 +677,25 @@ try {
       if (!settings.hooks) settings.hooks = {}
 
       // Register PreToolUse hook if not already present; keep repeated compiles idempotent.
+      // #34：Claude Code 官方 schema 是 { matcher, hooks: [{ type: 'command', command }] }，
+      // 旧版写入的平铺 { type, command } 条目无法通过 schema 校验、整条被静默忽略；
+      // 先把旧平铺 shield 条目升级为嵌套形态，再去重注册。
       if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = []
-      const deduped = dedupeShieldPreToolHooks(settings.hooks.PreToolUse)
+      const rawEntries = settings.hooks.PreToolUse as unknown[]
+      const upgraded = rawEntries.map(entry => toNestedShieldHookEntry(entry, cmd => cmd.includes('shield-pre-tool')))
+      const upgradedAny = upgraded.some((entry, index) => entry !== rawEntries[index])
+      const deduped = dedupeShieldPreToolHooks(upgraded)
       settings.hooks.PreToolUse = deduped.hooks
 
       if (!deduped.found) {
         settings.hooks.PreToolUse.push({
-          type: 'command',
-          command: `node .claude/hooks/shield-pre-tool.cjs`,
-          timeout: 5000,
+          matcher: '',
+          hooks: [{ type: 'command', command: `node .claude/hooks/shield-pre-tool.cjs`, timeout: 5000 }],
         })
         deduped.changed = true
       }
-      if (this.registerStopHook(settings)) deduped.changed = true
+      if (upgradedAny) deduped.changed = true
+      if (this.registerStopHook(settings, true)) deduped.changed = true
       if (deduped.changed) {
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
         logger.info('Shield hook registered in Claude Code settings')
@@ -796,19 +802,30 @@ try {
   /**
    * Register the compiled Stop-hook rules (e.g. require-clean-worktree) so the
    * dirty-tree warning fires when a session ends. Idempotent.
+   * @param nested Claude Code 用官方嵌套 { matcher, hooks: [...] } 形态（#34）；
+   *   codex/cursor 等其它 harness 维持各自的平铺形态。
    */
-  private registerStopHook(settings: { hooks?: Record<string, unknown> }): boolean {
+  private registerStopHook(settings: { hooks?: Record<string, unknown> }, nested = false): boolean {
     const stopRules = DEFAULT_POLICY.rules.filter(rule => rule.hookType === 'Stop')
     if (stopRules.length === 0) return false
     if (!settings.hooks) settings.hooks = {}
     if (!Array.isArray(settings.hooks.Stop)) settings.hooks.Stop = []
     let changed = false
-    for (const rule of stopRules) {
-      const fileName = `shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.cjs`
-      const command = `node .claude/hooks/${fileName}`
-      const existing = (settings.hooks.Stop as Array<{ command?: string }>).some(entry => entry?.command === command)
+    const stopCommands = stopRules.map(rule => `node .claude/hooks/shield-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-')}.cjs`)
+    if (nested) {
+      // #34：旧版写入的平铺 Stop 条目同样无法通过 Claude Code schema 校验，一并升级
+      const rawStop = settings.hooks.Stop as unknown[]
+      const normalized = rawStop.map(entry => toNestedShieldHookEntry(entry, cmd => stopCommands.includes(cmd)))
+      if (normalized.some((entry, index) => entry !== rawStop[index])) changed = true
+      settings.hooks.Stop = normalized
+    }
+    for (const command of stopCommands) {
+      const existing = (settings.hooks.Stop as unknown[]).some(entry => hookEntryCommands(entry).includes(command))
       if (!existing) {
-        ;(settings.hooks.Stop as unknown[]).push({ type: 'command', command, timeout: 10000 })
+        const entry = nested
+          ? { matcher: '', hooks: [{ type: 'command', command, timeout: 10000 }] }
+          : { type: 'command', command, timeout: 10000 }
+        ;(settings.hooks.Stop as unknown[]).push(entry)
         changed = true
       }
     }
@@ -840,10 +857,44 @@ function dedupeShieldPreToolHooks(hooks: unknown[]): { hooks: unknown[]; found: 
 }
 
 function hookReferencesShieldPreTool(hook: unknown): boolean {
-  if (!hook || typeof hook !== 'object') return false
+  return hookEntryCommands(hook).some(command => command.includes('shield-pre-tool'))
+}
+
+/**
+ * 平铺 shield hook 条目（旧版写入的 { type, command, timeout }）升级为
+ * Claude Code 官方嵌套 { matcher, hooks: [...] } 形态；不匹配 isShieldCommand
+ * 的条目（含用户自定义 hook）原样返回。
+ */
+function toNestedShieldHookEntry(hook: unknown, isShieldCommand: (command: string) => boolean): unknown {
+  if (!hook || typeof hook !== 'object') return hook
   const record = hook as Record<string, unknown>
-  return ['command', 'scriptPath'].some(field => {
-    const value = record[field]
-    return typeof value === 'string' && value.includes('shield-pre-tool')
-  })
+  if (Array.isArray(record.hooks)) return hook
+  if (!hookEntryCommands(hook).some(isShieldCommand)) return hook
+  const handler: Record<string, unknown> = {
+    type: typeof record.type === 'string' ? record.type : 'command',
+    command: record.command,
+  }
+  if (record.timeout !== undefined) handler.timeout = record.timeout
+  return {
+    matcher: typeof record.matcher === 'string' ? record.matcher : '',
+    hooks: [handler],
+  }
+}
+
+/** 取 hook 条目（平铺或嵌套）携带的全部命令/脚本路径文本。 */
+function hookEntryCommands(hook: unknown): string[] {
+  if (!hook || typeof hook !== 'object') return []
+  const record = hook as Record<string, unknown>
+  const commands: string[] = []
+  if (typeof record.command === 'string') commands.push(record.command)
+  if (typeof record.scriptPath === 'string') commands.push(record.scriptPath)
+  if (Array.isArray(record.hooks)) {
+    for (const nested of record.hooks) {
+      if (nested && typeof nested === 'object') {
+        const command = (nested as Record<string, unknown>).command
+        if (typeof command === 'string') commands.push(command)
+      }
+    }
+  }
+  return commands
 }

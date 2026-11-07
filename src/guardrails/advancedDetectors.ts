@@ -57,25 +57,42 @@ export class DangerousCommandDetector implements IDetector {
 // ============================================================================
 // 7. 密钥泄露检测器
 // ============================================================================
+//
+// #35：旧版首条规则 /['"]?[A-Za-z0-9+\/]{40}['"]?/ 字符类含斜杠且引号可选，
+// 任意 40+ 连续字母数字斜杠（路径/URL/lockfile 片段）都会命中并以 block 硬拦截编辑，
+// 形成「想改配置修误报、编辑本身又被拦」的死锁。现拆为两层：
+// - 高置信规则（AWS/私钥/OpenAI/GitHub PAT/带键名上下文的凭据）保持 block；
+// - 泛化 40+ 字符规则仅 warn：要求被引号包裹、不含斜杠（真实 API key 极少含斜杠）、
+//   不含 base64 填充 '='。
+// 项目级开关：环境变量 SCALE_SECRET_LEAK_MODE = block(默认) | warn | off，
+// hook 进程按调用读取，可在 .scale/hooks 环境或 agent 启动环境中降级/关闭。
 
 export class SecretLeakDetector implements IDetector {
   name = 'secret-leak'
 
-  private patterns: Array<{ pattern: RegExp; description: string }> = [
-    { pattern: /['"]?[A-Za-z0-9+\/]{40}['"]?/, description: 'possible API key (40 chars)' },
+  private blockPatterns: Array<{ pattern: RegExp; description: string }> = [
     { pattern: /AKIA[0-9A-Z]{16}/, description: 'AWS Access Key ID' },
-    { pattern: /-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----/, description: 'Private key' },
+    { pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/, description: 'Private key' },
     { pattern: /sk-[a-zA-Z0-9]{48}/, description: 'OpenAI API key' },
     { pattern: /ghp_[a-zA-Z0-9]{36}/, description: 'GitHub PAT' },
-    { pattern: /password\s*[:=]\s*['"][^'"]{8,}['"]/, description: 'hardcoded password' },
+    // 检测对象是 JSON.stringify(input.args)，字面引号会被转义为 \"，因此两侧都容忍可选反斜杠
+    { pattern: /(api[_-]?key|secret|token)\s*[:=]\s*\\?['"][A-Za-z0-9+/]{32,}\\?['"]/i, description: 'keyed credential (32+ chars)' },
+    { pattern: /password\s*[:=]\s*\\?['"][^'"\\]{8,}\\?['"]/, description: 'hardcoded password' },
+  ]
+
+  private warnPatterns: Array<{ pattern: RegExp; description: string }> = [
+    { pattern: /\\?['"][A-Za-z0-9+]{40,}\\?['"]/, description: 'possible API key (40+ chars, quoted)' },
   ]
 
   async check(input: ToolUseInput, ctx: DetectorContext): Promise<DetectorResult> {
     if (!['Edit', 'Write', 'MultiEdit'].includes(input.tool)) return { triggered: false }
 
+    const mode = (process.env.SCALE_SECRET_LEAK_MODE ?? 'block').trim().toLowerCase()
+    if (mode === 'off') return { triggered: false }
+
     const content = JSON.stringify(input.args)
 
-    for (const { pattern, description } of this.patterns) {
+    for (const { pattern, description } of this.blockPatterns) {
       if (pattern.test(content)) {
         ctx.eventBus.emit('tool.blocked', {
           tool: input.tool,
@@ -85,9 +102,26 @@ export class SecretLeakDetector implements IDetector {
 
         return {
           triggered: true,
-          severity: 'block',
+          severity: mode === 'warn' ? 'warn' : 'block',
           reason: `🔑 检测到可能的密钥泄露：${description}\n请使用环境变量代替硬编码密钥。`,
           suggestion: '使用 process.env.XXX 或 .env 文件',
+        }
+      }
+    }
+
+    for (const { pattern, description } of this.warnPatterns) {
+      if (pattern.test(content)) {
+        ctx.eventBus.emit('tool.blocked', {
+          tool: input.tool,
+          detector: this.name,
+          reason: description,
+        }, { sessionId: input.sessionId })
+
+        return {
+          triggered: true,
+          severity: 'warn',
+          reason: `⚠️ 疑似密钥泄露（低置信）：${description}。长路径/URL/base64 数据可能误报，已降级为警告。`,
+          suggestion: '确认为密钥则改用环境变量；确认误报可忽略',
         }
       }
     }

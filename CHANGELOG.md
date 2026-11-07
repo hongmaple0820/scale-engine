@@ -1,3 +1,53 @@
+## Unreleased
+
+### Guardrail 修复 — issues #34 / #35 / #36
+
+- **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码
+  `test|lint|build|typecheck|tsc|vitest|jest|playwright|preflight|verify` 关键词正则且只认 `tool === 'Bash'`
+  的事件——配置了不含这些字样验证入口的项目（如 `powershell -File tools/validate-patterns.ps1`）永远无法通过
+  before-stop 门禁，只能靠命令尾部拼关键词「表演式」绕过。新增 `src/guardrails/verificationCommands.ts`
+  共享目录：收集全部 profile + service 命令做规范化匹配（容忍 rtk 前缀、反斜杠路径、尾部追加参数、
+  同一脚本不同参数值；读取容错 UTF-8 BOM——PowerShell 写出的配置文件实测带 BOM 会让 JSON.parse 抛错）；
+  无矩阵/矩阵损坏时退回原关键词正则。事件与 runtime evidence 过滤不再限定 Bash（PowerShell 等 shell 类
+  工具与 `verification.recorded` 都计入）；`scale gate post-tool` 的验证记账同步走 catalog；门禁建议文案
+  优先输出 default profile 配置的命令（test>lint>build>typecheck>coverage>smoke 取前 3），pnpm 三连仅作
+  无配置时的兜底。
+- **#35 SecretLeakDetector 40 字符规则误报**：旧首条规则 `/['"]?[A-Za-z0-9+\/]{40}['"]?/` 字符类含斜杠且
+  引号可选，任意 40+ 连续字母数字斜杠的路径/URL/lockfile 片段都会命中并以 block 硬阻塞编辑，形成
+  「想改配置修误报、编辑本身又被拦」的死锁。现拆为两层：高置信规则（AWS Key、私钥（补 OPENSSH）、OpenAI、
+  GitHub PAT、hardcoded password、新增 keyed credential `api_key|secret|token := "32+"`）保持 block；
+  泛化 40+ 规则降级 warn（要求引号包裹、不含斜杠）。所有正则容忍 JSON.stringify 的 `\"` 转义形态。
+  新增项目级开关 `SCALE_SECRET_LEAK_MODE`（默认 block，可 warn/off），供被误报阻塞的项目降级。
+- **#34 ClaudeCodeAdapter hooks schema 无效**：`generateSettings()` 此前产出 `{matcher, command}` 平铺结构，
+  不符合 Claude Code 官方 `{matcher, hooks:[{type:'command', command}]}` schema，`claude /doctor` 对每个
+  hook 报 `Expected array, but received undefined` 且整条 hook 被静默忽略；命令还依赖 Claude Code 并不提供
+  的 `$TOOL_INPUT_JSON/$TOOL_OUTPUT_JSON/$TOOL_EXIT_CODE/$CLAUDE_SESSION_ID` 环境变量（工具数据实际以
+  JSON 从 stdin 传入）。现在：生成官方嵌套 schema；命令统一 `--stdin`（复用 gate 入口既有的 ZCode stdin
+  协议，`session_id/tool_name/tool_input/tool_response` 全部从 stdin 读取）；matcher `Bash|PowerShell` 覆盖
+  Windows PowerShell 工具；补 `PostToolUseFailure` 事件（`--exit-code 1` 喂 brute-retry）；`mergeSettings()`
+  将旧平铺 SCALE hook 整体升级为嵌套形态，用户自定义 hook 保留。CLI 配套：`gate before-stop --stdin`、
+  `scale context inject --stdin`、`scale session end --stdin`。`examples/claude-code/settings.json` 与
+  `generate-skeleton.mjs` 模板同步；15 个 adapter 的 mergeSettings 判重因 `HookEntry.command` 变可选改
+  可选链。升级已有项目需重跑 `scale init --agent claude-code` 刷新 `.claude/settings.json`。
+- 相关发现同修：`src/shield/PolicyCompiler.ts patchClaudeSettings/registerStopHook` 此前也向
+  `.claude/settings.json` 写平铺 `{type, command}` 条目（同属 #34 schema 病灶，`scale shield compile`
+  注册的 Shield hook 在 Claude Code 里同样被静默忽略）。现在 Claude 路径写入官方嵌套形态，且重复 compile
+  会把旧平铺 shield 条目（PreToolUse 与 Stop）**自动升级**为嵌套（保留 timeout、用户自定义 hook 原样不动）；
+  codex/cursor 的平铺形态是各平台自身 schema，维持不变。`scale shield status` 的注册检测同步识别两种形态。
+- 验证：`tsc --noEmit` / `tsc` build 0 错误；eslint 0 error；vitest 定向回归（guardrails 全套 11 文件 +
+  adapter + sessionStart）**150/150**，shield 套件 settings 类用例全绿（idempotent 升级、Stop 升级、
+  activation 幂等）；dist 端到端（真实 stdin JSON 协议）：无关键词验证命令记账
+  `status: passed` → `before-stop --enforce` 放行（旧代码此处 exit 2），未验证路径 exit 2 且 Suggestion
+  输出配置命令，pre-tool 危险命令 exit 2 / 安全命令 exit 0，session end / context inject stdin 正常；
+  `scale shield compile` 端到端把旧平铺条目升级为嵌套且用户自定义 hook 保留。
+  工件：`.scale/state/planning/tasks/2026-11-07-guardrail-issues-34-35-36/`。
+  已知边界：本沙箱 workspace-write 下 Node spawn 一律 EPERM，execa 类 CLI e2e 与 vite dashboard 构建无法
+  运行（`git stash` 基线复核同样失败，非本次回归）；真实 Claude Code 端 `/doctor` 实测未覆盖（schema 依据
+  官方 hooks 文档 + 仓库内 ZCode/qoder 嵌套先例）。shield 套件的 13 个 spawn 型用例
+  （runHookScript spawnSync node）同样受沙箱限制，settings 断言类用例已全绿且经 dist e2e 等效验证。
+- 相关发现（未处理，建议另开任务）：`src/shield/PolicyCompiler.ts patchClaudeSettings` 也向
+  `.claude/settings.json` 写平铺 `{type, command}` hook 条目，Shield 子系统有独立测试面，本次不动。
+
 ## 0.58.0 - 2026-11-03
 
 本版本把「受治理动作」从内核契约落成第一个完整域实现：媒体。此前 alpha.1 / alpha.2 的验证可靠性、

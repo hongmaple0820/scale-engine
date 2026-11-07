@@ -49,6 +49,27 @@ function parsePositiveIntArg(value: unknown, name: string): number | undefined {
   return parsed
 }
 
+/** 读取 stdin 上的 hook payload（Claude Code / ZCode 等 stdin 协议 agent）。 */
+function readStdinHookPayload(): Record<string, unknown> | undefined {
+  try {
+    const raw = readFileSync(0, 'utf-8')
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    // 无 payload 或非 JSON：交给调用方兜底
+  }
+  return undefined
+}
+
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+  }
+  return undefined
+}
+
 function formatContextSummary(ctx: { artifacts: FSMContextSnapshot[]; recommendations: string[] }): string {
   const lines: string[] = []
 
@@ -109,13 +130,22 @@ const contextStatus = defineCommand({
 const contextInject = defineCommand({
   meta: { name: 'inject', description: 'Inject FSM context for SessionStart hook' },
   args: {
-    'session-id': { type: 'string', required: true },
+    'session-id': { type: 'string', required: false },
+    stdin: { type: 'boolean', default: false, description: 'Read session_id from the hook payload on stdin (Claude Code / ZCode SessionStart hooks)' },
   },
   async run({ args }) {
+    // #34：SessionStart hook 的 session_id 在 stdin JSON payload 里，不在环境变量里
+    const payload = args.stdin && !process.stdin.isTTY ? readStdinHookPayload() : undefined
+    const sessionId = firstNonEmptyString(args['session-id'], payload?.session_id)
+    if (!sessionId) {
+      process.stderr.write('scale context inject: --session-id is required (or pass --stdin to read it from the hook payload)\n')
+      process.exitCode = 1
+      return
+    }
     const { eventBus, kb, fsmAgentBridge } = getEngine()
 
     // Get FSM context for all session artifacts
-    const fsmContext = await fsmAgentBridge.getSessionContext(args['session-id'], eventBus)
+    const fsmContext = await fsmAgentBridge.getSessionContext(sessionId, eventBus)
 
     // Recall relevant lessons based on artifact types
     const artifactTypes = fsmContext.artifacts.map(a => a.artifactType)

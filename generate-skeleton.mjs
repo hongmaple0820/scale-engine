@@ -1323,18 +1323,21 @@ export {
   'examples/claude-code/settings.json': JSON.stringify({
     hooks: {
       SessionStart: [
-        { matcher: '', command: 'scale session start --agent claude-code --session-id $CLAUDE_SESSION_ID' },
+        { matcher: '', hooks: [{ type: 'command', command: 'scale context inject --stdin' }] },
       ],
       PreToolUse: [
-        { matcher: 'Bash', command: "scale gate pre-tool Bash --args-json $TOOL_INPUT_JSON --session-id $CLAUDE_SESSION_ID" },
-        { matcher: 'Edit|Write|MultiEdit', command: 'scale gate pre-tool Edit --args-json $TOOL_INPUT_JSON --session-id $CLAUDE_SESSION_ID' },
+        { matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: 'scale gate pre-tool --stdin', timeout: 10 }] },
+        { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'scale gate pre-tool Edit --stdin', timeout: 10 }] },
       ],
       PostToolUse: [
-        { matcher: 'Edit|Write|MultiEdit', command: 'scale gate post-tool Edit --args-json $TOOL_INPUT_JSON --output-json $TOOL_OUTPUT_JSON --session-id $CLAUDE_SESSION_ID' },
-        { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json $TOOL_INPUT_JSON --exit-code $TOOL_EXIT_CODE --session-id $CLAUDE_SESSION_ID' },
+        { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'scale gate post-tool Edit --stdin', timeout: 10 }] },
+        { matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: 'scale gate post-tool Bash --stdin', timeout: 10 }] },
       ],
-      Stop: [{ matcher: '', command: 'scale gate before-stop --session-id $CLAUDE_SESSION_ID' }],
-      SessionEnd: [{ matcher: '', command: 'scale session end --session-id $CLAUDE_SESSION_ID' }],
+      PostToolUseFailure: [
+        { matcher: '', hooks: [{ type: 'command', command: 'scale gate post-tool --stdin --exit-code 1', timeout: 10 }] },
+      ],
+      Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'scale gate before-stop --stdin --hook-safe', timeout: 10 }] }],
+      SessionEnd: [{ matcher: '', hooks: [{ type: 'command', command: 'scale session end --stdin' }] }],
     },
     permissions: {
       allow: ['Bash(scale:*)'],
