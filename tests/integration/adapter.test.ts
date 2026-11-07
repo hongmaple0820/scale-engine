@@ -46,14 +46,43 @@ describe('ClaudeCodeAdapter', () => {
     expect(settings.hooks!.SessionStart).toHaveLength(1)
     expect(settings.hooks!.PreToolUse).toHaveLength(2)
     expect(settings.hooks!.PostToolUse).toHaveLength(2)
+    expect(settings.hooks!.PostToolUseFailure).toHaveLength(1)
     expect(settings.hooks!.Stop).toHaveLength(1)
     expect(settings.hooks!.SessionEnd).toHaveLength(1)
-    // All commands start with 'scale'
+    // #34：Claude Code 官方 schema 是 { matcher, hooks: [{ type: 'command', command }] }
     for (const entries of Object.values(settings.hooks!)) {
       for (const entry of entries) {
-        expect(entry.command).toMatch(/^scale /)
+        expect(Array.isArray(entry.hooks), 'hook entry must use the nested hooks array schema').toBe(true)
+        expect(entry.hooks!.length).toBeGreaterThan(0)
+        for (const hook of entry.hooks!) {
+          expect(hook.type).toBe('command')
+          expect(hook.command).toMatch(/^scale /)
+        }
       }
     }
+  })
+
+  it('generateSettings hooks read tool data from stdin, not Claude-absent env vars (#34)', () => {
+    const settings = adapter.generateSettings()
+    for (const entries of Object.values(settings.hooks!)) {
+      for (const entry of entries) {
+        for (const hook of entry.hooks!) {
+          expect(hook.command).not.toMatch(/\$(TOOL_INPUT_JSON|TOOL_OUTPUT_JSON|TOOL_EXIT_CODE|CLAUDE_SESSION_ID)/)
+        }
+      }
+    }
+    const commands = collectHookCommands(settings.hooks)
+    expect(commands.some(command => command.includes('gate pre-tool --stdin'))).toBe(true)
+    expect(commands.some(command => command.includes('gate post-tool --stdin'))).toBe(true)
+    expect(commands.some(command => command.includes('gate before-stop --stdin --hook-safe'))).toBe(true)
+    expect(commands.some(command => command.includes('context inject --stdin'))).toBe(true)
+    expect(commands.some(command => command.includes('session end --stdin'))).toBe(true)
+  })
+
+  it('generateSettings matcher covers the Windows PowerShell tool (#36)', () => {
+    const settings = adapter.generateSettings()
+    const matchers = settings.hooks!.PreToolUse!.map(entry => entry.matcher)
+    expect(matchers.some(matcher => /Bash/.test(matcher) && /PowerShell/.test(matcher))).toBe(true)
   })
 
   it('generateSettings includes permissions', () => {
@@ -72,13 +101,35 @@ describe('ClaudeCodeAdapter', () => {
     }
     const merged = adapter.mergeSettings(existing)
     // Custom hook preserved
-    expect(merged.hooks!.PreToolUse.some((e) => e.command.includes('my-custom-check'))).toBe(true)
+    expect(merged.hooks!.PreToolUse.some((e) => e.command?.includes('my-custom-check'))).toBe(true)
     // SCALE hooks added
     expect(merged.hooks!.SessionStart).toBeDefined()
     expect(merged.hooks!.Stop).toBeDefined()
     // Custom permissions preserved
     expect(merged.permissions!.allow).toContain('Bash(npm:*)')
     expect(merged.permissions!.allow).toContain('Bash(scale:*)')
+  })
+
+  it('mergeSettings upgrades legacy flat SCALE hook entries to the nested schema (#34)', () => {
+    const existing = {
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', command: 'scale gate pre-tool Bash --args-json "$TOOL_INPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
+        ],
+        Stop: [
+          { matcher: '', command: 'scale gate before-stop --session-id "$CLAUDE_SESSION_ID" --hook-safe' },
+        ],
+      },
+    }
+    const merged = adapter.mergeSettings(existing)
+    // 旧平铺 SCALE hook 被移除，不再重复注册
+    expect(merged.hooks!.PreToolUse.filter((e) => typeof e.command === 'string' && e.command.includes('scale gate'))).toHaveLength(0)
+    expect(merged.hooks!.Stop.filter((e) => typeof e.command === 'string' && e.command.includes('scale gate'))).toHaveLength(0)
+    // 新嵌套形态就位
+    const preToolGroups = merged.hooks!.PreToolUse!.filter(e => Array.isArray(e.hooks) && e.hooks!.length > 0)
+    expect(preToolGroups.length).toBeGreaterThan(0)
+    const stopGroup = merged.hooks!.Stop!.find(e => Array.isArray(e.hooks) && e.hooks!.length > 0)
+    expect(stopGroup?.hooks![0]!.command).toContain('scale gate before-stop --stdin --hook-safe')
   })
 
   it('generateKnowledgeDoc includes project name', () => {

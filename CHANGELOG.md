@@ -1,3 +1,172 @@
+## Unreleased
+
+### P0 第一公里修复 — 安装可信度（v0.59 阶段）
+
+- **P0-1 install 验收与 doctor env 依赖解析口径不一致**（真实安装烟测复现）：npx 安装时验收层
+  因原生绑定在 npx 临时缓存（`C:\Program Files\nodejs\node_cache\_npx\...`）缺预构建二进制而报
+  blocker 并 `exit 1`，而紧随其后的 `doctor env` 用全局解析对同一绑定报 `ok`；且验收层把该失败
+  升级为 hard blocker，违反 `check-native-abi.mjs` 的 "never block an install" 契约。修复：
+  `SetupVerification` 新增 `isAutoFixableRuntimeCheck`——`category==='runtime'` 且 `id` 以 `-native`
+  结尾的可修复检查（rebuild 即恢复）降级为 warning + `autoFixCommands`，不再阻断安装；判据用 id
+  后缀而非硬编码包名。`SetupVerificationReport` 新增 `autoFixCommands` 字段，install 报告渲染
+  「可自动修复：<命令>」。`CustomerInstall` 同步透传。回归测试 `tests/setup/SetupVerification.test.ts`
+  新增两条：`-native` 必需检查失败不产生 blocker + 带 autoFixCommand；非可修复的必需失败（git 缺失）
+  仍正确阻断。
+- **P0-2 Windows 安装文档**：`docs/start/npx-interactive-install.md` 与 `README.md` 补充
+  PowerShell 默认执行策略导致 `npx.ps1` 被拒的说明（改用 `npx.cmd` 或
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`）——中文 Windows 首次安装最常见的一道坎。
+- **P0-3 安装烟测进 release:check**：新增 `scripts/workflow/install-smoke.mjs`（隔离临时目录跑
+  真实 install，断言 exit 0 / JSON 可解析 / ok=true / 无 hard blocker / `.scale` 与 agent 入口生成）
+  与对应的 `npm run smoke:install`，纳入 `release:check` 流水线守护「首次安装 exit 0」这一 P0 不变量。
+- **P0-5 能力阶梯 + agent 自装烟测**：`CustomerInstallReport` 新增 `capabilityTier`（Level 1 core /
+  Level 2 full / Level 3 extreme），install 报告显式告知用户「装到了哪一档、怎么升级」；新增
+  `scripts/workflow/agent-install-smoke.mjs`（`npm run smoke:agent-install`）模拟 agent 按
+  `agent-full-workflow.md` 提示词自主安装，断言 `setup --verify --pack full` 必须显式暴露缺失/降级
+  信号与可执行修复建议（不静默降级），纳入 `release:check`。
+- **P0-4 自评体系补位**：`docs/workflow/EXECUTIVE_SUMMARY.md` 增加 Tier1 #14「安装第一公里」，
+  记录此前 13 项改进无一指向首次安装成功率这一自评盲区。
+- 验证：`tsc --noEmit` / `tsc` build 0 错误；`install-smoke` 6/6、`agent-install-smoke` 见下方结果；
+  `tests/setup/SetupVerification.test.ts` 10/10（含 2 条新回归）。
+
+### P1-A clean-context 独立审查（v0.60 阶段）
+
+- **背景**：`FreshContextVerifier` 已实现隔离输入（仅 verificationSurface + diff + gate，
+  无构建 agent 对话历史），但此前永远 advisory-only、无隔离证明、无门禁，能力未落地。
+- **新增 `--isolated`**（`scale review`）：等价 `--mode fresh-subagent`，语义更直白。
+- **新增 `--fresh-gate off|warn|block`**（默认 off，向后兼容）：由纯函数
+  `src/review/freshReviewGate.ts#applyFreshGate` 决定处置——`unverified` 在 warn 下追加 LOW
+  finding（不阻断），在 block 下追加 CRITICAL finding 并 `passed=false`（经既有 review 证据门禁
+  阻断 ship）；`verified`/`uncertain` 永不阻断。off 保持原 advisory 语义。
+- **隔离证明**：`ReviewRecord` 新增 `contextIsolation`（fedFields/excludedFields/diffHash/
+  surfaceCount/gateSummaryIncluded）与 `freshGateEnforced`，随 review 落盘 `.scale/reviews/`，
+  可审计「独立审查确实未看到作者解释」。
+- **effort 提示**：`scale review` 在 L/CRITICAL 任务且用 ai-self 时主动建议
+  `--isolated --fresh-gate block`（不改默认行为，避免破坏既有 ai-self 断言）。
+- **文档**：新增 `docs/EFFORT_TUNED_VERIFICATION.md`（四级验证矩阵 + P1-A 用法 + P1-B/C/D roadmap）。
+- **测试**：`tests/review/freshReviewGate.test.ts`（off/warn/block × verified/unverified/uncertain
+  全覆盖）、`tests/workflow/reviewStore.test.ts` 新增 contextIsolation 落盘用例；`tests/review` +
+  `reviewStore` 22/22 通过；phaseCli review 主流程（ship-before-review）回归通过。
+
+### P1-B/C/D 验证深度（v0.61–v0.62 阶段）
+
+- **P1-B 验收标准 → 可执行检查编译器**：新增 `src/spec/AcceptanceCompiler.ts`（纯函数）——把
+  EARS+ 条款编译为 verification.json 可承载的 check（kind: command|property|checklist，含
+  needsHuman 与 commandTemplate），并对每条 clause 建双向 traceability、输出 coverage
+  （可自动化占比）。原则：可测句式编译为可执行 check，主观/模糊措辞降级 checklist 并标 needsHuman
+  ——不假装都能自动化。新增 CLI `scale spec compile-checks <bundle|requirements.md> [--json]`。
+  对标 CMU/Google SDD 研究（arXiv 2608.25202）点名的工具缺口。
+- **P1-C spec↔code drift 持续检测**：新增 `src/spec/SpecDriftDetector.ts`（纯函数）——给定 spec
+  条款与本次变更文件，若代码触及 spec 引用的路径/模块而 spec 文件未同步更新，产出 **append-only
+  草拟更新建议**（人工确认，绝不自动改 spec），避免 CMU 研究指出的「完成后才查漂移」失败模式。
+  新增 CLI `scale spec drift --spec-file <req.md> --changed <files>|--base <ref> [--json]`。
+- **P1-D evals-in-CI 金数据集（确定性层）**：新增 `src/eval/GoldenEval.ts`（纯函数 runner）+
+  `evals/golden/artifact-contracts.json`（9 case / 25 断言，校验本仓库关键产物契约）+
+  CLI `scale eval golden [--suite <path>] [--json]`；`npm run eval:golden` 纳入 `release:check`
+  （build 之后）。断言类型：file-exists / json-field / text-contains / markdown-section / regex。
+  model-in-loop 层为后续 roadmap。
+- **验证**：`tsc --noEmit`=0、`tsc` build=0；`tests/spec` 24/24（acceptanceCompiler 9 +
+  specDriftDetector 6 + 既有 9）、`tests/eval/goldenEval` 全绿；真实 CLI：`scale eval golden --json`
+  对仓库产物 25/25 断言通过。
+
+### P2 产品体验层（v0.63–v0.64 阶段）
+
+- **P2-A 面板产品化**：新增 `scale dashboard serve`（前台 HTTP server 正式入口，取代 `npm run serve`）
+  与 `scale dashboard capabilities [--json]`（首屏「能力阶梯 + 数据源就绪」数据）。新增
+  `src/dashboard/CapabilityOverview.ts`（纯函数）——复用能力阶梯，并把 runtime-evidence / command-runs /
+  review-evidence（P1-A）/ model-usage / memory / knowledge / golden-evals（P1-D）七类数据源的就绪状态
+  显式化，空态附原因，避免「空图表被当健康」。
+- **P2-B dsh 插件能力矩阵**：新增 `scripts/qa/check-dsh-plugin-abi.mjs` + `docs/DSH_PLUGIN_CAPABILITY_MATRIX.md`。
+  实测发现插件 README 的「Electron ABI 149 vs 主包 137 不兼容」前提**已随主包升级失效**——`better-sqlite3`
+  已升至 13.x N-API（跨 ABI 稳定，`abiAssumptionStale=true`），插件核心治理能力（拦截/注入/证据/命令/
+  skills/卡片）在 DSH 内满血，仅 Artifact store / Memory Brain 为可升级的降级；升级路径已文档化（代码
+  改动 + 真实 Electron 验证）。
+- **P2-C 场景 × 规范矩阵**：新增 `src/product/ScenarioMatrix.ts` + `scale product scenarios [--json]` +
+  `docs/SCENARIO_MATRIX.md`——9 行覆盖编程/自媒体/办公/Agent OS × 单体/微服务/MOE/桌面，covered 6 /
+  partial 3 / gap 0，partial（自媒体 content-media、办公 office-automation、MOE pack）的补齐策略成文。
+- **P2-D 头脑风暴前置互操作**：新增 `src/spec/BrainstormIntake.ts`（纯函数）+ `scale spec intake-brainstorm
+  <file> [--compile] [--json]`——把 superpowers/BMAD 头脑风暴产物（Given/When/Then、验收清单、既有 EARS）
+  翻译为 EARS+ 并可直接喂 AcceptanceCompiler，形成「头脑风暴 → 可执行检查」的端到端衔接（只做翻译层，
+  不重写头脑风暴）。
+- **验证**：`tsc --noEmit`=0、`tsc` build=0；`tests/spec` + `tests/product` + `tests/dashboard` 全绿；
+  真实 CLI 冒烟 `product scenarios` / `dashboard capabilities` / `spec intake-brainstorm --compile` /
+  `eval golden`（回归 27/27）全部通过。
+
+### P3/P4 生态分发与平台化收敛（v0.65–v0.66 阶段）
+
+- **P3-A SKILL.md 打包**：新增 `skills-pack/`（3 个遵循 Anthropic Agent Skills 约定的 SKILL.md：
+  scale-verify / scale-review-isolated / scale-acceptance-checks）+ `scripts/workflow/build-skill-pack.mjs`
+  （校验 frontmatter name/description 并输出 manifest）。这是第七个分发入口（`npx skills add` 约定）。
+- **P3-B spec-kit preset**：新增 `integrations/spec-kit-preset/`（preset.yaml + README）——把
+  effort-tuned 验证 + isolated review 作为 spec-kit 工作流步骤的参考接入，诚实标注需按 spec-kit 当前
+  preset schema 适配、社区 catalog 提交为外部账号操作。
+- **P3-C MCP 符合性**：新增 `docs/MCP_COMPLIANCE.md`——审计 MCP 2026-07-28 stateless core 符合度
+  （stdio 无协议级 session、无隐式跨调用状态，状态外置）。结论：stdio 场景基本符合，工具注解/HTTP
+  transport 为增强项。
+- **P3-D GitHub 集成 + 文档站**：新增 `src/integrations/GitHubIssuePlanner.ts`（纯函数）+ `scale github
+  plan-issues [--input|--task-ids]`（默认 dry-run，不发 issue）+ `.github/workflows/docs.yml`
+  （GitHub Pages 文档站 scaffold，启用 Pages 为仓库设置操作）。
+- **P4-A lean/governed 双形态**：新增 `src/workflow/LeanPolicy.ts`——S/M 在 lean 下最小验证，L/CRITICAL
+  永不降级（isolated review + block gate 保留）。
+- **P4-B 上下文工程**：新增 `src/context/ContextCompaction.ts`（compaction：超预算保留尾部、前缀压成
+  摘要占位）。
+- **P4-C 沙箱与审计**：新增 `docs/SANDBOX_AUDIT.md`——确认全量运行时证据 + 事件流 + secrets/危险命令
+  预阻断已具备，列 allow 动作全量审计/容器化/报表为增强项。
+- **P4-D property-based**：新增 `src/verify/PropertyTemplates.ts`——对 kind=property 的检查生成
+  fast-check / vitest 断言骨架。
+- **P4-E 多模型升级路由**：新增 `src/routing/ModelEscalation.ts`——连续无进展达阈值时升级到更强模型
+  做一次诊断（避免 fan-out 与升级循环）。
+- **P4-F v1.0 收敛**：新增 `docs/V1.0_READINESS.md`——v1.0=能力承诺；四轴自评替换旧 13 项清单。
+- **验证**：`tsc --noEmit`=0、`tsc` build=0；P3/P4 新增测试全绿；`build-skill-pack` 脚本 + `github
+  plan-issues` dry-run 冒烟通过。
+
+### Guardrail 修复 — issues #34 / #35 / #36
+
+- **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码
+  `test|lint|build|typecheck|tsc|vitest|jest|playwright|preflight|verify` 关键词正则且只认 `tool === 'Bash'`
+  的事件——配置了不含这些字样验证入口的项目（如 `powershell -File tools/validate-patterns.ps1`）永远无法通过
+  before-stop 门禁，只能靠命令尾部拼关键词「表演式」绕过。新增 `src/guardrails/verificationCommands.ts`
+  共享目录：收集全部 profile + service 命令做规范化匹配（容忍 rtk 前缀、反斜杠路径、尾部追加参数、
+  同一脚本不同参数值；读取容错 UTF-8 BOM——PowerShell 写出的配置文件实测带 BOM 会让 JSON.parse 抛错）；
+  无矩阵/矩阵损坏时退回原关键词正则。事件与 runtime evidence 过滤不再限定 Bash（PowerShell 等 shell 类
+  工具与 `verification.recorded` 都计入）；`scale gate post-tool` 的验证记账同步走 catalog；门禁建议文案
+  优先输出 default profile 配置的命令（test>lint>build>typecheck>coverage>smoke 取前 3），pnpm 三连仅作
+  无配置时的兜底。
+- **#35 SecretLeakDetector 40 字符规则误报**：旧首条规则 `/['"]?[A-Za-z0-9+\/]{40}['"]?/` 字符类含斜杠且
+  引号可选，任意 40+ 连续字母数字斜杠的路径/URL/lockfile 片段都会命中并以 block 硬阻塞编辑，形成
+  「想改配置修误报、编辑本身又被拦」的死锁。现拆为两层：高置信规则（AWS Key、私钥（补 OPENSSH）、OpenAI、
+  GitHub PAT、hardcoded password、新增 keyed credential `api_key|secret|token := "32+"`）保持 block；
+  泛化 40+ 规则降级 warn（要求引号包裹、不含斜杠）。所有正则容忍 JSON.stringify 的 `\"` 转义形态。
+  新增项目级开关 `SCALE_SECRET_LEAK_MODE`（默认 block，可 warn/off），供被误报阻塞的项目降级。
+- **#34 ClaudeCodeAdapter hooks schema 无效**：`generateSettings()` 此前产出 `{matcher, command}` 平铺结构，
+  不符合 Claude Code 官方 `{matcher, hooks:[{type:'command', command}]}` schema，`claude /doctor` 对每个
+  hook 报 `Expected array, but received undefined` 且整条 hook 被静默忽略；命令还依赖 Claude Code 并不提供
+  的 `$TOOL_INPUT_JSON/$TOOL_OUTPUT_JSON/$TOOL_EXIT_CODE/$CLAUDE_SESSION_ID` 环境变量（工具数据实际以
+  JSON 从 stdin 传入）。现在：生成官方嵌套 schema；命令统一 `--stdin`（复用 gate 入口既有的 ZCode stdin
+  协议，`session_id/tool_name/tool_input/tool_response` 全部从 stdin 读取）；matcher `Bash|PowerShell` 覆盖
+  Windows PowerShell 工具；补 `PostToolUseFailure` 事件（`--exit-code 1` 喂 brute-retry）；`mergeSettings()`
+  将旧平铺 SCALE hook 整体升级为嵌套形态，用户自定义 hook 保留。CLI 配套：`gate before-stop --stdin`、
+  `scale context inject --stdin`、`scale session end --stdin`。`examples/claude-code/settings.json` 与
+  `generate-skeleton.mjs` 模板同步；15 个 adapter 的 mergeSettings 判重因 `HookEntry.command` 变可选改
+  可选链。升级已有项目需重跑 `scale init --agent claude-code` 刷新 `.claude/settings.json`。
+- 相关发现同修：`src/shield/PolicyCompiler.ts patchClaudeSettings/registerStopHook` 此前也向
+  `.claude/settings.json` 写平铺 `{type, command}` 条目（同属 #34 schema 病灶，`scale shield compile`
+  注册的 Shield hook 在 Claude Code 里同样被静默忽略）。现在 Claude 路径写入官方嵌套形态，且重复 compile
+  会把旧平铺 shield 条目（PreToolUse 与 Stop）**自动升级**为嵌套（保留 timeout、用户自定义 hook 原样不动）；
+  codex/cursor 的平铺形态是各平台自身 schema，维持不变。`scale shield status` 的注册检测同步识别两种形态。
+- 验证：`tsc --noEmit` / `tsc` build 0 错误；eslint 0 error；vitest 定向回归（guardrails 全套 11 文件 +
+  adapter + sessionStart）**150/150**，shield 套件 settings 类用例全绿（idempotent 升级、Stop 升级、
+  activation 幂等）；dist 端到端（真实 stdin JSON 协议）：无关键词验证命令记账
+  `status: passed` → `before-stop --enforce` 放行（旧代码此处 exit 2），未验证路径 exit 2 且 Suggestion
+  输出配置命令，pre-tool 危险命令 exit 2 / 安全命令 exit 0，session end / context inject stdin 正常；
+  `scale shield compile` 端到端把旧平铺条目升级为嵌套且用户自定义 hook 保留。
+  工件：`.scale/state/planning/tasks/2026-11-07-guardrail-issues-34-35-36/`。
+  已知边界：本沙箱 workspace-write 下 Node spawn 一律 EPERM，execa 类 CLI e2e 与 vite dashboard 构建无法
+  运行（`git stash` 基线复核同样失败，非本次回归）；真实 Claude Code 端 `/doctor` 实测未覆盖（schema 依据
+  官方 hooks 文档 + 仓库内 ZCode/qoder 嵌套先例）。shield 套件的 13 个 spawn 型用例
+  （runHookScript spawnSync node）同样受沙箱限制，settings 断言类用例已全绿且经 dist e2e 等效验证。
+- 相关发现（未处理，建议另开任务）：`src/shield/PolicyCompiler.ts patchClaudeSettings` 也向
+  `.claude/settings.json` 写平铺 `{type, command}` hook 条目，Shield 子系统有独立测试面，本次不动。
+
 ## 0.58.0 - 2026-11-03
 
 本版本把「受治理动作」从内核契约落成第一个完整域实现：媒体。此前 alpha.1 / alpha.2 的验证可靠性、

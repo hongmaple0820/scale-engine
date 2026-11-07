@@ -61,7 +61,7 @@ export class CursorAdapter implements IAgentAdapter {
     for (const [hookType, entries] of Object.entries(generated.hooks!)) {
       if (!merged.hooks[hookType]) merged.hooks[hookType] = []
       for (const entry of entries) {
-        const alreadyExists = merged.hooks[hookType].some((e) => e.command.includes('scale '))
+        const alreadyExists = merged.hooks[hookType].some((e) => e.command?.includes('scale ') ?? false)
         if (!alreadyExists) {
           merged.hooks[hookType].push(entry)
         }

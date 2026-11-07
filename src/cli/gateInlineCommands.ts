@@ -4,6 +4,7 @@ import { defineCommand } from 'citty'
 import { RuntimeEvidenceLedger, SessionLedger } from '../runtime/index.js'
 import { logger } from '../core/logger.js'
 import { getEngine, PROJECT_DIR, resolveScaleDirForProject } from './engineBootstrap.js'
+import { loadVerificationCommandCatalog, isVerificationCommand } from '../guardrails/verificationCommands.js'
 
 // gate 命令作为 agent hook 运行：ZCode 等对 hook stdout 做严格 JSON 校验，
 // 日志（pino 默认写 stdout）会污染 hook 输出导致被判失败，故 hook 进程内静音。
@@ -65,8 +66,11 @@ export const gatePostTool = defineCommand({
       exitCode,
       output: resolveOutputText(args['output-json'], payload),
     })
+    // #36：验证命令判定读 .scale/verification.json（无矩阵退回关键词）；
+    // 不限定 tool === 'Bash'，PowerShell 等 shell 类工具同样计入。
     const command = commandFromToolArgs(toolArgs)
-    if (tool === 'Bash' && command && isVerificationCommand(command)) {
+    const catalog = loadVerificationCommandCatalog()
+    if (command && isVerificationCommand(command, catalog)) {
       const scaleDir = resolveScaleDirForProject(PROJECT_DIR)
       const status = exitCode === 0 ? 'passed' : 'failed'
       const evidence = new RuntimeEvidenceLedger({ projectDir: PROJECT_DIR, scaleDir }).record({
@@ -110,6 +114,7 @@ export const gateBeforeStop = defineCommand({
   meta: { name: 'before-stop', description: 'Before-stop hook check. Defaults to a non-blocking hook-safe path; pass --enforce for full gateway enforcement.' },
   args: {
     'session-id': { type: 'string' },
+    stdin: { type: 'boolean', default: false, description: 'Read the hook payload (session_id) from stdin, as Claude Code / ZCode hooks do' },
     'hook-safe': { type: 'boolean', default: false, description: 'Document that this invocation is running inside an agent Stop hook' },
     enforce: { type: 'boolean', default: false, description: 'Run the full gateway before-stop detector path' },
   },
@@ -120,7 +125,9 @@ export const gateBeforeStop = defineCommand({
       }
       return
     }
-    const sessionId = resolveHookSessionId(args['session-id'])
+    // 即使走 hook-safe 路径也消费 stdin，避免宿主写管道阻塞
+    const payload = args.stdin ? readStdinPayload() : undefined
+    const sessionId = resolveHookSessionId(args['session-id'], payload?.session_id)
     const { gateway } = getEngine()
     const decision = await gateway.beforeStop({ sessionId })
     if (!decision.allow) {
@@ -240,10 +247,6 @@ function commandFromToolArgs(args: Record<string, unknown>): string | undefined 
     if (typeof value === 'string' && value.trim().length > 0) return value.trim()
   }
   return undefined
-}
-
-function isVerificationCommand(command: string): boolean {
-  return /\b(test|lint|build|typecheck|tsc|vitest|jest|playwright|preflight|verify)\b/i.test(command)
 }
 
 export const gateCommand = defineCommand({

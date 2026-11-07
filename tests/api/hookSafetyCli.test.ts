@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -17,7 +17,7 @@ function makeDir(prefix: string): string {
   return dir
 }
 
-function runScale(args: string[], scaleDir: string, projectDir: string) {
+function runScale(args: string[], scaleDir: string, projectDir: string, options?: { input?: string }) {
   return execa('node', ['--import', 'tsx', 'src/api/cli.ts', ...args], {
     env: {
       ...process.env,
@@ -27,6 +27,7 @@ function runScale(args: string[], scaleDir: string, projectDir: string) {
     },
     reject: false,
     timeout: 10_000,
+    input: options?.input,
   })
 }
 
@@ -123,6 +124,75 @@ describe('hook-safe CLI commands', () => {
         }),
       }),
     ]))
+  })
+
+  it('records configured keyword-free verification commands read from stdin (#34/#36)', async () => {
+    const projectDir = makeDir('scale-hook-stdin-verification-project-')
+    const scaleDir = join(projectDir, '.scale')
+    writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'default',
+      profiles: { default: { commands: { smoke: 'powershell -File tools/validate-patterns.ps1' } } },
+    }), 'utf-8')
+
+    const result = await runScale([
+      'gate',
+      'post-tool',
+      '--stdin',
+    ], scaleDir, projectDir, {
+      input: JSON.stringify({
+        session_id: 'hook-stdin-verification',
+        tool_name: 'PowerShell',
+        tool_input: { command: 'powershell -File tools/validate-patterns.ps1' },
+        tool_response: 'validation ok',
+      }),
+    })
+
+    expect(result.exitCode).toBe(0)
+    const evidence = readRuntimeEvidence(scaleDir)
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toEqual(expect.objectContaining({
+      sessionId: 'hook-stdin-verification',
+      kind: 'command',
+      status: 'passed',
+      command: 'powershell -File tools/validate-patterns.ps1',
+      exitCode: 0,
+    }))
+  })
+
+  it('reads the session id from the stdin payload for before-stop (#34)', async () => {
+    const projectDir = makeDir('scale-hook-before-stop-stdin-project-')
+    const scaleDir = join(projectDir, '.scale')
+
+    const result = await runScale([
+      'gate',
+      'before-stop',
+      '--stdin',
+      '--hook-safe',
+    ], scaleDir, projectDir, {
+      input: JSON.stringify({ session_id: 'hook-stop-stdin', stop_hook_active: false }),
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    // --hook-safe 路径不初始化 artifact engine
+    expect(existsSync(join(scaleDir, 'scale.db'))).toBe(false)
+  })
+
+  it('runs session end with the session id from the stdin payload (#34)', async () => {
+    const projectDir = makeDir('scale-hook-session-end-stdin-project-')
+    const scaleDir = join(projectDir, '.scale')
+
+    const result = await runScale([
+      'session',
+      'end',
+      '--stdin',
+    ], scaleDir, projectDir, {
+      input: JSON.stringify({ session_id: 'hook-session-end-stdin', reason: 'clear' }),
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({ ok: true, sessionId: 'hook-session-end-stdin' })
   })
 
   it('allows enforced before-stop after an edit followed by a recorded verification', async () => {

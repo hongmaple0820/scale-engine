@@ -1,5 +1,5 @@
 // W5 Tests: Guardrails Gateway + Detectors
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { EventBus } from '../../src/core/eventBus.js'
 import { Gateway } from '../../src/guardrails/Gateway.js'
 import {
@@ -16,7 +16,8 @@ import {
   BUILT_IN_ROLES,
 } from '../../src/guardrails/advancedDetectors.js'
 import type { ToolUseInput, StopInput, ToolResultInput } from '../../src/artifact/types.js'
-import { rmSync, existsSync, mkdirSync } from 'node:fs'
+import { rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const TMP = './tmp/test-guardrails'
 
@@ -96,6 +97,70 @@ describe('Gateway + Detectors', () => {
       const r = await gw.preTool(mkInput('Edit', { new_string: 'const x = 42' }))
       expect(r.allow).toBe(true)
     })
+
+    // ===== #35：长路径/URL/含斜杠长串不得再被当成 40-char API key 硬拦截 =====
+
+    it('allows long Windows paths (#35)', async () => {
+      gw.registerDetector(new SecretLeakDetector(), 'preTool')
+      const r = await gw.preTool(mkInput('Edit', {
+        new_string: 'see C:/Users/Administrator/AppData/Roaming/scale-engine-runtime/node_modules',
+      }))
+      expect(r.allow).toBe(true)
+    })
+
+    it('allows URLs (#35)', async () => {
+      gw.registerDetector(new SecretLeakDetector(), 'preTool')
+      const r = await gw.preTool(mkInput('Edit', {
+        new_string: 'docs: https://github.com/hongmaple0820/scale-engine',
+      }))
+      expect(r.allow).toBe(true)
+    })
+
+    it('downgrades the generic 40-char heuristic to a warning (#35)', async () => {
+      gw.registerDetector(new SecretLeakDetector(), 'preTool')
+      // 45 位假 token（确定性测试字面量，非真实凭据），不带 key/token 键名上下文
+      const fakeToken = 'a'.repeat(45)
+      const r = await gw.preTool(mkInput('Edit', {
+        new_string: `blob = "${fakeToken}"`,
+      }))
+      // 40+ 位引号包裹的字母数字串仍会提示，但只 warn，不再硬阻塞编辑
+      expect(r.allow).toBe(true)
+      expect(r.reason).toContain('低置信')
+    })
+
+    it('blocks a keyed 32+ char credential (#35)', async () => {
+      gw.registerDetector(new SecretLeakDetector(), 'preTool')
+      const fakeToken = 'a'.repeat(45)
+      const r = await gw.preTool(mkInput('Edit', {
+        new_string: `const config = { api_key: "${fakeToken}" }`,
+      }))
+      expect(r.allow).toBe(false)
+    })
+
+    it('honors SCALE_SECRET_LEAK_MODE=off (#35)', async () => {
+      vi.stubEnv('SCALE_SECRET_LEAK_MODE', 'off')
+      try {
+        gw.registerDetector(new SecretLeakDetector(), 'preTool')
+        const r = await gw.preTool(mkInput('Write', { content: 'const key = "ghp_0123456789abcdefghijklmnopqrstuvwxyz"' }))
+        expect(r.allow).toBe(true)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('honors SCALE_SECRET_LEAK_MODE=warn by downgrading blocks (#35)', async () => {
+      vi.stubEnv('SCALE_SECRET_LEAK_MODE', 'warn')
+      try {
+        gw.registerDetector(new SecretLeakDetector(), 'preTool')
+        // 假 GitHub PAT（确定性测试字面量，非真实凭据）
+        const fakePat = `ghp_${'a'.repeat(36)}`
+        const r = await gw.preTool(mkInput('Write', { content: `const key = "${fakePat}"` }))
+        expect(r.allow).toBe(true)
+        expect(r.reason).toContain('GitHub PAT')
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
   })
 
   // ===== RoleGateDetector =====
@@ -162,6 +227,27 @@ describe('Gateway + Detectors', () => {
   // ===== PrematureDoneDetector =====
 
   describe('PrematureDoneDetector', () => {
+    // #36：测试进程可能带着 SCALE_PROJECT_DIR / SCALE_DIR（CI 派生仓库会设置），
+    // 会把 runtime ledger 指向真实 .scale/ 目录造成跨用例泄漏，统一 stub 隔离。
+    const originalScaleEnv = () => ({
+      projectDir: process.env.SCALE_PROJECT_DIR,
+      scaleDir: process.env.SCALE_DIR,
+    })
+    let savedEnv: ReturnType<typeof originalScaleEnv>
+
+    beforeEach(() => {
+      savedEnv = originalScaleEnv()
+      process.env.SCALE_PROJECT_DIR = TMP
+      process.env.SCALE_DIR = '.scale'
+    })
+
+    afterEach(() => {
+      if (savedEnv.projectDir === undefined) delete process.env.SCALE_PROJECT_DIR
+      else process.env.SCALE_PROJECT_DIR = savedEnv.projectDir
+      if (savedEnv.scaleDir === undefined) delete process.env.SCALE_DIR
+      else process.env.SCALE_DIR = savedEnv.scaleDir
+    })
+
     it('blocks stop when edits exist but no verification', async () => {
       gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
       // Simulate an edit event
@@ -211,6 +297,76 @@ describe('Gateway + Detectors', () => {
       const r = await gw.beforeStop({ sessionId: 'test-session' })
       expect(r.allow).toBe(false)
       expect(r.reason).toContain('编译失败')
+    })
+
+    // ===== #36：验证命令判定读取 .scale/verification.json，而非仅靠关键词正则 =====
+
+    /** 写入 TMP/.scale/verification.json（catalog 的实际读取位置）。 */
+    function writeVerificationMatrix(): void {
+      mkdirSync(join(TMP, '.scale'), { recursive: true })
+      writeFileSync(join(TMP, '.scale', 'verification.json'), JSON.stringify({
+        version: 1,
+        defaultProfile: 'default',
+        profiles: { default: { commands: { smoke: 'powershell -File tools/validate-patterns.ps1' } } },
+      }), 'utf-8')
+    }
+
+    it('allows stop after running a configured keyword-free verification command (#36)', async () => {
+      writeVerificationMatrix()
+      gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'a.ts' } }, { sessionId: 's36a' })
+      await new Promise((r) => setTimeout(r, 10))
+      bus.emit('tool.completed', {
+        tool: 'Bash',
+        args: { command: 'powershell -File tools/validate-patterns.ps1' },
+        exitCode: 0,
+      }, { sessionId: 's36a' })
+      await new Promise((r) => setTimeout(r, 20))
+      const r = await gw.beforeStop({ sessionId: 's36a' })
+      expect(r.allow).toBe(true)
+    })
+
+    it('accepts a verification command run through the PowerShell tool (#36)', async () => {
+      writeVerificationMatrix()
+      gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'a.ts' } }, { sessionId: 's36b' })
+      await new Promise((r) => setTimeout(r, 10))
+      bus.emit('tool.completed', {
+        tool: 'PowerShell',
+        args: { command: 'powershell -File tools/validate-patterns.ps1' },
+        exitCode: 0,
+      }, { sessionId: 's36b' })
+      await new Promise((r) => setTimeout(r, 20))
+      const r = await gw.beforeStop({ sessionId: 's36b' })
+      expect(r.allow).toBe(true)
+    })
+
+    it('suggests the configured verification commands in the block message (#36)', async () => {
+      writeVerificationMatrix()
+      gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'a.ts' } }, { sessionId: 's36c' })
+      await new Promise((r) => setTimeout(r, 20))
+      const r = await gw.beforeStop({ sessionId: 's36c' })
+      expect(r.allow).toBe(false)
+      expect(r.suggestion).toContain('powershell -File tools/validate-patterns.ps1')
+      expect(r.suggestion).not.toContain('pnpm test')
+    })
+
+    it('falls back to keyword matching when no verification.json exists (#36)', async () => {
+      // 显式确保本用例没有 verification.json（前序用例会写入）
+      rmSync(join(TMP, '.scale', 'verification.json'), { force: true })
+      gw.registerDetector(new PrematureDoneDetector(), 'beforeStop')
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'a.ts' } }, { sessionId: 's36d' })
+      await new Promise((r) => setTimeout(r, 10))
+      bus.emit('tool.completed', {
+        tool: 'Bash',
+        args: { command: 'node test-runner.js' },
+        exitCode: 0,
+      }, { sessionId: 's36d' })
+      await new Promise((r) => setTimeout(r, 20))
+      const r = await gw.beforeStop({ sessionId: 's36d' })
+      // 无矩阵：关键词命中 "test"
+      expect(r.allow).toBe(true)
     })
   })
 

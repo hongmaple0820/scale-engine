@@ -57,4 +57,29 @@ describe('ReviewStore', () => {
 
     expect(reviews.map(review => review.id)).toEqual([second.id, first.id])
   })
+
+  it('persists the P1-A context isolation proof and fresh gate flag', () => {
+    const store = new ReviewStore(makeScaleDir())
+    const saved = store.saveReview({
+      taskId: 'TASK-ISO',
+      passed: false,
+      findings: [{ category: 'process', severity: 'CRITICAL', description: 'unverified surface' }],
+      changedFiles: ['src/x.ts'],
+      summary: { critical: 1, high: 0, medium: 0, low: 0 },
+      reviewMode: 'fresh-subagent',
+      freshGateEnforced: true,
+      contextIsolation: {
+        fedFields: ['verificationSurface', 'diffSummary', 'gateSummary'],
+        excludedFields: ['buildAgentConversationHistory', 'buildAgentSelfAssessment', 'taskPayloadNotes'],
+        diffHash: 'abc123def456',
+        surfaceCount: 3,
+        gateSummaryIncluded: true,
+      },
+    })
+    const loaded = store.getReview(saved.id)
+    expect(loaded?.contextIsolation?.excludedFields).toContain('buildAgentConversationHistory')
+    expect(loaded?.contextIsolation?.diffHash).toBe('abc123def456')
+    expect(loaded?.freshGateEnforced).toBe(true)
+    expect(loaded?.reviewMode).toBe('fresh-subagent')
+  })
 })

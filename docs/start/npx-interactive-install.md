@@ -18,6 +18,16 @@ cd your-project
 npx -y @hongmaple0820/scale-engine@latest install --dir .
 ```
 
+> **Windows 前置（必须读）**：如果 `npx` 报 `无法加载文件 …\npx.ps1，因为在此系统上禁止运行脚本`
+> （PowerShell 默认执行策略 Restricted），请改用 `npx.cmd`：
+>
+> ```powershell
+> npx.cmd -y @hongmaple0820/scale-engine@latest install --dir .
+> ```
+>
+> 或先放开当前用户策略：`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`。这条不影响 SCALE
+> 本身，是 Windows PowerShell 的默认安全策略，中文 Windows 首次安装最常见的一道坎。
+
 安装器会显示：
 
 - 作者、来源和安装器品牌头。

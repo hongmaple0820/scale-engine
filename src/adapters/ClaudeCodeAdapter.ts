@@ -23,7 +23,8 @@ export interface AdapterConfig {
 
 export interface HookEntry {
   matcher: string
-  command: string
+  /** 平铺形态（旧版/用户自定义）下的命令；Claude Code 官方 schema 为嵌套 hooks 数组。 */
+  command?: string
   timeout?: number
   type?: string
   hooks?: HookEntry[]
@@ -63,6 +64,9 @@ export interface InitResult {
 // Claude Code Adapter
 // ============================================================================
 
+/** SCALE hook 命令指纹：merge 时用于识别并替换旧形态的 SCALE hook。 */
+const SCALE_HOOK_FINGERPRINT = /\bscale (?:gate|context|session)\b/
+
 export class ClaudeCodeAdapter implements IAgentAdapter {
   readonly agentType = 'claude-code'
   private projectDir: string = '.'
@@ -85,25 +89,36 @@ export class ClaudeCodeAdapter implements IAgentAdapter {
     return existsSync(this.getSettingsPath())
   }
 
+  /**
+   * #34：Claude Code 官方 hooks schema 是 { matcher, hooks: [{ type: 'command', command }] }，
+   * 旧版生成的 { matcher, command } 平铺结构无法通过 schema 校验，整条 hook 被静默忽略。
+   * 命令侧不依赖 Claude Code 不提供的 $TOOL_INPUT_JSON 等环境变量：工具数据（session_id /
+   * tool_name / tool_input / tool_response）以 JSON 形式从 stdin 传入，统一走 `--stdin`。
+   * matcher 覆盖 Windows 上的 PowerShell 工具（官方文档以 `Bash|PowerShell` 为例）。
+   */
   generateSettings(): SettingsJson {
     return {
       hooks: {
         SessionStart: [
-          { matcher: '', command: 'scale context inject --session-id $CLAUDE_SESSION_ID' },
+          { matcher: '', hooks: [commandHook('scale context inject --stdin')] },
         ],
         PreToolUse: [
-          { matcher: 'Bash', command: 'scale gate pre-tool Bash --args-json "$TOOL_INPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
-          { matcher: 'Edit|Write|MultiEdit', command: 'scale gate pre-tool Edit --args-json "$TOOL_INPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
+          { matcher: 'Bash|PowerShell', hooks: [commandHook('scale gate pre-tool --stdin', 10)] },
+          { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [commandHook('scale gate pre-tool Edit --stdin', 10)] },
         ],
         PostToolUse: [
-          { matcher: 'Edit|Write|MultiEdit', command: 'scale gate post-tool Edit --args-json "$TOOL_INPUT_JSON" --output-json "$TOOL_OUTPUT_JSON" --session-id "$CLAUDE_SESSION_ID"' },
-          { matcher: 'Bash', command: 'scale gate post-tool Bash --args-json "$TOOL_INPUT_JSON" --exit-code "$TOOL_EXIT_CODE" --session-id "$CLAUDE_SESSION_ID"' },
+          { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [commandHook('scale gate post-tool Edit --stdin', 10)] },
+          { matcher: 'Bash|PowerShell', hooks: [commandHook('scale gate post-tool Bash --stdin', 10)] },
+        ],
+        // Claude Code 事件：工具失败与成功分开广播，失败显式传 --exit-code 1 喂 brute-retry / premature-done
+        PostToolUseFailure: [
+          { matcher: '', hooks: [commandHook('scale gate post-tool --stdin --exit-code 1', 10)] },
         ],
         Stop: [
-          { matcher: '', command: 'scale gate before-stop --session-id "$CLAUDE_SESSION_ID" --hook-safe' },
+          { matcher: '', hooks: [commandHook('scale gate before-stop --stdin --hook-safe', 10)] },
         ],
         SessionEnd: [
-          { matcher: '', command: 'scale session end --session-id "$CLAUDE_SESSION_ID"' },
+          { matcher: '', hooks: [commandHook('scale session end --stdin')] },
         ],
       },
       permissions: {
@@ -116,18 +131,14 @@ export class ClaudeCodeAdapter implements IAgentAdapter {
     const generated = this.generateSettings()
     const merged: SettingsJson = { ...existing }
 
-    // Merge hooks — add SCALE hooks without overwriting existing
+    // Merge hooks — SCALE hook 以 matcher 为单位整体替换（含旧平铺形态升级），用户自定义 hook 原样保留
     if (!merged.hooks) merged.hooks = {}
     for (const [hookType, entries] of Object.entries(generated.hooks!)) {
-      if (!merged.hooks[hookType]) merged.hooks[hookType] = []
-      for (const entry of entries) {
-        const alreadyExists = merged.hooks[hookType].some(
-          (e) => e.command.includes('scale '),
-        )
-        if (!alreadyExists) {
-          merged.hooks[hookType].push(entry)
-        }
-      }
+      const existingEntries = Array.isArray(merged.hooks[hookType]) ? merged.hooks[hookType] : []
+      merged.hooks[hookType] = [
+        ...existingEntries.filter(entry => !isScaleHookEntry(entry)),
+        ...entries,
+      ]
     }
 
     // Merge permissions
@@ -251,3 +262,16 @@ hooks/*.sh
 // ============================================================================
 // Adapter Factory — moved to ./index.ts
 // ============================================================================
+
+function commandHook(command: string, timeoutSeconds?: number): HookEntry {
+  return timeoutSeconds === undefined
+    ? { matcher: '', type: 'command', command }
+    : { matcher: '', type: 'command', command, timeout: timeoutSeconds }
+}
+
+function isScaleHookEntry(entry: HookEntry): boolean {
+  if (typeof entry.command === 'string' && SCALE_HOOK_FINGERPRINT.test(entry.command)) return true
+  return (entry.hooks ?? []).some(hook =>
+    typeof hook.command === 'string' && SCALE_HOOK_FINGERPRINT.test(hook.command),
+  )
+}

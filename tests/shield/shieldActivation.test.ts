@@ -32,8 +32,16 @@ describe('activateShield', () => {
     expect(report.registered).toEqual([join(dir, '.claude', 'settings.json')])
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
-    expect(settings.hooks.PreToolUse.some((entry: { command: string }) => entry.command.includes('shield-pre-tool.cjs'))).toBe(true)
-    expect(settings.hooks.Stop.some((entry: { command: string }) => entry.command.includes('shield-require-clean-worktree.cjs'))).toBe(true)
+    // #34：注册形态为官方嵌套 { matcher, hooks: [{ command }] }
+    const entryCommands = (entries: Array<Record<string, unknown>>) =>
+      entries.flatMap(entry => [
+        ...(typeof entry.command === 'string' ? [entry.command] : []),
+        ...(Array.isArray(entry.hooks)
+          ? entry.hooks.map((nested: Record<string, unknown>) => String(nested.command ?? ''))
+          : []),
+      ])
+    expect(entryCommands(settings.hooks.PreToolUse).some(command => command.includes('shield-pre-tool.cjs'))).toBe(true)
+    expect(entryCommands(settings.hooks.Stop).some(command => command.includes('shield-require-clean-worktree.cjs'))).toBe(true)
   })
 
   it('writes an editable policy file that round-trips back into the same rules', () => {
@@ -76,10 +84,13 @@ describe('activateShield', () => {
     activateShield(dir)
 
     const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf-8'))
-    const stopEntries = settings.hooks.Stop.filter((entry: { command: string }) => entry.command.includes('shield-require-clean-worktree.cjs'))
-    const preToolEntries = settings.hooks.PreToolUse.filter((entry: { command: string }) => entry.command.includes('shield-pre-tool.cjs'))
-    expect(stopEntries).toHaveLength(1)
-    expect(preToolEntries).toHaveLength(1)
+    const referencesShield = (entries: Array<Record<string, unknown>>, marker: string) =>
+      entries.filter(entry =>
+        String(entry.command ?? '').includes(marker)
+        || (Array.isArray(entry.hooks) && entry.hooks.some((nested: Record<string, unknown>) =>
+          String(nested.command ?? '').includes(marker))))
+    expect(referencesShield(settings.hooks.Stop, 'shield-require-clean-worktree.cjs')).toHaveLength(1)
+    expect(referencesShield(settings.hooks.PreToolUse, 'shield-pre-tool.cjs')).toHaveLength(1)
   })
 
   it('exposes the artifact directories used for install-time commit scoping', () => {

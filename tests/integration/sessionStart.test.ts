@@ -54,16 +54,18 @@ describe('SessionStart Hook Integration', () => {
 
       expect(settings.hooks?.SessionStart).toBeDefined()
       expect(settings.hooks?.SessionStart?.length).toBeGreaterThan(0)
-      expect(settings.hooks?.SessionStart[0].command).toContain('scale context inject')
-      expect(settings.hooks?.SessionStart[0].command).toContain('--session-id')
+      // #34：官方 schema 为嵌套 hooks 数组，命令经 stdin 读 session_id
+      const command = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+      expect(command).toContain('scale context inject')
+      expect(command).toContain('--stdin')
     })
 
-    it('hook command includes session-id placeholder', () => {
+    it('hook command reads the session id from stdin payload (#34)', () => {
       const adapter = new ClaudeCodeAdapter()
       const settings = adapter.generateSettings()
 
-      const hookCmd = settings.hooks?.SessionStart[0].command
-      expect(hookCmd).toContain('$CLAUDE_SESSION_ID')
+      const hookCmd = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+      expect(hookCmd).not.toContain('$CLAUDE_SESSION_ID')
     })
   })
 
