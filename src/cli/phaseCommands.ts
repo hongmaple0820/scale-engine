@@ -19,10 +19,12 @@ import { WorkflowEngine } from '../workflow/WorkflowEngine.js'
 import { WorkflowArtifactWriter } from '../workflow/WorkflowArtifactWriter.js'
 import { resolveVerificationTargets, type VerificationArtifactGateMode, type VerificationEngineeringStandardsGateMode, type VerificationPolicy } from '../workflow/VerificationProfile.js'
 import { EvidenceStore } from '../workflow/EvidenceStore.js'
-import { ReviewStore, type ReviewFinding, type ReviewRecord, type ReviewMode } from '../workflow/ReviewStore.js'
+import { ReviewStore, type ReviewFinding, type ReviewRecord, type ReviewMode, type ContextIsolationProof } from '../workflow/ReviewStore.js'
 import { JudgePromptStore, LlmJudge } from '../review/LlmJudge.js'
 import { JsonLlmClient } from '../review/JsonLlmClient.js'
 import { FreshContextVerifier } from '../review/FreshContextVerifier.js'
+import { applyFreshGate, normalizeFreshGateMode } from '../review/freshReviewGate.js'
+import { createHash } from 'node:crypto'
 import { TaskMetricsStore, type MetricTaskLevel } from '../workflow/TaskMetricsStore.js'
 import { ReleaseDeploymentLedger, type DeploymentRecord } from '../workflow/ReleaseDeploymentLedger.js'
 import { recordRuntimeInstinctApplications } from '../cortex/InstinctApplicationRecorder.js'
@@ -2039,6 +2041,8 @@ export const phaseReview = defineCommand({
     brand: { type: 'string', description: 'Brand theme for HTML output (vercel/stripe/notion/linear/github)' },
     judge: { type: 'boolean', default: true, description: 'Run the advisory LLM-as-Judge spec-conformance check (P1.4)' },
     mode: { type: 'string', default: 'ai-self', description: 'Review mode: ai-self (default) | fresh-subagent | hybrid (P2.2)' },
+    isolated: { type: 'boolean', default: false, description: 'P1-A: 等价 --mode fresh-subagent，以隔离输入（仅 surface+diff+gate，无对话历史）运行独立审查' },
+    'fresh-gate': { type: 'string', default: 'off', description: 'P1-A: fresh-context 未通过时的处置 off(advisory)|warn|block（L/CRITICAL 建议 block）' },
     'max-diff-files': { type: 'string', default: '200', description: 'Maximum changed files whose diffs are scanned during deterministic review' },
     json: { type: 'boolean', default: false },
   },
@@ -2078,7 +2082,8 @@ export const phaseReview = defineCommand({
     const summary = summarizeFindings(findings)
     const passed = summary.critical === 0 && summary.high === 0
 
-    const reviewMode = normalizeReviewMode(args.mode)
+    const reviewMode = normalizeReviewMode(args.isolated ? 'fresh-subagent' : args.mode)
+    const freshGate = normalizeFreshGateMode(args['fresh-gate'])
     // Resolve the originating Spec once; both the advisory judge (P1.4) and the
     // fresh-context verifier (P2.2) read its outcome / verificationSurface.
     const needsSpec = args.judge || reviewMode !== 'ai-self'
@@ -2099,32 +2104,53 @@ export const phaseReview = defineCommand({
 
     // P2.2 (decisions M1/N1/O1): fresh-context verifier runs only for
     // fresh-subagent / hybrid modes, on isolated input (surface + diff + gate
-    // summary, no build-agent history). Advisory only — never blocks ship.
+    // summary, no build-agent history). P1-A: contextIsolation records the
+    // isolation proof; fresh-gate can (opt-in) upgrade an unverified verdict to
+    // a blocking finding for high-effort tiers.
     let freshVerifyVerdict: ReviewRecord['freshVerify']
+    let contextIsolation: ContextIsolationProof | undefined
     if (reviewMode !== 'ai-self') {
+      const surface = spec?.payload.verificationSurface ?? []
       freshVerifyVerdict = await new FreshContextVerifier(new JsonLlmClient()).verify({
         outcome: spec?.payload.what,
-        verificationSurface: spec?.payload.verificationSurface ?? [],
+        verificationSurface: surface,
         diffSummary,
         gateSummary: `critical=${summary.critical} high=${summary.high} medium=${summary.medium} low=${summary.low}`,
       })
+      contextIsolation = {
+        fedFields: ['verificationSurface', 'diffSummary', 'gateSummary'],
+        excludedFields: ['buildAgentConversationHistory', 'buildAgentSelfAssessment', 'taskPayloadNotes'],
+        diffHash: createHash('sha256').update(diffSummary).digest('hex').slice(0, 16),
+        surfaceCount: surface.length,
+        gateSummaryIncluded: true,
+      }
     }
+
+    // P1-A: apply the deterministic fresh gate to the current findings/passed.
+    const gated = applyFreshGate({ passed, findings, verdict: freshVerifyVerdict, gate: freshGate })
+    const finalPassed = gated.passed
+    const finalFindings = gated.findings
+    const finalSummary = gated.enforced || gated.findings.length !== findings.length
+      ? summarizeFindings(finalFindings)
+      : summary
 
     const record: ReviewRecord = reviewStore.saveReview({
       taskId: args['task-id'],
-      passed,
-      findings,
+      passed: finalPassed,
+      findings: finalFindings,
       changedFiles: review.changedFiles.map(file => normalizeGitPath(file.path)),
-      summary,
+      summary: finalSummary,
       judge: judgeVerdict,
       reviewMode,
       freshVerify: freshVerifyVerdict,
+      contextIsolation,
+      freshGateEnforced: gated.enforced,
     })
 
     if (task && taskPayload) {
       const updatedPayload: TaskPayload = {
         ...taskPayload,
-        reviewPassed: passed,
+        reviewPassed: finalPassed,
         reviewEvidenceIds: [...(taskPayload.reviewEvidenceIds ?? []), record.id],
         reviewedAt: Date.now(),
       }
@@ -2139,18 +2165,18 @@ export const phaseReview = defineCommand({
         title: `Review ${record.id}`,
         brand: args.brand as string | undefined,
         version: SCALE_ENGINE_VERSION,
-        status: passed ? 'PASS' : 'FAIL',
+        status: finalPassed ? 'PASS' : 'FAIL',
       })
       const reviewHtml = reviewRenderer.renderReview({
         id: record.id,
         title: `Code Review — ${record.id}`,
         timestamp: new Date().toISOString(),
-        findings: findings.map(f => ({
+        findings: finalFindings.map(f => ({
           severity: f.severity,
           file: f.file ?? '',
           message: f.description,
         })),
-        passed,
+        passed: finalPassed,
         specCoverage: undefined,
         specFindings: undefined,
       })
@@ -2160,22 +2186,29 @@ export const phaseReview = defineCommand({
       reviewRenderer.writeToFile(reviewHtml, reviewHtmlPath)
     }
 
+    const effortTier = (taskPayload as TaskPayload | undefined)?.workflowLevel
+    const isolatedRecommended = (effortTier === 'L' || effortTier === 'CRITICAL') && reviewMode === 'ai-self'
     const result = {
       phase: 'REVIEW',
       taskId: args['task-id'],
       reviewId: record.id,
       reviewHtmlPath,
-      findings,
+      findings: finalFindings,
       changedFiles: review.changedFiles.map(file => normalizeGitPath(file.path)),
-      summary,
+      summary: finalSummary,
       judge: judgeVerdict,
       reviewMode,
       freshVerify: freshVerifyVerdict,
+      contextIsolation,
+      freshGate,
+      freshGateEnforced: gated.enforced,
       karpathy: karpathyReport,
-      passed,
+      passed: finalPassed,
       format: reviewOutputFormat,
-      recommendation: passed
-        ? karpathyReport.passed ? 'Ready to ship' : 'Review passed; address Karpathy advisory warnings before release hardening'
+      recommendation: finalPassed
+        ? (isolatedRecommended
+          ? `Review passed; this ${effortTier} task should also run an isolated review: scale review ${args['task-id'] ?? '<task-id>'} --isolated --fresh-gate block`
+          : karpathyReport.passed ? 'Ready to ship' : 'Review passed; address Karpathy advisory warnings before release hardening')
         : 'Fix CRITICAL issues before shipping'
     }
 
@@ -2186,12 +2219,12 @@ export const phaseReview = defineCommand({
       if (reviewHtmlPath) console.log(`HTML report: ${reviewHtmlPath}`)
       console.log('\nReview Findings:')
       console.log('----------------------------------------')
-      console.log(`CRITICAL: ${summary.critical} issues ${summary.critical > 0 ? 'BLOCKED' : 'OK'}`)
-      console.log(`HIGH:     ${summary.high} issues ${summary.high > 0 ? 'BLOCKED' : 'OK'}`)
-      console.log(`MEDIUM:   ${summary.medium} issues`)
-      console.log(`LOW:      ${summary.low} issues`)
+      console.log(`CRITICAL: ${finalSummary.critical} issues ${finalSummary.critical > 0 ? 'BLOCKED' : 'OK'}`)
+      console.log(`HIGH:     ${finalSummary.high} issues ${finalSummary.high > 0 ? 'BLOCKED' : 'OK'}`)
+      console.log(`MEDIUM:   ${finalSummary.medium} issues`)
+      console.log(`LOW:      ${finalSummary.low} issues`)
       console.log('----------------------------------------')
-      findings.slice(0, 10).forEach(f => console.log(`  [${f.severity}] ${f.file ? `${f.file}: ` : ''}${f.description}`))
+      finalFindings.slice(0, 10).forEach(f => console.log(`  [${f.severity}] ${f.file ? `${f.file}: ` : ''}${f.description}`))
 
       if (judgeVerdict) {
         console.log(`\nJudge (advisory, ${judgeVerdict.modelUsed}): ${judgeVerdict.decision.toUpperCase()} (confidence ${judgeVerdict.confidence.toFixed(2)})`)
@@ -2200,9 +2233,15 @@ export const phaseReview = defineCommand({
       }
 
       if (freshVerifyVerdict) {
-        console.log(`\nFresh-context verifier (advisory, ${freshVerifyVerdict.modelUsed}): ${freshVerifyVerdict.decision.toUpperCase()} (confidence ${freshVerifyVerdict.confidence.toFixed(2)})`)
+        const gateLabel = freshGate === 'off' ? 'advisory' : `gate=${freshGate}${gated.enforced ? ', ENFORCED' : ''}`
+        console.log(`\nFresh-context verifier (${gateLabel}, ${freshVerifyVerdict.modelUsed}): ${freshVerifyVerdict.decision.toUpperCase()} (confidence ${freshVerifyVerdict.confidence.toFixed(2)})`)
         console.log(`  ${freshVerifyVerdict.rationale}`)
         if (freshVerifyVerdict.unmetSurfaces.length) console.log(`  Unmet surfaces: ${freshVerifyVerdict.unmetSurfaces.join('; ')}`)
+        if (contextIsolation) {
+          console.log(`  Isolation: fed=${contextIsolation.fedFields.join(',')} excluded=${contextIsolation.excludedFields.join(',')} diffHash=${contextIsolation.diffHash}`)
+        }
+      } else if (isolatedRecommended) {
+        console.log(`\n[建议] 此任务为 ${effortTier} 级，建议运行独立审查：scale review ${args['task-id'] ?? '<task-id>'} --isolated --fresh-gate block`)
       }
 
       if (passed) {

@@ -28,6 +28,25 @@
 - 验证：`tsc --noEmit` / `tsc` build 0 错误；`install-smoke` 6/6、`agent-install-smoke` 见下方结果；
   `tests/setup/SetupVerification.test.ts` 10/10（含 2 条新回归）。
 
+### P1-A clean-context 独立审查（v0.60 阶段）
+
+- **背景**：`FreshContextVerifier` 已实现隔离输入（仅 verificationSurface + diff + gate，
+  无构建 agent 对话历史），但此前永远 advisory-only、无隔离证明、无门禁，能力未落地。
+- **新增 `--isolated`**（`scale review`）：等价 `--mode fresh-subagent`，语义更直白。
+- **新增 `--fresh-gate off|warn|block`**（默认 off，向后兼容）：由纯函数
+  `src/review/freshReviewGate.ts#applyFreshGate` 决定处置——`unverified` 在 warn 下追加 LOW
+  finding（不阻断），在 block 下追加 CRITICAL finding 并 `passed=false`（经既有 review 证据门禁
+  阻断 ship）；`verified`/`uncertain` 永不阻断。off 保持原 advisory 语义。
+- **隔离证明**：`ReviewRecord` 新增 `contextIsolation`（fedFields/excludedFields/diffHash/
+  surfaceCount/gateSummaryIncluded）与 `freshGateEnforced`，随 review 落盘 `.scale/reviews/`，
+  可审计「独立审查确实未看到作者解释」。
+- **effort 提示**：`scale review` 在 L/CRITICAL 任务且用 ai-self 时主动建议
+  `--isolated --fresh-gate block`（不改默认行为，避免破坏既有 ai-self 断言）。
+- **文档**：新增 `docs/EFFORT_TUNED_VERIFICATION.md`（四级验证矩阵 + P1-A 用法 + P1-B/C/D roadmap）。
+- **测试**：`tests/review/freshReviewGate.test.ts`（off/warn/block × verified/unverified/uncertain
+  全覆盖）、`tests/workflow/reviewStore.test.ts` 新增 contextIsolation 落盘用例；`tests/review` +
+  `reviewStore` 22/22 通过；phaseCli review 主流程（ship-before-review）回归通过。
+
 ### Guardrail 修复 — issues #34 / #35 / #36
 
 - **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码

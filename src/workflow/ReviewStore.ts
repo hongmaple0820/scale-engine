@@ -24,6 +24,22 @@ export interface ReviewSummary {
   low: number
 }
 
+/**
+ * P1-A clean-context 隔离证明：记录独立审查「喂了什么、刻意排除了什么」，
+ * 让隔离属性可审计（对照 Cognition 2026-04 的 clean-context reviewer）。
+ */
+export interface ContextIsolationProof {
+  /** 实际喂给 verifier 的字段（仅声明面/ diff / gate 摘要）。 */
+  fedFields: string[]
+  /** 刻意排除的字段（构建 agent 的对话历史与自我评估）。 */
+  excludedFields: string[]
+  /** diff 摘要的 sha256 前缀，证明审查对象可复现。 */
+  diffHash: string
+  /** verificationSurface 条目数。 */
+  surfaceCount: number
+  gateSummaryIncluded: boolean
+}
+
 export interface ReviewRecord {
   id: string
   taskId?: string
@@ -41,6 +57,10 @@ export interface ReviewRecord {
   reviewMode?: ReviewMode
   /** P2.2: advisory fresh-context verifier verdict. Never affects `passed`. */
   freshVerify?: FreshVerifyVerdict
+  /** P1-A: 独立审查的隔离输入证明（仅 fresh-subagent / hybrid 模式记录）。 */
+  contextIsolation?: ContextIsolationProof
+  /** P1-A: fresh-gate 是否已把 verdict 升级为阻断（off=advisory 时为 false）。 */
+  freshGateEnforced?: boolean
   createdAt: number
 }
 
