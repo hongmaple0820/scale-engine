@@ -78,6 +78,7 @@ import { costReportCommand, costOptimizeCommand } from '../cli/costCommands.js'
 import { reviewCommand as crossReviewCommand } from '../review/reviewCommands.js'
 import { shieldCommand } from '../cli/shieldCommands.js'
 import { specCommand } from '../cli/specCommands.js'
+import { githubCommand } from '../cli/githubCommands.js'
 import { cleanCommand } from '../cli/cleanCommands.js'
 import { migrateCommand } from '../cli/migrateCommands.js'
 import { uninstallCommand } from '../cli/uninstallCommands.js'
@@ -1841,6 +1842,7 @@ const main = defineCommand({
     migrate: migrateCommand,
     uninstall: uninstallCommand,
     git: gitCommand,
+    github: githubCommand,
     'commit-suggest': commitSuggestCommand,
     orch: orchCommand,
     cortex: cortexCommand,

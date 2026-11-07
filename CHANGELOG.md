@@ -91,6 +91,34 @@
   真实 CLI 冒烟 `product scenarios` / `dashboard capabilities` / `spec intake-brainstorm --compile` /
   `eval golden`（回归 27/27）全部通过。
 
+### P3/P4 生态分发与平台化收敛（v0.65–v0.66 阶段）
+
+- **P3-A SKILL.md 打包**：新增 `skills-pack/`（3 个遵循 Anthropic Agent Skills 约定的 SKILL.md：
+  scale-verify / scale-review-isolated / scale-acceptance-checks）+ `scripts/workflow/build-skill-pack.mjs`
+  （校验 frontmatter name/description 并输出 manifest）。这是第七个分发入口（`npx skills add` 约定）。
+- **P3-B spec-kit preset**：新增 `integrations/spec-kit-preset/`（preset.yaml + README）——把
+  effort-tuned 验证 + isolated review 作为 spec-kit 工作流步骤的参考接入，诚实标注需按 spec-kit 当前
+  preset schema 适配、社区 catalog 提交为外部账号操作。
+- **P3-C MCP 符合性**：新增 `docs/MCP_COMPLIANCE.md`——审计 MCP 2026-07-28 stateless core 符合度
+  （stdio 无协议级 session、无隐式跨调用状态，状态外置）。结论：stdio 场景基本符合，工具注解/HTTP
+  transport 为增强项。
+- **P3-D GitHub 集成 + 文档站**：新增 `src/integrations/GitHubIssuePlanner.ts`（纯函数）+ `scale github
+  plan-issues [--input|--task-ids]`（默认 dry-run，不发 issue）+ `.github/workflows/docs.yml`
+  （GitHub Pages 文档站 scaffold，启用 Pages 为仓库设置操作）。
+- **P4-A lean/governed 双形态**：新增 `src/workflow/LeanPolicy.ts`——S/M 在 lean 下最小验证，L/CRITICAL
+  永不降级（isolated review + block gate 保留）。
+- **P4-B 上下文工程**：新增 `src/context/ContextCompaction.ts`（compaction：超预算保留尾部、前缀压成
+  摘要占位）。
+- **P4-C 沙箱与审计**：新增 `docs/SANDBOX_AUDIT.md`——确认全量运行时证据 + 事件流 + secrets/危险命令
+  预阻断已具备，列 allow 动作全量审计/容器化/报表为增强项。
+- **P4-D property-based**：新增 `src/verify/PropertyTemplates.ts`——对 kind=property 的检查生成
+  fast-check / vitest 断言骨架。
+- **P4-E 多模型升级路由**：新增 `src/routing/ModelEscalation.ts`——连续无进展达阈值时升级到更强模型
+  做一次诊断（避免 fan-out 与升级循环）。
+- **P4-F v1.0 收敛**：新增 `docs/V1.0_READINESS.md`——v1.0=能力承诺；四轴自评替换旧 13 项清单。
+- **验证**：`tsc --noEmit`=0、`tsc` build=0；P3/P4 新增测试全绿；`build-skill-pack` 脚本 + `github
+  plan-issues` dry-run 冒烟通过。
+
 ### Guardrail 修复 — issues #34 / #35 / #36
 
 - **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码

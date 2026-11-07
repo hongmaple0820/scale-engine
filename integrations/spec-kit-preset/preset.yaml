@@ -1,0 +1,27 @@
+# SCALE Verification preset for spec-kit (reference integration)
+# 说明：spec-kit 的 preset 机制用于覆盖模板/命令/术语并注入 quality gate。
+# 本文件是「参考接入声明」——把 SCALE 的 effort-tuned 验证 + clean-context 审查作为
+# spec-kit 工作流步骤接入。实际提交到 spec-kit 社区 catalog 前，请对照其当前
+# presets/overview 的 schema 做字段适配（spec-kit 迭代快，字段可能变化）。
+name: scale-verification
+version: 0.1.0
+description: Effort-tuned verification and clean-context review for spec-kit workflows
+homepage: https://github.com/hongmaple0820/scale-engine
+license: MIT
+requires:
+  cli: scale
+  minCliVersion: 0.59.0
+steps:
+  - id: verify-effort
+    title: "Effort-tuned verification"
+    when: after-implement
+    command: "scale verify-task --effort --json"
+    gate: "non-zero exit blocks convergence"
+  - id: review-isolated
+    title: "Clean-context independent review"
+    when: before-converge
+    command: "scale review --isolated --fresh-gate block --json"
+    gate: "unverified verdict blocks convergence"
+notes:
+  - "SCALE 的 verification.json 与 spec-kit 的 tasks.md 可并存：前者承载可执行检查，后者承载任务分解。"
+  - "本 preset 只做「验证深度层」，不替换 spec-kit 的 specify/plan/tasks 流程。"

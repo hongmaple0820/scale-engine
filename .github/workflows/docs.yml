@@ -1,0 +1,41 @@
+name: docs
+
+# P3-D: publish the SCALE documentation (Markdown under docs/) to GitHub Pages.
+# This is a delivery-channel scaffold; enabling Pages requires a repo setting
+# (Settings → Pages → Source: GitHub Actions) — an account-gated step.
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare site (Markdown docs + landing index)
+        run: |
+          mkdir -p _site
+          cp -r docs/. _site/
+          cp README.md _site/README.md 2>/dev/null || true
+          if [ ! -f _site/index.md ]; then
+            printf '# SCALE Engine Docs\n\nSee [README](README.md) and [docs index](docs/README.md).\n' > _site/index.md
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
