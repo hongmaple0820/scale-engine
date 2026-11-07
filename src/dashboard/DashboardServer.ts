@@ -44,6 +44,7 @@ import { listVisualVibePacks, listVisualVibeTemplates, type VisualVibeTemplate }
 import { createAiOsPlan, type AiOsRuntimePlan } from '../runtime/AiOsRuntime.js'
 import type { SkillTaskLevel } from '../skills/routing/index.js'
 import { externalCommandExists, resolveExternalCommandPath, runExternalCommandSync, buildSpawnInvocation } from '../core/ExternalCommand.js'
+import { resolveCapabilityTier } from './CapabilityOverview.js'
 import { PolicyCompiler } from '../shield/PolicyCompiler.js'
 import { FeishuBridge, describeFeishuBridgeReadiness } from '../communication/FeishuBridge.js'
 import { SUPPORTED_AGENTS } from '../adapters/index.js'
@@ -846,6 +847,13 @@ export interface DashboardDataSourceSignal {
 export interface DashboardCapabilityReport {
   project: DashboardProjectSummary
   generatedAt: number
+  /** P2-A 能力阶梯：Level 1 core / 2 full / 3 extreme（首屏能力阶梯视图的数据）。 */
+  tier?: {
+    level: 1 | 2 | 3
+    label: string
+    summary: string
+    upgradeCommand: string
+  }
   summary: {
     total: number
     ready: number
@@ -2716,6 +2724,7 @@ export class DashboardServer {
     const report: DashboardCapabilityReport = {
       project: this.currentProject,
       generatedAt: Date.now(),
+      tier: resolveCapabilityTier({ commandExists: (command: string) => Boolean(resolveExternalCommandPath(command)) }),
       summary,
       realtime: {
         status: busAvailable ? 'ready' : 'partial',

@@ -84,6 +84,7 @@ interface DataSourceSignal {
 interface CapabilityReport {
   project: ProjectSummary
   generatedAt: number
+  tier?: { level: 1 | 2 | 3; label: string; summary: string; upgradeCommand: string }
   summary: { total: number; ready: number; partial: number; missing: number; error: number }
   realtime: {
     status: SourceStatus
@@ -6264,6 +6265,16 @@ const translations: Record<Lang, Record<string, string>> = {
                   </button>
                 </div>
               </n-card>
+
+              <n-alert
+                v-if="capabilities?.tier"
+                class="capability-tier"
+                :type="capabilities.tier.level >= 3 ? 'success' : capabilities.tier.level === 2 ? 'info' : 'warning'"
+                :title="capabilities.tier.label"
+              >
+                <p>{{ capabilities.tier.summary }}</p>
+                <code class="tier-upgrade">{{ capabilities.tier.upgradeCommand }}</code>
+              </n-alert>
 
               <n-card :title="t('commandCenter.liveSignals')">
                 <div class="command-signal-grid">

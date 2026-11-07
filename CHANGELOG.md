@@ -119,6 +119,17 @@
 - **验证**：`tsc --noEmit`=0、`tsc` build=0；P3/P4 新增测试全绿；`build-skill-pack` 脚本 + `github
   plan-issues` dry-run 冒烟通过。
 
+### 面板首屏能力阶梯 + workbuddy 安装冒烟（v0.67 阶段）
+
+- **面板首屏能力阶梯视图**：`DashboardServer` 的 `/api/capabilities`（含 `/api/dashboard/capabilities`）
+  新增 `tier` 字段（Level 1 core / 2 full / 3 extreme，复用 `CapabilityOverview.resolveCapabilityTier`），
+  `App.vue` Overview 首屏渲染能力阶梯卡片（标签 + 说明 + 升级命令）。验证：`tsc` build=0、
+  `vite build --config vite.dashboard.config.ts`=0、dashboardServer 根路由测试恢复通过（此前因缺
+  Vue 构建产物 503）。
+- **workbuddy 安装冒烟**：新增 `scripts/workflow/workbuddy-install-smoke.mjs`——真实临时目录跑
+  `scale install --agent workbuddy --pack core --json --no-git`，断言 exit 0 / JSON ok=true /
+  无 blocker / `.workbuddy/settings.json` 生成（5/5 通过）；`smoke:workbuddy` 纳入 `release:check`。
+
 ### Guardrail 修复 — issues #34 / #35 / #36
 
 - **#36 PrematureDoneDetector 读 `.scale/verification.json`**：验证命令判定此前硬编码
