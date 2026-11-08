@@ -950,7 +950,7 @@ export class DashboardServer {
     this.evaluator = options.evaluator ?? null
     this.detectorTracker = options.detectorTracker ?? null
     this.port = options.port ?? 3210
-    this.host = options.host ?? '0.0.0.0'
+    this.host = options.host ?? '127.0.0.1'
     this.projectDir = resolve(options.projectDir ?? process.cwd())
     this.scaleDir = resolve(options.scaleDir ?? join(this.projectDir, '.scale'))
     this.agentControlBus = new EventBus({ eventsDir: join(this.scaleDir, 'events', 'agent-control') })
@@ -2642,7 +2642,7 @@ export class DashboardServer {
       {
         id: 'agent-collaboration',
         title: 'Agent collaboration plans',
-        description: 'Machine-readable AI OS agent role selection, DAG handoffs, review gates, token budgets, and guarded execution settlement.',
+        description: 'Machine-readable AI OS agent role plans, DAG handoffs, review gates, token budgets, and separate execution evidence when an Agent Executor is connected.',
         status: agentCollaborationRuns.settledAgentExecution > 0 ? 'ready' : agentCollaborationRuns.withAgentCollaboration > 0 ? 'partial' : agentCollaborationRuns.totalReports > 0 ? 'partial' : 'missing',
         refreshMode: 'polling',
         source: aiOsRunsDir,

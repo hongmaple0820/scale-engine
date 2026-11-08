@@ -52,7 +52,7 @@
   },
   "scripts": {
     "postinstall": "node scripts/workflow/check-native-abi.mjs",
-    "build": "tsc && node scripts/workflow/cleanup-dashboard-legacy.mjs && vite build --config vite.dashboard.config.ts",
+    "build": "tsc && node scripts/workflow/cleanup-dashboard-legacy.mjs && vite build --config vite.dashboard.config.ts && node scripts/release/generate-release-manifest.mjs",
     "dev": "bun --watch src/api/cli.ts",
     "test": "node scripts/workflow/run-vitest.mjs --timeout-ms 1800000 --testTimeout=180000",
     "test:serial": "vitest run --reporter dot --pool=forks --maxWorkers=1",
@@ -72,7 +72,7 @@
     "smoke:gbrain": "node scripts/workflow/provider-rehearsal.mjs --skip-graphify --require-gbrain",
     "smoke:graphify": "node scripts/workflow/provider-rehearsal.mjs --skip-gbrain --require-graphify",
     "release:sync-gitee": "node scripts/release/sync-gitee-releases.mjs",
-    "release:check": "npm run learning:health && npm run docs:health && npm run typecheck && npm run lint && npm test && npm run smoke:setup && npm run smoke:install && npm run smoke:agent-install && npm run smoke:providers -- --write-report --large-project examples/demo-projects/agent-governance-demo && npm run build && npm run eval:golden && npm run smoke:workbuddy && npm run smoke:package && npm audit --omit=dev --registry=https://registry.npmjs.org && git diff --check && npm pack --dry-run",
+    "release:check": "npm run learning:health && npm run docs:health && npm run typecheck && npm run lint && npm test && npm run smoke:setup && npm run smoke:install && npm run smoke:agent-install && npm run smoke:providers -- --write-report --large-project examples/demo-projects/agent-governance-demo && npm run build && npm run eval:golden && npm run smoke:workbuddy && npm run smoke:package && npm audit --omit=dev --registry=https://registry.npmjs.org && git diff --check && npm pack --dry-run && npm ci --prefix packages/dsh-scale && npm run typecheck --prefix packages/dsh-scale && npm run build --prefix packages/dsh-scale && npm pack --dry-run --prefix packages/dsh-scale",
     "mcp": "node dist/api/mcp.js",
     "mcp:stdio": "node dist/api/mcpStdio.js",
     "serve": "node dist/api/http.js",

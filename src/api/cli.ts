@@ -234,7 +234,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
-import { SCALE_ENGINE_VERSION } from '../version.js'
+import { SCALE_ENGINE_VERSION, getScaleEngineReleaseManifest } from '../version.js'
 
 // ============================================================================
 // Engine bootstrap (单例 + lazy init)
@@ -1278,7 +1278,7 @@ const aiOsRunCommand = defineCommand({
     console.log(`  Evidence: ${report.evidence.produced.length} produced, ${report.evidence.pending.length} pending`)
     console.log(`  Agent collaboration: ${report.plan.agentCollaboration.mode}; ${report.plan.agentCollaboration.summary.totalRoles} role(s), ${report.plan.agentCollaboration.summary.handoffCount} handoff(s), ${report.plan.agentCollaboration.summary.reviewGateCount} review gate(s)`)
     if (report.agentExecution) {
-      console.log(`  Agent execution: ${report.agentExecution.status}; ${report.agentExecution.summary.settledRoles}/${report.agentExecution.summary.totalRoles} role(s) settled, ${report.agentExecution.summary.settledReviewGates}/${report.agentExecution.summary.reviewGates} review gate(s) settled`)
+      console.log(`  Agent execution: ${report.agentExecution.status}; ${report.agentExecution.summary.settledRoles}/${report.agentExecution.summary.totalRoles} role(s) executed, ${report.agentExecution.summary.settledReviewGates}/${report.agentExecution.summary.reviewGates} review gate(s) executed`)
     }
     console.log(`  Report: ${report.artifacts.runReport}`)
     for (const action of report.nextActions.slice(0, 6)) console.log(`  next: ${action}`)
@@ -1745,6 +1745,23 @@ import * as vibeCommands from '../cli/vibeCommands.js'
 const main = defineCommand({
   meta: { name: 'scale', version: SCALE_ENGINE_VERSION, description: `SCALE Engine v${SCALE_ENGINE_VERSION} CLI - hardened phase workflow gates, governance templates, platform adapters, skill routing, and verification automation` },
   subCommands: {
+    version: defineCommand({
+      meta: { name: 'version', description: 'Print package version and build provenance' },
+      args: {
+        json: { type: 'boolean', default: false, description: 'Print the release manifest as JSON' },
+      },
+      run({ args }) {
+        const manifest = getScaleEngineReleaseManifest()
+        if (args.json) {
+          console.log(JSON.stringify(manifest, null, 2))
+          return
+        }
+        console.log(`${manifest.package.name}@${manifest.package.version}`)
+        console.log(`Commit: ${manifest.source.commit ?? 'unknown (source checkout)'}`)
+        console.log(`Built: ${manifest.build.timestamp ?? 'unknown'}`)
+      },
+    }),
+
     // Lite Mode (agent-skills style interactive entry)
     lite: liteCommands.liteCommand,
 

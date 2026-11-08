@@ -41,17 +41,19 @@ jobs:
             exit 1
           fi
 
-      - name: Pre-publish verification
-        # Full lint and test coverage is required before the release tag is pushed.
-        # This job keeps the publish path focused on package health and build output.
+      - name: Validate release tag
         run: |
-          npm run learning:health
-          npm run docs:health
-          npm run typecheck
-          npm run build
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Tag version $TAG_VERSION does not match package.json version $PACKAGE_VERSION"
+            exit 1
+          fi
 
-      - name: Pack dry run
-        run: npm pack --dry-run
+      - name: Full release gate
+        # Includes health checks, lint, typecheck, tests, install/provider smokes,
+        # build, golden eval, audit, package smoke, npm pack, and DSH plugin checks.
+        run: npm run release:check
 
       - name: Publish
         env:

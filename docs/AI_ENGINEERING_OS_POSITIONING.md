@@ -168,7 +168,7 @@ SCALE can already claim:
 - structured workflow execution with phase and artifact state
 - hard verification gates for delivery claims
 - evidence-based runtime reporting
-- machine-readable `agentCollaboration` plans in `scale ai-os plan/run`, direct `scale agent plan` output, and dashboard Prompt Studio, plus guarded `agentExecution` settlement evidence in run reports
+- machine-readable `agentCollaboration` plans in `scale ai-os plan/run`, direct `scale agent plan` output, and dashboard Prompt Studio, plus an explicit `planned` Agent Execution contract until an Agent Executor supplies execution evidence
 - Agent Loop readiness reporting from local execution, recovery, guardrail, budget, delegation, and termination evidence
 - dashboard Prompt Studio for built-in and custom prompt assets plus deterministic optimization
 - first-class supply-chain audit direction
@@ -517,7 +517,7 @@ Current first slice:
 - `scale ai-os plan` now emits `agentCollaboration` with strategy `agent-collaboration-v1`, selected agent profile roles, DAG edges, handoff contracts, review gates, and per-role token budget.
 - Dashboard Prompt Studio can generate the same `agentCollaboration` plan through `/api/agent/plan` without executing shell commands, then copy or download the plan JSON.
 - `scale ai-os run` carries agent collaboration into the executable step list, so required agent roles, handoffs, and review gates become pending evidence instead of hidden prompt instructions.
-- `scale ai-os run --mode guarded --verify "<command>" --json` now writes `agentExecution` with role, handoff, review-gate, and runtime evidence settlement when verification passes.
+- `scale ai-os run --mode guarded --verify "<command>" --json` records guarded command evidence but does not claim that agent roles, handoffs, or reviews executed. Those remain `planned` until an Agent Executor supplies independent output and review evidence.
 - `scale ai-os status --json` now includes an `agent-collaboration` intelligence signal plus `agentCollaborationQuality` summary for total roles, settled roles, reviewer roles, review gates, settled runs, handoffs, multi-agent runs, and budget reserve.
 - `scale agent plan --task "<task>" --json` exposes the same planner directly for users who want role prediction and multi-agent orchestration before running the full AI OS loop.
 

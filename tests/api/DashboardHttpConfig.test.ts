@@ -71,6 +71,14 @@ describe('findAvailablePort', () => {
 })
 
 describe('resolveDashboardLaunchPlan', () => {
+  it('defaults to loopback when no host is explicitly configured', async () => {
+    const projectDir = tempProjectDir()
+    const plan = await resolveDashboardLaunchPlan({}, projectDir)
+    expect(plan.host).toBe('127.0.0.1')
+    expect(plan.projects[0].host).toBe('127.0.0.1')
+    expect(plan.projects[0].url).toBe('http://127.0.0.1:3210')
+  })
+
   it('keeps the configured port without probing in single-project mode', async () => {
     const holders = await occupyPorts(1)
     const projectDir = tempProjectDir()
