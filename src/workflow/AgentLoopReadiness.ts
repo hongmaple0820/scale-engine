@@ -92,6 +92,7 @@ export interface AgentLoopRunReport {
   }
   agentExecution?: {
     status?: string
+    executorId?: string
     summary?: { settledRoles?: number; settledHandoffs?: number; settledReviewGates?: number }
     evidence?: { produced?: string[]; pending?: string[] }
   }
@@ -256,7 +257,7 @@ function buildDelegationMetric(
   })
   const aiOsDelegations = runReports.reduce((sum, report) => {
     const execution = report.agentExecution
-    if (execution?.status !== 'settled') return sum
+    if (execution?.status !== 'settled' || !execution.executorId || (execution.evidence?.produced ?? []).length === 0) return sum
     return sum + (execution.summary?.settledRoles ?? 0)
       + (execution.summary?.settledHandoffs ?? 0)
       + (execution.summary?.settledReviewGates ?? 0)
@@ -274,7 +275,8 @@ function buildTerminationMetric(
   runReports: AgentLoopRunReport[],
 ): AgentLoopMetric<boolean> {
   const completedRuns = runReports.filter(report =>
-    (report.evidence?.pending ?? []).length === 0 && (report.evidence?.produced ?? []).length > 0,
+    Array.isArray(report.evidence?.pending) && report.evidence.pending.length === 0
+      && (report.evidence?.produced ?? []).length > 0,
   )
   const finalRuntime = runtimeRecords.filter(record => record.kind === 'final-report' && record.status === 'passed')
   const verifyGatePasses = gateRecords.filter(record => {

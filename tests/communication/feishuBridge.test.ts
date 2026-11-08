@@ -40,7 +40,7 @@ function buildPlane(projectDir: string, session: Record<string, unknown> = {}): 
   const stubPath = join(scaleDir, 'test-fixtures', 'agent-stub.js')
   const configPath = join(scaleDir, 'agents', 'control-plane.json')
   mkdirSync(dirname(stubPath), { recursive: true })
-  writeFileSync(stubPath, "process.stdout.write('agent-stub received prompt: ' + process.argv.slice(2).join(' '))\\n", 'utf-8')
+  writeFileSync(stubPath, "process.stdout.write('agent-stub received prompt: ' + process.argv.slice(2).join(' '))\n", 'utf-8')
   mkdirSync(dirname(configPath), { recursive: true })
   writeFileSync(configPath, JSON.stringify({
     version: 1,
