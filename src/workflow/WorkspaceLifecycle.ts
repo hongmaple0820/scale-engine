@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { execa } from 'execa'
 import {
@@ -505,7 +505,12 @@ function absolutizeGitPath(cwd: string, path: string): string {
 }
 
 function normalizeAbsolute(path: string): string {
-  return resolve(path).replace(/\\/g, '/')
+  const absolute = resolve(path)
+  try {
+    return realpathSync.native(absolute).replace(/\\/g, '/')
+  } catch {
+    return absolute.replace(/\\/g, '/')
+  }
 }
 
 function normalizeRelative(path: string): string {

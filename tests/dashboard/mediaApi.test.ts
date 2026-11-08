@@ -1,23 +1,26 @@
 // Media REST API (v3 plan §10, P2 gate): Dashboard and CLI must see the same
 // task semantics. Hono's app.request() exercises the routes without a socket.
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 import { afterAll, describe, expect, it } from 'vitest'
 import { Hono } from 'hono'
 import { registerMediaApi } from '../../src/dashboard/MediaControlPlane.js'
-import { createJob, runJob } from '../../src/media/index.js'
+import { createJob, getJob, runJob } from '../../src/media/index.js'
+import { resolveMediaBin } from '../../src/media/render/FfmpegAdapter.js'
 
 const nodeRequire = createRequire(import.meta.url)
 let playwrightReady = false
 try {
-  nodeRequire.resolve('playwright')
-  playwrightReady = true
+  const playwright = nodeRequire('playwright') as { chromium?: { executablePath?: () => string } }
+  const executable = playwright.chromium?.executablePath?.()
+  playwrightReady = Boolean(executable && existsSync(executable))
 } catch {
-  // integration render needs the renderer
+  // package or its Chromium browser is unavailable
 }
+const mediaRenderReady = Boolean(resolveMediaBin('ffmpeg') && resolveMediaBin('ffprobe') && playwrightReady)
 
 const root = mkdtempSync(join(tmpdir(), 'media-api-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -75,7 +78,7 @@ describe('GET /api/media/assets/content?ref=', () => {
 })
 
 describe('POST /api/media/tasks', () => {
-  it.runIf(playwrightReady)('creates with 202, runs detached, and converges to succeeded', async () => {
+  it.runIf(mediaRenderReady)('creates with 202, runs detached, and converges to succeeded', async () => {
     const response = await app.request('/api/media/tasks?project=api', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -90,7 +93,8 @@ describe('POST /api/media/tasks', () => {
       const detail = await app.request(`/api/media/tasks/${created.taskId}?project=api`)
       status = ((await detail.json()) as { job: { status: string } }).job.status
     }
-    expect(status).toBe('succeeded')
+    const finalJob = getJob(root, 'api', created.taskId).job
+    expect(status, JSON.stringify(finalJob.error ?? finalJob)).toBe('succeeded')
 
     const again = await app.request('/api/media/tasks?project=api', {
       method: 'POST',

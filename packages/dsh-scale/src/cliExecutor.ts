@@ -5,7 +5,7 @@
 // the contract is cheaper than relying on that).
 
 import { spawn } from 'node:child_process'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -36,6 +36,19 @@ export function resolveScaleCli(): string | null {
       const cli = join(root, 'dist', 'api', 'cli.js')
       return existsSync(cli) ? cli : null
     }
+    // Source-checkout fallback: CI downloads dist/ at the repository root but does not install the nested plugin file: edge.
+    // Accept only an ancestor whose package identity matches the main package.
+    const manifestPath = join(dir, 'package.json')
+    const cliFromWorkspace = join(dir, 'dist', 'api', 'cli.js')
+    if (existsSync(manifestPath) && existsSync(cliFromWorkspace)) {
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { name?: unknown }
+        if (manifest.name === '@hongmaple0820/scale-engine') return cliFromWorkspace
+      } catch {
+        // Continue walking; an invalid ancestor manifest is not a package edge.
+      }
+    }
+
     const parent = dirname(dir)
     if (parent === dir) break
     dir = parent

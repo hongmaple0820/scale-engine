@@ -1436,7 +1436,7 @@ function buildAiOsIntelligenceReport(input: {
       recommendations: agentCollaborationQuality.totalRoles > 0
         ? agentCollaborationQuality.settledRuns > 0
           ? ['Use agent collaboration roles, handoffs, review gates, token budget, and agent execution settlement evidence as the delegation contract before release.']
-          : ['Run a guarded AI OS task with verification commands so agent collaboration moves from planned contract to settled execution evidence.']
+          : ['Connect an Agent Runtime adapter and attach independent role output, handoff artifacts, and reviewer evidence before claiming agent collaboration is settled.']
         : ['Run `scale ai-os plan --task "<task>" --json` to generate agentCollaboration roles, DAG, handoffs, review gates, and budget.'],
     },
     {

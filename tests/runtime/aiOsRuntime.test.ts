@@ -640,11 +640,8 @@ describe('AI OS runtime planner', () => {
     expect(status.intelligence.summary.agentCollaborationQuality.settledRoles).toBe(0)
     expect(status.intelligence.summary.agentCollaborationQuality.settledReviewGates).toBe(0)
     expect(status.intelligence.summary.agentCollaborationQuality.settledRuns).toBe(0)
-    expect(status.intelligence.summary.agentLoopQuality).toEqual(expect.objectContaining({
-      status: 'ready',
-      score: 100,
-      readySignals: 6,
-    }))
+    expect(status.intelligence.summary.agentLoopQuality.status).toBe('warning')
+    expect(status.intelligence.summary.agentLoopQuality.readySignals).toBeLessThan(6)
     expect(status.intelligence.signals).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'memory-recall',
@@ -666,14 +663,14 @@ describe('AI OS runtime planner', () => {
       }),
       expect.objectContaining({
         id: 'agent-collaboration',
-        status: 'ready',
+        status: 'warning',
         evidence: expect.arrayContaining([
           expect.stringContaining('agent:security-agent'),
         ]),
       }),
       expect.objectContaining({
         id: 'agent-loop-readiness',
-        status: 'ready',
+        status: 'warning',
       }),
       expect.objectContaining({
         id: 'benchmark-intelligence',

@@ -90,6 +90,11 @@ export interface AgentLoopRunReport {
   artifacts?: {
     runReport?: string
   }
+  agentExecution?: {
+    status?: string
+    summary?: { settledRoles?: number; settledHandoffs?: number; settledReviewGates?: number }
+    evidence?: { produced?: string[]; pending?: string[] }
+  }
 }
 
 interface GateEvidenceLike {
@@ -249,7 +254,13 @@ function buildDelegationMetric(
     const haystack = `${record.kind} ${record.title} ${record.summary} ${JSON.stringify(record.metadata ?? {})}`.toLowerCase()
     return haystack.includes('subagent') || haystack.includes('handoff') || haystack.includes('delegat')
   })
-  const aiOsDelegations = runReports.reduce((sum, report) => sum + delegatedStepCount(report), 0)
+  const aiOsDelegations = runReports.reduce((sum, report) => {
+    const execution = report.agentExecution
+    if (execution?.status !== 'settled') return sum
+    return sum + (execution.summary?.settledRoles ?? 0)
+      + (execution.summary?.settledHandoffs ?? 0)
+      + (execution.summary?.settledReviewGates ?? 0)
+  }, 0)
   const total = reviewDelegations.length + runtimeDelegations.length + aiOsDelegations
   if (total === 0) {
     return missing('No fresh-subagent, hybrid review, handoff, or delegated skill evidence found.', '.scale/reviews + .scale/evidence/runtime + .scale/ai-os/runs')
@@ -263,7 +274,7 @@ function buildTerminationMetric(
   runReports: AgentLoopRunReport[],
 ): AgentLoopMetric<boolean> {
   const completedRuns = runReports.filter(report =>
-    report.status === 'ready' || report.verification?.allPassed === true || (report.evidence?.pending ?? []).length === 0,
+    (report.evidence?.pending ?? []).length === 0 && (report.evidence?.produced ?? []).length > 0,
   )
   const finalRuntime = runtimeRecords.filter(record => record.kind === 'final-report' && record.status === 'passed')
   const verifyGatePasses = gateRecords.filter(record => {
@@ -352,19 +363,6 @@ function skillStepCount(report: AgentLoopRunReport): number {
   return report.plan?.skillPlan?.executionPlan?.steps?.length ?? 0
 }
 
-function delegatedStepCount(report: AgentLoopRunReport): number {
-  const skillSteps = report.plan?.skillPlan?.executionPlan?.steps ?? []
-  const strategyNodes = report.plan?.toolStrategy?.nodes ?? []
-  const runSteps = report.steps ?? []
-  return [
-    ...skillSteps.map(step => `${step.kind ?? ''} ${step.id ?? ''}`),
-    ...strategyNodes.map(step => `${step.kind ?? ''} ${step.id ?? ''}`),
-    ...runSteps.map(step => `${step.kind ?? ''} ${step.id ?? ''}`),
-  ].filter(value => {
-    const normalized = value.toLowerCase()
-    return normalized.includes('skill') || normalized.includes('agent') || normalized.includes('mcp') || normalized.includes('delegate')
-  }).length
-}
 
 function isGuardrailGate(gate: unknown): boolean {
   const normalized = String(gate ?? '').toUpperCase()

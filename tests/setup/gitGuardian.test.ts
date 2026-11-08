@@ -156,6 +156,12 @@ afterAll(() => {
 }, GIT_TEST_TIMEOUT)
 
 describe('GitGuardian > 仓库真实检测', () => {
+  it.skipIf(process.platform !== 'darwin')('accepts the macOS system /var -> /private/var temp alias', () => {
+    const aliasPath = root.replace(/^\/private\/var(?=\/)/, '/var')
+    expect(aliasPath).not.toBe(root)
+    expect(detectGitStatus(aliasPath)).toMatchObject({ status: 'none', ownsRepository: false })
+  })
+
   it('独立目录报告 none', () => {
     expect(detectGitStatus(makeDir())).toMatchObject({ status: 'none', ownsRepository: false })
   })
