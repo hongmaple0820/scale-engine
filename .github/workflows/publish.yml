@@ -50,6 +50,11 @@ jobs:
             exit 1
           fi
 
+      - name: Governance health
+        run: |
+          npm run learning:health
+          npm run docs:health
+
       - name: Full release gate
         # Includes health checks, lint, typecheck, tests, install/provider smokes,
         # build, golden eval, audit, package smoke, npm pack, and DSH plugin checks.
