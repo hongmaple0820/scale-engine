@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
@@ -70,6 +70,20 @@ describe('DashboardServer security middleware', () => {
     expect(audit).toContain('request.completed')
     expect(audit).toContain('/api/knowledge-base/documents/import')
     expect(audit).not.toContain('sensitive payload')
+  })
+
+  it('fails closed when the mutation audit cannot be written', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-audit-fail-'))
+    roots.push(projectDir)
+    const blocker = join(projectDir, 'audit-parent')
+    writeFileSync(blocker, 'not a directory')
+    const app = new DashboardServer({ projectDir, auditPath: join(blocker, 'audit.jsonl') }).getApp()
+    const response = await app.request('/api/knowledge-base/documents/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'must-not-write', content: 'no side effect' }),
+    })
+    expect(response.status).toBe(503)
   })
 
   it('allows an allowlisted preflight but still requires a bearer token for the actual request', async () => {
