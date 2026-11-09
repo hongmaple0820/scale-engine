@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
-import { hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, normalizeDashboardAllowedOrigins } from '../../src/dashboard/DashboardSecurity.js'
+import { hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from '../../src/dashboard/DashboardSecurity.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -15,12 +15,20 @@ describe('Dashboard security primitives', () => {
     expect(isDashboardLoopbackHost('localhost')).toBe(true)
     expect(isDashboardLoopbackHost('0.0.0.0')).toBe(false)
     expect(isDashboardLoopbackHost('192.168.1.10')).toBe(false)
+    expect(isDashboardHostAllowed('attacker.example', '127.0.0.1')).toBe(false)
+    expect(isDashboardHostAllowed('localhost:3210', '127.0.0.1')).toBe(true)
+    expect(isDashboardHostAllowed('dashboard.example:443', '0.0.0.0', ['dashboard.example'])).toBe(true)
   })
 
   it('allows only same-origin or explicitly configured browser origins', () => {
     expect(isDashboardOriginAllowed('http://127.0.0.1:3210', 'http://127.0.0.1:3210/api/health')).toBe(true)
     expect(isDashboardOriginAllowed('https://evil.example', 'http://127.0.0.1:3210/api/health')).toBe(false)
     expect(isDashboardOriginAllowed('https://console.example', 'https://dashboard.internal/api/health', ['https://console.example'])).toBe(true)
+  })
+
+  it('requires explicit host allowlists for non-loopback binds', () => {
+    expect(normalizeDashboardAllowedHosts('dashboard.example,localhost')).toEqual(['dashboard.example', 'localhost'])
+    expect(() => normalizeDashboardAllowedHosts('https://dashboard.example')).toThrow('hostnames or IP addresses')
   })
 
   it('requires exact HTTP(S) origins in the allowlist', () => {
@@ -65,7 +73,7 @@ describe('DashboardServer security middleware', () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-remote-'))
     roots.push(projectDir)
     const token = '0123456789abcdef0123456789abcdef'
-    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token }).getApp()
+    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'] }).getApp()
     expect((await app.request('/api/health')).status).toBe(401)
     expect((await app.request('/api/health', { headers: { Authorization: 'Bearer ' + token } })).status).toBe(200)
   })

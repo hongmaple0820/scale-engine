@@ -39,13 +39,45 @@ export function normalizeDashboardAllowedOrigins(value: string | string[] | unde
   return [...origins]
 }
 
-export function assertDashboardSecurityConfig(host: string, token: string | undefined): void {
+export function normalizeDashboardAllowedHosts(value: string | string[] | undefined): string[] {
+  const entries = Array.isArray(value) ? value : String(value ?? '').split(',')
+  const hosts = new Set<string>()
+  for (const entry of entries) {
+    const candidate = entry.trim().toLowerCase()
+    if (!candidate) continue
+    if (candidate.includes('/') || candidate.includes('@') || candidate.includes('://')) {
+      throw new Error('Dashboard allowed hosts must be hostnames or IP addresses: ' + candidate)
+    }
+    let hostname: string
+    try { hostname = new URL('http://' + candidate).hostname.toLowerCase() } catch {
+      throw new Error('Invalid Dashboard allowed host: ' + candidate)
+    }
+    if (!hostname || hostname !== candidate.replace(/^\\[|\\]$/g, '')) {
+      throw new Error('Dashboard allowed hosts must not include paths or credentials: ' + candidate)
+    }
+    hosts.add(hostname)
+  }
+  return [...hosts]
+}
+
+export function assertDashboardSecurityConfig(host: string, token: string | undefined, allowedHosts: string[] = []): void {
   if (!isDashboardLoopbackHost(host) && !token?.trim()) {
     throw new Error('Non-loopback Dashboard binding requires SCALE_DASHBOARD_TOKEN (at least 32 characters).')
+  }
+  if (!isDashboardLoopbackHost(host) && allowedHosts.length === 0) {
+    throw new Error('Non-loopback Dashboard binding requires SCALE_DASHBOARD_ALLOWED_HOSTS.')
   }
   if (token?.trim() && token.trim().length < 32) {
     throw new Error('SCALE_DASHBOARD_TOKEN must contain at least 32 characters.')
   }
+}
+
+export function isDashboardHostAllowed(hostHeader: string | undefined, bindHost: string, allowedHosts: string[] = []): boolean {
+  if (!hostHeader) return false
+  let requestHost: string
+  try { requestHost = new URL('http://' + hostHeader).hostname.toLowerCase() } catch { return false }
+  if (allowedHosts.includes(requestHost)) return true
+  return isDashboardLoopbackHost(bindHost) && isDashboardLoopbackHost(requestHost)
 }
 
 export function isDashboardOriginAllowed(origin: string, requestUrl: string, allowedOrigins: string[] = []): boolean {

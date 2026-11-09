@@ -87,7 +87,7 @@ describe('resolveDashboardLaunchPlan', () => {
 
   it('accepts non-loopback binding only with a 32-character token', async () => {
     const projectDir = tempProjectDir()
-    const plan = await resolveDashboardLaunchPlan({ SCALE_DASHBOARD_HOST: '0.0.0.0', SCALE_DASHBOARD_TOKEN: '0123456789abcdef0123456789abcdef' }, projectDir)
+    const plan = await resolveDashboardLaunchPlan({ SCALE_DASHBOARD_HOST: '0.0.0.0', SCALE_DASHBOARD_TOKEN: '0123456789abcdef0123456789abcdef', SCALE_DASHBOARD_ALLOWED_HOSTS: 'dashboard.example' }, projectDir)
     expect(plan.host).toBe('0.0.0.0')
   })
 

@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -921,6 +921,7 @@ export interface DashboardOptions {
   projects?: DashboardProjectSummary[]
   authToken?: string
   allowedOrigins?: string[]
+  allowedHosts?: string[]
   auditPath?: string
 }
 
@@ -938,6 +939,7 @@ export class DashboardServer {
   private host: string
   private authToken: string | undefined
   private allowedOrigins: string[]
+  private allowedHosts: string[]
   private auditPath: string
   private projectDir: string
   private scaleDir: string
@@ -959,7 +961,8 @@ export class DashboardServer {
     this.port = options.port ?? 3210
     this.host = options.host ?? '127.0.0.1'
     this.authToken = options.authToken ?? process.env.SCALE_DASHBOARD_TOKEN
-    assertDashboardSecurityConfig(this.host, this.authToken)
+    this.allowedHosts = normalizeDashboardAllowedHosts(options.allowedHosts ?? process.env.SCALE_DASHBOARD_ALLOWED_HOSTS)
+    assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts)
     this.allowedOrigins = normalizeDashboardAllowedOrigins(options.allowedOrigins ?? process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS)
     this.projectDir = resolve(options.projectDir ?? process.cwd())
     this.auditPath = resolve(options.auditPath ?? join(options.scaleDir ?? join(this.projectDir, '.scale'), 'audit', 'dashboard-security.jsonl'))
@@ -986,6 +989,10 @@ export class DashboardServer {
 
   private setupMiddleware(): void {
     this.app.use('*', async (c, next) => {
+      const hostHeader = c.req.header('Host')
+      if (!isDashboardHostAllowed(hostHeader, this.host, this.allowedHosts)) {
+        return c.json({ error: 'Dashboard request host is not allowed.' }, 403)
+      }
       const origin = c.req.header('Origin')
       if (origin && !isDashboardOriginAllowed(origin, c.req.url, this.allowedOrigins)) {
         return c.json({ error: 'Dashboard request origin is not allowed.' }, 403)
