@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { timingSafeEqual } from 'node:crypto'
+import { isIP } from 'node:net'
 
 export interface DashboardAuditEvent {
   event: 'request.started' | 'request.completed'
@@ -16,7 +17,7 @@ export interface DashboardAuditEvent {
 export function isDashboardLoopbackHost(host: string): boolean {
   const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, '')
   return normalized === 'localhost' || normalized === '::1'
-    || normalized === '::ffff:127.0.0.1' || /^127(?:\.\d{1,3}){3}$/.test(normalized)
+    || normalized === '::ffff:127.0.0.1' || (isIP(normalized) === 4 && normalized.startsWith('127.'))
 }
 
 export function normalizeDashboardAllowedOrigins(value: string | string[] | undefined): string[] {
@@ -49,10 +50,11 @@ export function normalizeDashboardAllowedHosts(value: string | string[] | undefi
       throw new Error('Dashboard allowed hosts must be hostnames or IP addresses: ' + candidate)
     }
     let hostname: string
-    try { hostname = new URL('http://' + candidate).hostname.toLowerCase() } catch {
+    try { hostname = new URL('http://' + candidate).hostname.toLowerCase().replace(/^\[|\]$/g, '') } catch {
       throw new Error('Invalid Dashboard allowed host: ' + candidate)
     }
-    if (!hostname || hostname.replace(/^\\[|\\]$/g, '') !== candidate.replace(/^\\[|\\]$/g, '')) {
+    const normalizedCandidate = candidate.replace(/^\[|\]$/g, '')
+    if (!hostname || hostname !== normalizedCandidate) {
       throw new Error('Dashboard allowed hosts must not include paths or credentials: ' + candidate)
     }
     hosts.add(hostname)
