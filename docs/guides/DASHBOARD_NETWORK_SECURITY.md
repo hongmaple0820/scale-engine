@@ -1,17 +1,43 @@
-# Dashboard network exposure
+# Dashboard network exposure and security
 
-SCALE Engine Dashboard binds to `127.0.0.1` by default. This keeps the dashboard
-and its project-management APIs reachable only from the local machine unless
-the operator explicitly changes the bind host.
+SCALE Engine Dashboard binds to \`127.0.0.1\` by default. Loopback mode is
+intended for a trusted local operator on the same machine.
 
-To select a different interface, set `SCALE_DASHBOARD_HOST` before starting the
-dashboard. Binding to `0.0.0.0` or another non-loopback interface exposes the
-dashboard to other machines that can reach that interface.
+## Non-loopback binding
 
-**Do not expose the Dashboard directly to the public internet.** The current
-Dashboard API is designed for local use; a non-loopback bind must be placed
-behind a separately configured authentication and TLS boundary, restricted
-to a trusted network, and protected by firewall rules. A custom bind host is
-not itself an authentication mechanism.
+Binding to \`0.0.0.0\`, a LAN address, or another non-loopback interface is
+rejected unless \`SCALE_DASHBOARD_TOKEN\` is configured. The token must contain
+at least 32 characters. Generate it with a cryptographically secure random
+generator and keep it out of source control, shell history, logs, and support
+bundles.
 
-The launch URL is a convenience address, not an access-control boundary.
+Every request to a token-protected Dashboard must include an
+\`Authorization: Bearer <token>\` header. When using a reverse proxy, configure
+it to inject this header upstream, keep the Dashboard port firewalled from
+direct client access, and terminate TLS at the proxy. Do not expose the token
+to browser JavaScript or place it in a URL.
+
+## Browser request boundary
+
+The Dashboard accepts browser requests only from the request's own origin or
+an exact origin listed in \`SCALE_DASHBOARD_ALLOWED_ORIGINS\` (comma-separated
+HTTP(S) origins). Cross-origin requests outside this allowlist are rejected,
+including preflight requests. Only add origins controlled by the same operator.
+
+## Mutation audit
+
+API mutations (POST, PUT, PATCH, DELETE) are recorded in
+\`.scale/audit/dashboard-security.jsonl\`. Records contain method, path, origin,
+actor class, timestamp, request ID, and response status. Request bodies, bearer
+tokens, and credential values are never written to this log. If the audit log
+cannot record the start of a mutation, that mutation is rejected before its
+handler runs.
+
+## Current authorization model and limits
+
+The configured bearer token grants one operator-level permission set; this is
+not a multi-user role/permission system. Loopback mode without a token remains
+a local-trust mode and does not authenticate individual local processes.
+Origin checks are a browser CSRF boundary, not a substitute for authentication.
+For remote access, use the token together with a TLS reverse proxy and firewall.
+Do not expose the Dashboard directly to the public internet.

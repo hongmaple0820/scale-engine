@@ -79,6 +79,18 @@ describe('resolveDashboardLaunchPlan', () => {
     expect(plan.projects[0].url).toBe('http://127.0.0.1:3210')
   })
 
+  it('rejects non-loopback binding without a strong dashboard token', async () => {
+    const projectDir = tempProjectDir()
+    await expect(resolveDashboardLaunchPlan({ SCALE_DASHBOARD_HOST: '0.0.0.0' }, projectDir))
+      .rejects.toThrow('Non-loopback Dashboard binding requires SCALE_DASHBOARD_TOKEN')
+  })
+
+  it('accepts non-loopback binding only with a 32-character token', async () => {
+    const projectDir = tempProjectDir()
+    const plan = await resolveDashboardLaunchPlan({ SCALE_DASHBOARD_HOST: '0.0.0.0', SCALE_DASHBOARD_TOKEN: '0123456789abcdef0123456789abcdef' }, projectDir)
+    expect(plan.host).toBe('0.0.0.0')
+  })
+
   it('keeps the configured port without probing in single-project mode', async () => {
     const holders = await occupyPorts(1)
     const projectDir = tempProjectDir()

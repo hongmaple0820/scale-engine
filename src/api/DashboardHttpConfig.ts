@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { basename, join, resolve } from 'node:path'
 import type { DashboardProjectSummary } from '../dashboard/DashboardServer.js'
+import { assertDashboardSecurityConfig } from '../dashboard/DashboardSecurity.js'
 
 export interface DashboardHttpEnv {
   SCALE_DASHBOARD_HOST?: string
@@ -11,6 +12,8 @@ export interface DashboardHttpEnv {
   SCALE_DASHBOARD_AUTO_PORT?: string
   SCALE_DASHBOARD_PROJECT_DIR?: string
   SCALE_DASHBOARD_PROJECTS?: string
+  SCALE_DASHBOARD_TOKEN?: string
+  SCALE_DASHBOARD_ALLOWED_ORIGINS?: string
 }
 
 export interface DashboardPortConfig {
@@ -59,6 +62,7 @@ export async function resolveDashboardLaunchPlan(
   cwd = process.cwd(),
 ): Promise<DashboardLaunchPlan> {
   const host = env.SCALE_DASHBOARD_HOST ?? env.HOST ?? '127.0.0.1'
+  assertDashboardSecurityConfig(host, env.SCALE_DASHBOARD_TOKEN)
   const portConfig = parseDashboardPort(env.SCALE_DASHBOARD_PORT ?? env.PORT, 3210)
   const projects = parseDashboardProjects(env, cwd)
   const autoPort = portConfig.auto || truthy(env.SCALE_DASHBOARD_AUTO_PORT) || projects.length > 1
