@@ -46,7 +46,7 @@ export function normalizeDashboardAllowedHosts(value: string | string[] | undefi
   for (const entry of entries) {
     const candidate = entry.trim().toLowerCase()
     if (!candidate) continue
-    if (candidate.includes('/') || candidate.includes('@') || candidate.includes('://')) {
+    if (candidate.includes('/') || candidate.includes('@') || candidate.includes('://') || candidate.includes('*')) {
       throw new Error('Dashboard allowed hosts must be hostnames or IP addresses: ' + candidate)
     }
     let hostname: string

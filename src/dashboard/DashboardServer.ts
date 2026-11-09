@@ -960,7 +960,7 @@ export class DashboardServer {
     this.detectorTracker = options.detectorTracker ?? null
     this.port = options.port ?? 3210
     this.host = options.host ?? '127.0.0.1'
-    this.authToken = options.authToken ?? process.env.SCALE_DASHBOARD_TOKEN
+    this.authToken = (options.authToken ?? process.env.SCALE_DASHBOARD_TOKEN)?.trim() || undefined
     this.allowedHosts = normalizeDashboardAllowedHosts(options.allowedHosts ?? process.env.SCALE_DASHBOARD_ALLOWED_HOSTS)
     assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts)
     this.allowedOrigins = normalizeDashboardAllowedOrigins(options.allowedOrigins ?? process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS)
