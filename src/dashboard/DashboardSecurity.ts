@@ -52,7 +52,7 @@ export function normalizeDashboardAllowedHosts(value: string | string[] | undefi
     try { hostname = new URL('http://' + candidate).hostname.toLowerCase() } catch {
       throw new Error('Invalid Dashboard allowed host: ' + candidate)
     }
-    if (!hostname || hostname !== candidate.replace(/^\\[|\\]$/g, '')) {
+    if (!hostname || hostname.replace(/^\\[|\\]$/g, '') !== candidate.replace(/^\\[|\\]$/g, '')) {
       throw new Error('Dashboard allowed hosts must not include paths or credentials: ' + candidate)
     }
     hosts.add(hostname)

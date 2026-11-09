@@ -69,7 +69,7 @@ describe('DashboardServer security middleware', () => {
     expect(audit).not.toContain('sensitive payload')
   })
 
-  it('requires a valid bearer token for non-loopback bindings', async () => {
+  it('allows an allowlisted preflight but still requires a bearer token for the actual request', async () => {\n    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-preflight-'))\n    roots.push(projectDir)\n    const token = '0123456789abcdef0123456789abcdef'\n    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()\n    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'GET' } })\n    expect(preflight.status).toBe(204)\n    const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })\n    expect(unauthorized.status).toBe(401)\n  })\n\n  it('requires a valid bearer token for non-loopback bindings', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-remote-'))
     roots.push(projectDir)
     const token = '0123456789abcdef0123456789abcdef'

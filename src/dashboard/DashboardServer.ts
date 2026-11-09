@@ -989,7 +989,7 @@ export class DashboardServer {
 
   private setupMiddleware(): void {
     this.app.use('*', async (c, next) => {
-      const hostHeader = c.req.header('Host')
+      const hostHeader = c.req.header('Host') ?? new URL(c.req.url).host
       if (!isDashboardHostAllowed(hostHeader, this.host, this.allowedHosts)) {
         return c.json({ error: 'Dashboard request host is not allowed.' }, 403)
       }
@@ -999,7 +999,7 @@ export class DashboardServer {
       }
 
       const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host)
-      if (requiresAuth && !hasValidDashboardBearerToken(c.req.header('Authorization'), this.authToken)) {
+      if (requiresAuth && c.req.method.toUpperCase() !== 'OPTIONS' && !hasValidDashboardBearerToken(c.req.header('Authorization'), this.authToken)) {
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
       }
 
