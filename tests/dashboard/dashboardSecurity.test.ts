@@ -50,6 +50,8 @@ describe('DashboardServer security middleware', () => {
     const scaleDir = join(projectDir, '.scale')
     const auditPath = join(scaleDir, 'audit', 'dashboard-security.jsonl')
     const app = new DashboardServer({ projectDir, scaleDir, auditPath }).getApp()
+    const rebound = await app.request('/api/health', { headers: { Host: 'attacker.example', Origin: 'https://attacker.example' } })
+    expect(rebound.status).toBe(403)
     const blocked = await app.request('/api/knowledge-base/documents/import', {
       method: 'POST',
       headers: { Origin: 'https://attacker.example', 'Content-Type': 'application/json' },
@@ -69,7 +71,18 @@ describe('DashboardServer security middleware', () => {
     expect(audit).not.toContain('sensitive payload')
   })
 
-  it('allows an allowlisted preflight but still requires a bearer token for the actual request', async () => {\n    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-preflight-'))\n    roots.push(projectDir)\n    const token = '0123456789abcdef0123456789abcdef'\n    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()\n    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'GET' } })\n    expect(preflight.status).toBe(204)\n    const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })\n    expect(unauthorized.status).toBe(401)\n  })\n\n  it('requires a valid bearer token for non-loopback bindings', async () => {
+  it('allows an allowlisted preflight but still requires a bearer token for the actual request', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-preflight-'))
+    roots.push(projectDir)
+    const token = '0123456789abcdef0123456789abcdef'
+    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()
+    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'GET' } })
+    expect(preflight.status).toBe(204)
+    const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })
+    expect(unauthorized.status).toBe(401)
+  })
+
+  it('requires a valid bearer token for non-loopback bindings', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-remote-'))
     roots.push(projectDir)
     const token = '0123456789abcdef0123456789abcdef'

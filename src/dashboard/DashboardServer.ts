@@ -998,7 +998,7 @@ export class DashboardServer {
         return c.json({ error: 'Dashboard request origin is not allowed.' }, 403)
       }
 
-      const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host)
+      const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
       if (requiresAuth && c.req.method.toUpperCase() !== 'OPTIONS' && !hasValidDashboardBearerToken(c.req.header('Authorization'), this.authToken)) {
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
       }

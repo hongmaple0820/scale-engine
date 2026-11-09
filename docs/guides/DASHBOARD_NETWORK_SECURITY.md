@@ -11,7 +11,16 @@ at least 32 characters. Generate it with a cryptographically secure random
 generator and keep it out of source control, shell history, logs, and support
 bundles.
 
-Every non-loopback bind also requires `SCALE_DASHBOARD_ALLOWED_HOSTS`, a comma-separated list of exact hostnames or IP addresses expected in the HTTP Host header. This prevents arbitrary Host values and DNS-rebinding hostnames from being treated as valid local Dashboard hosts. Do not use wildcards.\n\nEvery request to a token-protected Dashboard must include an
+Every non-loopback bind also requires \`SCALE_DASHBOARD_ALLOWED_HOSTS\`, a
+comma-separated list of exact hostnames or IP addresses expected in the HTTP
+Host header. This prevents arbitrary Host values and DNS-rebinding hostnames
+from being treated as valid local Dashboard hosts. Do not use wildcards.
+
+A loopback bind exposed through a reverse proxy must also list the proxy's
+public hostname in \`SCALE_DASHBOARD_ALLOWED_HOSTS\`; doing so requires the
+operator token as well.
+
+Every request to a token-protected Dashboard must include an
 \`Authorization: Bearer <token>\` header. When using a reverse proxy, configure
 it to inject this header upstream, keep the Dashboard port firewalled from
 direct client access, and terminate TLS at the proxy. Do not expose the token

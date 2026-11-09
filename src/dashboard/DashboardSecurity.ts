@@ -63,7 +63,8 @@ export function normalizeDashboardAllowedHosts(value: string | string[] | undefi
 }
 
 export function assertDashboardSecurityConfig(host: string, token: string | undefined, allowedHosts: string[] = []): void {
-  if (!isDashboardLoopbackHost(host) && !token?.trim()) {
+  const hasPublicHostAlias = allowedHosts.some(allowedHost => !isDashboardLoopbackHost(allowedHost))
+  if ((!isDashboardLoopbackHost(host) || hasPublicHostAlias) && !token?.trim()) {
     throw new Error('Non-loopback Dashboard binding requires SCALE_DASHBOARD_TOKEN (at least 32 characters).')
   }
   if (!isDashboardLoopbackHost(host) && allowedHosts.length === 0) {
