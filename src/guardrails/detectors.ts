@@ -172,10 +172,17 @@ export class PrematureDoneDetector implements IDetector {
       : isFailedVerificationEvent(latestEventVerification)
     if (latestVerificationFailed) {
       ctx.eventBus.emit('behavior.premature_done', { reason: 'verification_failed' }, { sessionId: input.sessionId })
+      const failedCommand = latestVerificationIsRuntime
+        ? latestRuntimeVerification?.command
+        : commandFromVerificationEvent(latestEventVerification?.payload)
+      const isBuildFailure = /build|compile|tsc/i.test(failedCommand ?? '')
       return {
         triggered: true,
         severity: 'block',
-        reason: '检测到最近一次验证失败，不能声称完成。请修复失败后重新运行验证。',
+        reason: isBuildFailure
+          ? '检测到「编译失败」：build 命令未成功完成。'
+          : '检测到最近一次验证失败，不能声称完成。请修复失败后重新运行验证。',
+        suggestion: isBuildFailure ? '修复编译错误后重新构建' : undefined,
       }
     }
 
