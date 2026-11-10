@@ -10,6 +10,9 @@ async function main(): Promise<void> {
     const server = new DashboardServer({
       port: project.port,
       host: project.host,
+      authToken: process.env.SCALE_DASHBOARD_TOKEN,
+      allowedOrigins: process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS?.split(',').map(origin => origin.trim()).filter(Boolean),
+      allowedHosts: process.env.SCALE_DASHBOARD_ALLOWED_HOSTS?.split(',').map(host => host.trim()).filter(Boolean),
       projectDir: project.projectDir,
       scaleDir: project.scaleDir,
       projectName: project.name,

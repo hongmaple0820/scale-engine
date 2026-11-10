@@ -63,6 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -918,6 +919,10 @@ export interface DashboardOptions {
   projectUrl?: string
   currentProjectId?: string
   projects?: DashboardProjectSummary[]
+  authToken?: string
+  allowedOrigins?: string[]
+  allowedHosts?: string[]
+  auditPath?: string
 }
 
 // ── Dashboard Server ─────────────────────────────────────────────────────
@@ -932,6 +937,10 @@ export class DashboardServer {
   private detectorTracker: DetectorStatisticsTracker | null
   private port: number
   private host: string
+  private authToken: string | undefined
+  private allowedOrigins: string[]
+  private allowedHosts: string[]
+  private auditPath: string
   private projectDir: string
   private scaleDir: string
   private currentProject: DashboardProjectSummary
@@ -951,7 +960,12 @@ export class DashboardServer {
     this.detectorTracker = options.detectorTracker ?? null
     this.port = options.port ?? 3210
     this.host = options.host ?? '127.0.0.1'
+    this.authToken = (options.authToken ?? process.env.SCALE_DASHBOARD_TOKEN)?.trim() || undefined
+    this.allowedHosts = normalizeDashboardAllowedHosts(options.allowedHosts ?? process.env.SCALE_DASHBOARD_ALLOWED_HOSTS)
+    assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts)
+    this.allowedOrigins = normalizeDashboardAllowedOrigins(options.allowedOrigins ?? process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS)
     this.projectDir = resolve(options.projectDir ?? process.cwd())
+    this.auditPath = resolve(options.auditPath ?? join(options.scaleDir ?? join(this.projectDir, '.scale'), 'audit', 'dashboard-security.jsonl'))
     this.scaleDir = resolve(options.scaleDir ?? join(this.projectDir, '.scale'))
     this.agentControlBus = new EventBus({ eventsDir: join(this.scaleDir, 'events', 'agent-control') })
     this.currentProject = normalizeProjectSummary({
@@ -974,7 +988,60 @@ export class DashboardServer {
   // ── Middleware ────────────────────────────────────────────────────────
 
   private setupMiddleware(): void {
-    this.app.use('*', cors())
+    this.app.use('*', async (c, next) => {
+      const hostHeader = c.req.header('Host') ?? new URL(c.req.url).host
+      if (!isDashboardHostAllowed(hostHeader, this.host, this.allowedHosts)) {
+        return c.json({ error: 'Dashboard request host is not allowed.' }, 403)
+      }
+      const origin = c.req.header('Origin')
+      if (origin && !isDashboardOriginAllowed(origin, c.req.url, this.allowedOrigins)) {
+        return c.json({ error: 'Dashboard request origin is not allowed.' }, 403)
+      }
+
+      const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
+      if (requiresAuth && c.req.method.toUpperCase() !== 'OPTIONS' && !hasValidDashboardBearerToken(c.req.header('Authorization'), this.authToken)) {
+        return c.json({ error: 'Dashboard authentication is required.' }, 401)
+      }
+
+      const method = c.req.method.toUpperCase()
+      const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+      const isApiMutation = isMutation && c.req.path.startsWith('/api/')
+      const requestId = randomBytes(8).toString('hex')
+      const actor = requiresAuth ? 'bearer-token' as const : 'loopback' as const
+      if (isApiMutation) {
+        try {
+          appendDashboardAuditEvent(this.auditPath, {
+            event: 'request.started', requestId, timestamp: Date.now(), method,
+            path: c.req.path, origin: origin ?? null, actor,
+          })
+        } catch (error) {
+          logger.error({ error, path: c.req.path }, 'Dashboard security audit write failed')
+          return c.json({ error: 'Dashboard audit is unavailable; mutation was not executed.' }, 503)
+        }
+      }
+
+      try {
+        await next()
+      } finally {
+        if (isApiMutation) {
+          try {
+            appendDashboardAuditEvent(this.auditPath, {
+              event: 'request.completed', requestId, timestamp: Date.now(), method,
+              path: c.req.path, origin: origin ?? null, actor, status: c.res.status,
+            })
+          } catch (error) {
+            logger.error({ error, path: c.req.path, requestId }, 'Dashboard security audit completion write failed')
+          }
+        }
+      }
+    })
+
+    this.app.use('*', cors({
+      origin: (origin, c) => isDashboardOriginAllowed(origin, c.req.url, this.allowedOrigins) ? origin : '',
+      allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Content-Type', 'Authorization'],
+      maxAge: 600,
+    }))
   }
 
   // ── SPA Serves ───────────────────────────────────────────────────────

@@ -1,0 +1,120 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
+import { hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from '../../src/dashboard/DashboardSecurity.js'
+
+const roots: string[] = []
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
+
+describe('Dashboard security primitives', () => {
+  it('classifies loopback hosts without treating wildcard binds as local', () => {
+    expect(isDashboardLoopbackHost('127.0.0.1')).toBe(true)
+    expect(isDashboardLoopbackHost('::1')).toBe(true)
+    expect(isDashboardLoopbackHost('localhost')).toBe(true)
+    expect(isDashboardLoopbackHost('0.0.0.0')).toBe(false)
+    expect(isDashboardLoopbackHost('192.168.1.10')).toBe(false)
+    expect(isDashboardHostAllowed('attacker.example', '127.0.0.1')).toBe(false)
+    expect(isDashboardHostAllowed('localhost:3210', '127.0.0.1')).toBe(true)
+    expect(isDashboardHostAllowed('dashboard.example:443', '0.0.0.0', ['dashboard.example'])).toBe(true)
+    expect(normalizeDashboardAllowedHosts('[2001:db8::10]')).toEqual(['2001:db8::10'])
+    expect(isDashboardHostAllowed('[2001:db8::10]:443', '::', ['2001:db8::10'])).toBe(true)
+    expect(isDashboardHostAllowed('[::1]:3210', '::1')).toBe(true)
+    expect(isDashboardHostAllowed('trusted.example@attacker.example', '0.0.0.0', ['attacker.example'])).toBe(false)
+    expect(isDashboardHostAllowed('dashboard.example/path', '0.0.0.0', ['dashboard.example'])).toBe(false)
+    expect(isDashboardHostAllowed(' dashboard.example', '0.0.0.0', ['dashboard.example'])).toBe(false)
+  })
+
+  it('allows only same-origin or explicitly configured browser origins', () => {
+    expect(isDashboardOriginAllowed('http://127.0.0.1:3210', 'http://127.0.0.1:3210/api/health')).toBe(true)
+    expect(isDashboardOriginAllowed('https://evil.example', 'http://127.0.0.1:3210/api/health')).toBe(false)
+    expect(isDashboardOriginAllowed('https://console.example', 'https://dashboard.internal/api/health', ['https://console.example'])).toBe(true)
+  })
+
+  it('requires explicit host allowlists for non-loopback binds', () => {
+    expect(normalizeDashboardAllowedHosts('dashboard.example,localhost')).toEqual(['dashboard.example', 'localhost'])
+    expect(normalizeDashboardAllowedHosts('')).toEqual([])
+    expect(normalizeDashboardAllowedHosts(undefined)).toEqual([])
+    expect(() => normalizeDashboardAllowedHosts('https://dashboard.example')).toThrow('hostnames or IP addresses')
+    expect(() => normalizeDashboardAllowedHosts('*.example.com')).toThrow('hostnames or IP addresses')
+  })
+
+  it('requires exact HTTP(S) origins in the allowlist', () => {
+    expect(normalizeDashboardAllowedOrigins('https://console.example,http://localhost:3210')).toEqual(['https://console.example', 'http://localhost:3210'])
+    expect(() => normalizeDashboardAllowedOrigins('https://console.example/path')).toThrow('exact HTTP(S) origins')
+  })
+
+  it('compares bearer tokens without accepting missing or malformed values', () => {
+    expect(hasValidDashboardBearerToken('Bearer abc', 'abc')).toBe(true)
+    expect(hasValidDashboardBearerToken('Bearer ab', 'abc')).toBe(false)
+    expect(hasValidDashboardBearerToken(undefined, 'abc')).toBe(false)
+  })
+})
+
+describe('DashboardServer security middleware', () => {
+  it('rejects foreign origins and audits mutations without logging request bodies', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-security-'))
+    roots.push(projectDir)
+    const scaleDir = join(projectDir, '.scale')
+    const auditPath = join(scaleDir, 'audit', 'dashboard-security.jsonl')
+    const app = new DashboardServer({ projectDir, scaleDir, auditPath }).getApp()
+    const rebound = await app.request('/api/health', { headers: { Host: 'attacker.example', Origin: 'https://attacker.example' } })
+    expect(rebound.status).toBe(403)
+    const blocked = await app.request('/api/knowledge-base/documents/import', {
+      method: 'POST',
+      headers: { Origin: 'https://attacker.example', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'x', content: 'sensitive payload' }),
+    })
+    expect(blocked.status).toBe(403)
+    const accepted = await app.request('/api/knowledge-base/documents/import', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'security-test', content: 'safe' }),
+    })
+    expect(accepted.status).toBe(200)
+    const audit = readFileSync(auditPath, 'utf8')
+    expect(audit).toContain('request.started')
+    expect(audit).toContain('request.completed')
+    expect(audit).toContain('/api/knowledge-base/documents/import')
+    expect(audit).not.toContain('sensitive payload')
+  })
+
+  it('fails closed when the mutation audit cannot be written', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-audit-fail-'))
+    roots.push(projectDir)
+    const blocker = join(projectDir, 'audit-parent')
+    writeFileSync(blocker, 'not a directory')
+    const app = new DashboardServer({ projectDir, auditPath: join(blocker, 'audit.jsonl') }).getApp()
+    const response = await app.request('/api/knowledge-base/documents/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'must-not-write', content: 'no side effect' }),
+    })
+    expect(response.status).toBe(503)
+  })
+
+  it('allows an allowlisted preflight but still requires a bearer token for the actual request', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-preflight-'))
+    roots.push(projectDir)
+    const token = '0123456789abcdef0123456789abcdef'
+    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()
+    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'GET' } })
+    expect(preflight.status).toBe(204)
+    const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })
+    expect(unauthorized.status).toBe(401)
+  })
+
+  it('requires a valid bearer token for non-loopback bindings', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-remote-'))
+    roots.push(projectDir)
+    const token = '0123456789abcdef0123456789abcdef'
+    const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'] }).getApp()
+    expect((await app.request('/api/health')).status).toBe(401)
+    expect((await app.request('/api/health', { headers: { Authorization: 'Bearer ' + token } })).status).toBe(200)
+  })
+
+  it('rejects non-loopback bindings without an operator token', () => {
+    expect(() => new DashboardServer({ host: '0.0.0.0' })).toThrow('Non-loopback Dashboard binding requires SCALE_DASHBOARD_TOKEN')
+  })
+})
