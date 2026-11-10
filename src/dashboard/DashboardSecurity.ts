@@ -15,7 +15,7 @@ export interface DashboardAuditEvent {
 }
 
 export function isDashboardLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase().replace(/^\\[|\\]$/g, '')
+  const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, '')
   return normalized === 'localhost' || normalized === '::1'
     || normalized === '::ffff:127.0.0.1' || (isIP(normalized) === 4 && normalized.startsWith('127.'))
 }
@@ -31,7 +31,7 @@ export function normalizeDashboardAllowedOrigins(value: string | string[] | unde
       throw new Error('Invalid Dashboard allowed origin: ' + candidate)
     }
     if (!['http:', 'https:'].includes(parsed.protocol)
-      || parsed.origin !== candidate.replace(/\\/$/, '')
+      || parsed.origin !== candidate.replace(/\/$/, '')
       || parsed.username || parsed.password) {
       throw new Error('Dashboard allowed origins must be exact HTTP(S) origins: ' + candidate)
     }
@@ -49,10 +49,10 @@ export function normalizeDashboardAllowedHosts(value: string | string[] | undefi
       throw new Error('Dashboard allowed hosts must be hostnames or IP addresses: ' + candidate)
     }
     let hostname: string
-    try { hostname = new URL('http://' + candidate).hostname.toLowerCase().replace(/^\\[|\\]$/g, '') } catch {
+    try { hostname = new URL('http://' + candidate).hostname.toLowerCase().replace(/^\[|\]$/g, '') } catch {
       throw new Error('Invalid Dashboard allowed host: ' + candidate)
     }
-    const normalizedCandidate = candidate.replace(/^\\[|\\]$/g, '')
+    const normalizedCandidate = candidate.replace(/^\[|\]$/g, '')
     if (!hostname || hostname !== normalizedCandidate) {
       throw new Error('Dashboard allowed hosts must not include paths or credentials: ' + candidate)
     }
@@ -78,7 +78,7 @@ export function isDashboardHostAllowed(hostHeader: string | undefined, bindHost:
   if (!hostHeader) return false
   let requestHost: string
   try {
-    requestHost = new URL('http://' + hostHeader).hostname.toLowerCase().replace(/^\\[|\\]$/g, '')
+    requestHost = new URL('http://' + hostHeader).hostname.toLowerCase().replace(/^\[|\]$/g, '')
   } catch { return false }
   if (allowedHosts.includes(requestHost)) return true
   return isDashboardLoopbackHost(bindHost) && isDashboardLoopbackHost(requestHost)
@@ -94,7 +94,7 @@ export function isDashboardOriginAllowed(origin: string, requestUrl: string, all
 
 export function hasValidDashboardBearerToken(authorization: string | undefined, expectedToken: string | undefined): boolean {
   if (!expectedToken) return false
-  const match = authorization?.match(/^Bearer\\s+(.+)$/i)
+  const match = authorization?.match(/^Bearer\s+(.+)$/i)
   if (!match) return false
   const actual = Buffer.from(match[1]!, 'utf8')
   const expected = Buffer.from(expectedToken, 'utf8')
@@ -103,5 +103,5 @@ export function hasValidDashboardBearerToken(authorization: string | undefined, 
 
 export function appendDashboardAuditEvent(path: string, event: DashboardAuditEvent): void {
   mkdirSync(dirname(path), { recursive: true })
-  appendFileSync(path, JSON.stringify(event) + '\\n', { encoding: 'utf8', flag: 'a', mode: 0o600 })
+  appendFileSync(path, JSON.stringify(event) + '\n', { encoding: 'utf8', flag: 'a', mode: 0o600 })
 }
