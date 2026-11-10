@@ -123,19 +123,32 @@ export class PrematureDoneDetector implements IDetector {
     if (edits.length === 0) return { triggered: false }
     const lastEditTimestamp = Math.max(...edits.map(event => event.timestamp))
 
-    // Harness: 检查验证命令是否运行
-    // #36：不限定 tool === 'Bash'，凡携带命令文本的 shell 类工具（Bash/PowerShell 等）
-    // 与 verification.recorded 事件都计入；命令是否算验证由 catalog 决定。
+    // Only explicit verification events or successful shell-tool invocations count.
+    // A failed shell command is still evidence that an attempt occurred, but never
+    // evidence that verification passed.
     const verifications = await ctx.eventBus.query({
       sessionId: input.sessionId,
       types: ['tool.completed', 'tool.failed', 'verification.recorded'],
-      filter: (e) => isVerificationCommand(commandFromVerificationEvent(e.payload), catalog),
+      filter: (event) => isVerificationEvidenceEvent(event, catalog),
     })
+    const latestEventVerification = [...verifications]
+      .sort((a, b) => b.timestamp - a.timestamp)[0]
 
     const latestRuntimeVerification = latestRuntimeVerificationForSession(input.sessionId, lastEditTimestamp, catalog)
+    const latestEventVerificationTimestamp = latestEventVerification?.timestamp ?? 0
+    const latestRuntimeVerificationTimestamp = latestRuntimeVerification
+      ? Date.parse(latestRuntimeVerification.createdAt)
+      : 0
+    const latestVerificationIsRuntime = Boolean(
+      latestRuntimeVerification && latestRuntimeVerificationTimestamp >= latestEventVerificationTimestamp,
+    )
+    const latestVerificationTimestamp = Math.max(
+      latestEventVerificationTimestamp,
+      latestRuntimeVerificationTimestamp,
+    )
 
     // 情况1：完全未验证
-    if (verifications.length === 0 && !latestRuntimeVerification) {
+    if (!latestEventVerification && !latestRuntimeVerification) {
       ctx.eventBus.emit('behavior.premature_done', { reason: 'no_verification' }, { sessionId: input.sessionId })
       return {
         triggered: true,
@@ -146,13 +159,7 @@ export class PrematureDoneDetector implements IDetector {
     }
 
     // 情况2：验证在编辑之前（文章：Premature Victory Declaration）
-    const latestEventVerificationTimestamp = verifications.length > 0
-      ? Math.max(...verifications.map(event => event.timestamp))
-      : 0
-    const latestRuntimeVerificationTimestamp = latestRuntimeVerification
-      ? Date.parse(latestRuntimeVerification.createdAt)
-      : 0
-    if (Math.max(latestEventVerificationTimestamp, latestRuntimeVerificationTimestamp) < lastEditTimestamp) {
+    if (latestVerificationTimestamp < lastEditTimestamp) {
       return {
         triggered: true,
         severity: 'block',
@@ -160,7 +167,10 @@ export class PrematureDoneDetector implements IDetector {
       }
     }
 
-    if (latestRuntimeVerification?.status === 'failed') {
+    const latestVerificationFailed = latestVerificationIsRuntime
+      ? latestRuntimeVerification?.status !== 'passed'
+      : isFailedVerificationEvent(latestEventVerification)
+    if (latestVerificationFailed) {
       ctx.eventBus.emit('behavior.premature_done', { reason: 'verification_failed' }, { sessionId: input.sessionId })
       return {
         triggered: true,
@@ -171,7 +181,10 @@ export class PrematureDoneDetector implements IDetector {
 
     // 情况3：Harness 新增 - 检查测试结果是否真正通过
     // 文章启发：Agent 可能认为 "SUCCESS" 就通过，但实际测试 0/0
-    const testCmd = verifications.find(e => /test/i.test(commandFromVerificationEvent(e.payload) ?? ''))
+    const testCmd = !latestVerificationIsRuntime && latestEventVerification
+      && /test/i.test(commandFromVerificationEvent(latestEventVerification.payload) ?? '')
+      ? latestEventVerification
+      : undefined
     if (testCmd) {
       const output = (testCmd.payload as { output?: string }).output ?? ''
       // 检测测试 0/0 异常
@@ -197,7 +210,10 @@ export class PrematureDoneDetector implements IDetector {
     }
 
     // 情况4：Harness 新增 - 检查编译是否通过
-    const buildCmd = verifications.find(e => /build|compile|tsc/i.test(commandFromVerificationEvent(e.payload) ?? ''))
+    const buildCmd = !latestVerificationIsRuntime && latestEventVerification
+      && /build|compile|tsc/i.test(commandFromVerificationEvent(latestEventVerification.payload) ?? '')
+      ? latestEventVerification
+      : undefined
     if (buildCmd) {
       const exitCode = (buildCmd.payload as { exitCode?: number }).exitCode ?? 0
       if (exitCode !== 0) {
@@ -232,6 +248,38 @@ function latestRuntimeVerificationForSession(
     .filter(record => Date.parse(record.createdAt) >= afterTimestamp)
 
   return records[0] ?? null
+}
+
+function isVerificationEvidenceEvent(
+  event: { type: string; payload: unknown },
+  catalog: VerificationCommandCatalog,
+): boolean {
+  const command = commandFromVerificationEvent(event.payload)
+  if (!isVerificationCommand(command, catalog)) return false
+
+  // verification.recorded is an explicit runtime contract. Generic tool events
+  // count only when emitted by a known shell/terminal tool, never an arbitrary MCP tool.
+  if (event.type === 'verification.recorded') return true
+  const payload = event.payload as { tool?: unknown }
+  return isShellVerificationTool(payload.tool)
+}
+
+function isShellVerificationTool(tool: unknown): boolean {
+  if (typeof tool !== 'string') return false
+  const normalized = tool.trim().toLowerCase().replace(/[\\s-]+/g, '_')
+  return new Set([
+    'bash', 'shell', 'terminal', 'powershell', 'powershell_core', 'pwsh',
+    'cmd', 'command', 'run_command', 'execute_command', 'run_terminal_command',
+  ]).has(normalized)
+}
+
+function isFailedVerificationEvent(event: { type: string; payload: unknown } | undefined): boolean {
+  if (!event) return true
+  if (event.type === 'tool.failed') return true
+  const payload = event.payload as { exitCode?: unknown; passed?: unknown; status?: unknown }
+  if (typeof payload.exitCode === 'number' && payload.exitCode !== 0) return true
+  if (payload.passed === false || payload.status === 'failed' || payload.status === 'skipped') return true
+  return false
 }
 
 function commandFromVerificationEvent(payload: unknown): string | undefined {
