@@ -266,7 +266,7 @@ function isVerificationEvidenceEvent(
 
 function isShellVerificationTool(tool: unknown): boolean {
   if (typeof tool !== 'string') return false
-  const normalized = tool.trim().toLowerCase().replace(/[\\s-]+/g, '_')
+  const normalized = tool.trim().toLowerCase().replace(/[\s-]+/g, '_')
   return new Set([
     'bash', 'shell', 'terminal', 'powershell', 'powershell_core', 'pwsh',
     'cmd', 'command', 'run_command', 'execute_command', 'run_terminal_command',
