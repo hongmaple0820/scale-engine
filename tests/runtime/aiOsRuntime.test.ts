@@ -236,16 +236,16 @@ describe('AI OS runtime planner', () => {
     ]))
     expect(report.agentExecution).toEqual(expect.objectContaining({
       strategy: 'agent-execution-settlement-v1',
-      status: 'settled',
+      status: 'planned',
       summary: expect.objectContaining({
-        settledRoles: expect.any(Number),
-        settledReviewGates: expect.any(Number),
-        producedEvidence: expect.any(Number),
+        settledRoles: 0,
+        settledReviewGates: 0,
+        producedEvidence: 0,
       }),
     }))
-    expect(report.agentExecution?.summary.settledRoles).toBe(report.agentExecution?.summary.totalRoles)
-    expect(report.agentExecution?.summary.settledReviewGates).toBe(report.agentExecution?.summary.reviewGates)
-    expect(report.agentExecution?.evidence.produced[0]).toMatch(/^RTE-/)
+    expect(report.agentExecution?.evidence.produced).toEqual([])
+    expect(report.agentExecution?.evidence.pending.length).toBeGreaterThan(0)
+    expect(report.agentExecution?.recommendations.join(' ')).toContain('no Agent Executor was invoked')
     expect(report.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
     ]))
@@ -637,14 +637,11 @@ describe('AI OS runtime planner', () => {
     }))
     expect(status.intelligence.summary.agentCollaborationQuality.totalRoles).toBeGreaterThan(0)
     expect(status.intelligence.summary.agentCollaborationQuality.reviewGates).toBeGreaterThan(0)
-    expect(status.intelligence.summary.agentCollaborationQuality.settledRoles).toBeGreaterThan(0)
-    expect(status.intelligence.summary.agentCollaborationQuality.settledReviewGates).toBeGreaterThan(0)
-    expect(status.intelligence.summary.agentCollaborationQuality.settledRuns).toBeGreaterThan(0)
-    expect(status.intelligence.summary.agentLoopQuality).toEqual(expect.objectContaining({
-      status: 'ready',
-      score: 100,
-      readySignals: 6,
-    }))
+    expect(status.intelligence.summary.agentCollaborationQuality.settledRoles).toBe(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.settledReviewGates).toBe(0)
+    expect(status.intelligence.summary.agentCollaborationQuality.settledRuns).toBe(0)
+    expect(status.intelligence.summary.agentLoopQuality.status).toBe('warning')
+    expect(status.intelligence.summary.agentLoopQuality.readySignals).toBeLessThan(6)
     expect(status.intelligence.signals).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'memory-recall',
@@ -666,14 +663,14 @@ describe('AI OS runtime planner', () => {
       }),
       expect.objectContaining({
         id: 'agent-collaboration',
-        status: 'ready',
+        status: 'warning',
         evidence: expect.arrayContaining([
           expect.stringContaining('agent:security-agent'),
         ]),
       }),
       expect.objectContaining({
         id: 'agent-loop-readiness',
-        status: 'ready',
+        status: 'warning',
       }),
       expect.objectContaining({
         id: 'benchmark-intelligence',

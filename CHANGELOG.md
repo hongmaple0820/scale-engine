@@ -180,6 +180,12 @@
 
 ## 0.58.0 - 2026-11-03
 
+### 1.0 readiness hardening
+- Dashboard now binds to loopback by default; remote binding requires an explicit host setting. See `docs/guides/DASHBOARD_NETWORK_SECURITY.md` for the current exposure boundary.
+- Add a build-generated release manifest with package version, source commit, build metadata, Node engine, and DSH plugin compatibility metadata; expose it through `scale version --json`.
+- Tag publishing validates that the tag matches `package.json` and runs the complete `release:check` gate, including DSH plugin typecheck/build/pack, instead of a reduced typecheck/build-only path.
+- Guarded verification is no longer reported as completed multi-agent execution. Agent roles, handoffs, and review gates remain pending until an Agent Executor produces their own evidence.
+
 本版本把「受治理动作」从内核契约落成第一个完整域实现：媒体。此前 alpha.1 / alpha.2 的验证可靠性、
 依赖升级与 AST 惰性加载修复已并入本版，条目见下方两节。
 

@@ -1436,7 +1436,7 @@ function buildAiOsIntelligenceReport(input: {
       recommendations: agentCollaborationQuality.totalRoles > 0
         ? agentCollaborationQuality.settledRuns > 0
           ? ['Use agent collaboration roles, handoffs, review gates, token budget, and agent execution settlement evidence as the delegation contract before release.']
-          : ['Run a guarded AI OS task with verification commands so agent collaboration moves from planned contract to settled execution evidence.']
+          : ['Connect an Agent Runtime adapter and attach independent role output, handoff artifacts, and reviewer evidence before claiming agent collaboration is settled.']
         : ['Run `scale ai-os plan --task "<task>" --json` to generate agentCollaboration roles, DAG, handoffs, review gates, and budget.'],
     },
     {
@@ -2034,159 +2034,60 @@ function settleAgentExecution(options: {
   runReportPath: string
   generatedAt: string
 }): AiOsAgentExecutionReport {
-  const canSettle = options.mode === 'guarded'
-    && options.verification.commands.length > 0
-    && options.verification.allPassed
+  // A successful verification command proves only that the command passed.
+  // This runtime does not invoke an external Agent Executor, so it must never
+  // convert verification success into role/handoff/review execution evidence.
   const blocked = options.mode === 'guarded'
     && options.verification.commands.some(command => command.status === 'failed')
-  const status: AiOsAgentExecutionStatus = canSettle ? 'settled' : blocked ? 'blocked' : 'planned'
-  const ledger = canSettle
-    ? new RuntimeEvidenceLedger({ projectDir: options.projectDir, scaleDir: options.scaleDir })
-    : null
-  const producedEvidence: string[] = []
+  const status: AiOsAgentExecutionStatus = blocked ? 'blocked' : 'planned'
 
-  const recordSettlementEvidence = (input: {
-    id: string
-    title: string
-    summary: string
-    metadata: Record<string, unknown>
-  }): string[] => {
-    if (!ledger) return []
-    const evidence = ledger.record({
-      taskId: options.plan.task.taskId,
-      kind: 'manual',
-      title: input.title,
-      status: 'passed',
-      summary: input.summary,
-      artifacts: [options.runReportPath],
-      metadata: {
-        aiOsRun: true,
-        agentExecution: true,
-        strategy: 'agent-execution-settlement-v1',
-        stepId: input.id,
-        resolutionKey: input.id,
-        ...input.metadata,
-      },
-    })
-    producedEvidence.push(evidence.id)
-    return [evidence.id]
-  }
+  const roles: AiOsAgentRoleExecutionSettlement[] = options.plan.agentCollaboration.roles.map(role => ({
+    profileId: role.profileId,
+    responsibility: role.responsibility,
+    required: role.required,
+    status,
+    budgetTokens: role.budgetTokens,
+    summary: blocked
+      ? `Role ${role.profileId} blocked until failed guarded verification is resolved.`
+      : `Role ${role.profileId} is planned only; ai-os run did not invoke an Agent Executor.`,
+    evidence: role.evidence.length > 0 ? role.evidence : [`agent-profile:${role.profileId}`],
+  }))
 
-  const updateStep = (id: string, evidence: string[], summary: string): void => {
-    if (!canSettle) return
-    const step = options.steps.find(candidate => candidate.id === id)
-    if (!step) return
-    step.status = 'passed'
-    step.evidence = evidence
-    step.summary = summary
-  }
+  const handoffs: AiOsAgentHandoffExecutionSettlement[] = options.plan.agentCollaboration.handoffs.map(handoff => ({
+    id: `agent-handoff:${handoff.from}->${handoff.to}`,
+    from: handoff.from,
+    to: handoff.to,
+    required: true,
+    status,
+    artifact: handoff.artifact,
+    summary: blocked
+      ? `Handoff ${handoff.from} -> ${handoff.to} blocked until guarded verification is resolved.`
+      : `Handoff ${handoff.from} -> ${handoff.to} is planned only; no Agent Executor produced the artifact.`,
+    evidence: handoff.evidence,
+  }))
 
-  const roles: AiOsAgentRoleExecutionSettlement[] = options.plan.agentCollaboration.roles.map(role => {
-    const id = `agent:${role.profileId}`
-    const evidence = canSettle
-      ? recordSettlementEvidence({
-          id,
-          title: `AI OS agent role settlement: ${role.profileId}`,
-          summary: `Settled ${role.responsibility} role ${role.profileId} after guarded verification passed.`,
-          metadata: {
-            role: role.profileId,
-            responsibility: role.responsibility,
-            required: role.required,
-            budgetTokens: role.budgetTokens,
-          },
-        })
-      : role.evidence.length > 0 ? role.evidence : [`agent-profile:${role.profileId}`]
-    const summary = canSettle
-      ? `Role ${role.profileId} settled by guarded verification evidence.`
-      : blocked
-        ? `Role ${role.profileId} blocked until failed guarded verification is resolved.`
-        : `Role ${role.profileId} is contracted but not executed in dry-run mode.`
-    updateStep(id, evidence, summary)
-    return {
-      profileId: role.profileId,
-      responsibility: role.responsibility,
-      required: role.required,
-      status,
-      budgetTokens: role.budgetTokens,
-      summary,
-      evidence,
-    }
-  })
-
-  const handoffs: AiOsAgentHandoffExecutionSettlement[] = options.plan.agentCollaboration.handoffs.map(handoff => {
-    const id = `agent-handoff:${handoff.from}->${handoff.to}`
-    const evidence = canSettle
-      ? recordSettlementEvidence({
-          id,
-          title: `AI OS agent handoff settlement: ${handoff.from} -> ${handoff.to}`,
-          summary: `Settled handoff ${handoff.from} -> ${handoff.to} for ${handoff.artifact}.`,
-          metadata: {
-            from: handoff.from,
-            to: handoff.to,
-            artifact: handoff.artifact,
-            exitCriteria: handoff.exitCriteria,
-          },
-        })
-      : handoff.evidence
-    const summary = canSettle
-      ? `Handoff ${handoff.from} -> ${handoff.to} settled for ${handoff.artifact}.`
-      : blocked
-        ? `Handoff ${handoff.from} -> ${handoff.to} blocked until guarded verification passes.`
-        : `Handoff ${handoff.from} -> ${handoff.to} is planned; execute after role outputs exist.`
-    updateStep(id, evidence, summary)
-    return {
-      id,
-      from: handoff.from,
-      to: handoff.to,
-      required: true,
-      status,
-      artifact: handoff.artifact,
-      summary,
-      evidence,
-    }
-  })
-
-  const reviewGates: AiOsAgentReviewExecutionSettlement[] = options.plan.agentCollaboration.reviewGates.map(gate => {
-    const id = `agent-review:${gate.id}`
-    const evidence = canSettle
-      ? recordSettlementEvidence({
-          id,
-          title: `AI OS agent review settlement: ${gate.id}`,
-          summary: `Settled agent review gate ${gate.id} owned by ${gate.owner}.`,
-          metadata: {
-            gate: gate.id,
-            owner: gate.owner,
-            required: gate.required,
-          },
-        })
-      : gate.evidence.length > 0 ? gate.evidence : [`agent-review:${gate.id}`]
-    const summary = canSettle
-      ? `Review gate ${gate.id} settled by guarded verification evidence.`
-      : blocked
-        ? `Review gate ${gate.id} blocked until guarded verification passes.`
-        : `Review gate ${gate.id} is planned; attach reviewer evidence before ship.`
-    updateStep(id, evidence, summary)
-    return {
-      id,
-      owner: gate.owner,
-      required: gate.required,
-      status,
-      summary,
-      evidence,
-    }
-  })
+  const reviewGates: AiOsAgentReviewExecutionSettlement[] = options.plan.agentCollaboration.reviewGates.map(gate => ({
+    id: `agent-review:${gate.id}`,
+    owner: gate.owner,
+    required: gate.required,
+    status,
+    summary: blocked
+      ? `Review gate ${gate.id} blocked until guarded verification is resolved.`
+      : `Review gate ${gate.id} remains planned; no reviewer execution evidence was produced.`,
+    evidence: gate.evidence.length > 0 ? gate.evidence : [`agent-review:${gate.id}`],
+  }))
 
   const required = [
     ...roles.filter(role => role.required).map(role => `agent:${role.profileId}`),
     ...handoffs.filter(handoff => handoff.required).map(handoff => handoff.id),
     ...reviewGates.filter(gate => gate.required).map(gate => gate.id),
   ]
-  const pending = canSettle ? [] : required
-  const recommendations = canSettle
-    ? ['Use agent execution settlement evidence as the delegation contract for final review and release notes.']
-    : blocked
-      ? ['Resolve failed guarded verification before settling agent role, handoff, or review evidence.']
-      : ['Run `scale ai-os run --mode guarded --verify "<command>"` after reviewing the dry-run plan to settle agent execution evidence.']
+  const recommendations = blocked
+    ? ['Resolve failed guarded verification before delegating work to an external Agent Executor.']
+    : [
+        'Guarded verification passed, but no Agent Executor was invoked; agent roles, handoffs, and reviews remain planned.',
+        'Use a configured Agent Runtime adapter to execute each role and attach its own output and review evidence before settlement.',
+      ]
 
   return {
     strategy: 'agent-execution-settlement-v1',
@@ -2196,20 +2097,16 @@ function settleAgentExecution(options: {
     roles,
     handoffs,
     reviewGates,
-    evidence: {
-      required,
-      produced: producedEvidence,
-      pending,
-    },
+    evidence: { required, produced: [], pending: required },
     summary: {
       totalRoles: roles.length,
-      settledRoles: roles.filter(role => role.status === 'settled').length,
+      settledRoles: 0,
       blockedRoles: roles.filter(role => role.status === 'blocked').length,
       totalHandoffs: handoffs.length,
-      settledHandoffs: handoffs.filter(handoff => handoff.status === 'settled').length,
+      settledHandoffs: 0,
       reviewGates: reviewGates.length,
-      settledReviewGates: reviewGates.filter(gate => gate.status === 'settled').length,
-      producedEvidence: producedEvidence.length,
+      settledReviewGates: 0,
+      producedEvidence: 0,
     },
     recommendations,
   }

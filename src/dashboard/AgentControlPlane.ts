@@ -1227,7 +1227,7 @@ function synthesizeLocalExecutorReply(report: AiOsRunReport): { result: 'complet
   ]
   const agentSummary = report.agentExecution?.summary
   if (agentSummary) {
-    lines.push(`角色协作：${agentSummary.settledRoles}/${agentSummary.totalRoles} 已结算 · 评审门 ${agentSummary.settledReviewGates}/${agentSummary.reviewGates}`)
+    lines.push(`Agent 实际执行：${agentSummary.settledRoles}/${agentSummary.totalRoles} 个角色 · 评审门 ${agentSummary.settledReviewGates}/${agentSummary.reviewGates}`)
   }
   lines.push(
     `证据：${report.evidence.produced.length} 已产出 / ${report.evidence.pending.length} 待补`,

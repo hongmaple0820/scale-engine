@@ -265,3 +265,6 @@ export { BrandThemeLoader } from './output/BrandThemeLoader.js'
 export type { BrandTheme, BrandColors, BrandTypography, BrandSpacing, BrandShadows } from './output/BrandThemeLoader.js'
 export { UIPrototypeRenderer } from './output/UIPrototypeRenderer.js'
 export type { PageSpec, ComponentSpec, NavItem, DashboardLayout, DashboardWidget, UIPrototypeOptions } from './output/UIPrototypeRenderer.js'
+
+export { SCALE_ENGINE_VERSION, getScaleEngineVersion, getScaleEngineReleaseManifest } from './version.js'
+export type { ScaleEngineReleaseManifest } from './version.js'

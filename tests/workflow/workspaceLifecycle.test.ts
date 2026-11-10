@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -204,9 +204,10 @@ describe('WorkspaceLifecycle', () => {
     expect(result.mode).toBe('dry-run')
     expect(result.canApply).toBe(true)
     expect(result.applied).toBe(false)
-    expect(result.targetPath).toBe(worktree)
+    const canonicalWorktree = realpathSync.native(worktree)
+    expect(result.targetPath).toBe(canonicalWorktree)
     expect(result.confirmationToken).toBe('claude/agent-task-0515')
-    expect(result.commands).toContain(`git worktree remove "${worktree}"`)
+    expect(result.commands).toContain(`git worktree remove "${canonicalWorktree}"`)
     expect(existsSync(worktree)).toBe(true)
   }, GIT_TEST_TIMEOUT)
 

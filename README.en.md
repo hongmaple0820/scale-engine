@@ -118,6 +118,8 @@ Node.js 22 or newer is required.
 
 ## AI OS Runtime
 
+`scale ai-os run --mode guarded` runs the configured verification commands; it does not itself call an external Agent Executor. The report keeps agent roles, handoffs, and reviews in `planned` state until a connected Agent Runtime supplies independent execution and review evidence.
+
 AI OS Runtime is SCALE's core runtime planning layer. `scale ai-os plan` generates governance mode, Context Compiler budget, Memory Provider recall, Skill Routing execution plan, and Governance ROI in one command — so the agent knows what context to load, what capabilities to use, and what evidence to collect before starting.
 
 The dashboard Agent Control page is the visual entry for remote coding control: choose the agent platform, switch models, bind dashboard/Feishu message channels, queue messages, and expose the agent inbox/reply APIs.

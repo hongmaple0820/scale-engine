@@ -58,7 +58,7 @@ export async function resolveDashboardLaunchPlan(
   env: DashboardHttpEnv = process.env,
   cwd = process.cwd(),
 ): Promise<DashboardLaunchPlan> {
-  const host = env.SCALE_DASHBOARD_HOST ?? env.HOST ?? '0.0.0.0'
+  const host = env.SCALE_DASHBOARD_HOST ?? env.HOST ?? '127.0.0.1'
   const portConfig = parseDashboardPort(env.SCALE_DASHBOARD_PORT ?? env.PORT, 3210)
   const projects = parseDashboardProjects(env, cwd)
   const autoPort = portConfig.auto || truthy(env.SCALE_DASHBOARD_AUTO_PORT) || projects.length > 1

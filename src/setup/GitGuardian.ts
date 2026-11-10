@@ -524,7 +524,15 @@ function assertNoSymlinks(path: string): void {
   let current = parse(absolute).root
   for (const part of absolute.slice(current.length).split(sep).filter(Boolean)) {
     current = join(current, part)
-    if (entryStat(current)?.isSymbolicLink()) throw new Error(`拒绝符号链接路径：${current}`)
+    if (entryStat(current)?.isSymbolicLink()) {
+      // macOS exposes its system temporary directory through /var -> /private/var.
+      // Permit only this fixed OS alias; arbitrary project symlinks remain rejected.
+      if (process.platform === 'darwin' && current === '/var' && canonical(current) === '/private/var') {
+        current = '/private/var'
+        continue
+      }
+      throw new Error(`拒绝符号链接路径：${current}`)
+    }
   }
 }
 

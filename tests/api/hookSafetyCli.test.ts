@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -129,6 +129,7 @@ describe('hook-safe CLI commands', () => {
   it('records configured keyword-free verification commands read from stdin (#34/#36)', async () => {
     const projectDir = makeDir('scale-hook-stdin-verification-project-')
     const scaleDir = join(projectDir, '.scale')
+    mkdirSync(scaleDir, { recursive: true })
     writeFileSync(join(scaleDir, 'verification.json'), JSON.stringify({
       version: 1,
       defaultProfile: 'default',
