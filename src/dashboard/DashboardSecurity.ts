@@ -81,7 +81,7 @@ export function isDashboardHostAllowed(hostHeader: string | undefined, bindHost:
   try {
     const parsed = new URL('http://' + hostHeader)
     if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return false
-    requestHost = parsed.hostname.toLowerCase().replace(/^\\[|\\]$/g, '')
+    requestHost = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
   } catch { return false }
   if (allowedHosts.includes(requestHost)) return true
   return isDashboardLoopbackHost(bindHost) && isDashboardLoopbackHost(requestHost)
