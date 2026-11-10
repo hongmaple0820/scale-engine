@@ -21,6 +21,9 @@ describe('Dashboard security primitives', () => {
     expect(normalizeDashboardAllowedHosts('[2001:db8::10]')).toEqual(['2001:db8::10'])
     expect(isDashboardHostAllowed('[2001:db8::10]:443', '::', ['2001:db8::10'])).toBe(true)
     expect(isDashboardHostAllowed('[::1]:3210', '::1')).toBe(true)
+    expect(isDashboardHostAllowed('trusted.example@attacker.example', '0.0.0.0', ['attacker.example'])).toBe(false)
+    expect(isDashboardHostAllowed('dashboard.example/path', '0.0.0.0', ['dashboard.example'])).toBe(false)
+    expect(isDashboardHostAllowed(' dashboard.example', '0.0.0.0', ['dashboard.example'])).toBe(false)
   })
 
   it('allows only same-origin or explicitly configured browser origins', () => {

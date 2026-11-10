@@ -76,10 +76,12 @@ export function assertDashboardSecurityConfig(host: string, token: string | unde
 }
 
 export function isDashboardHostAllowed(hostHeader: string | undefined, bindHost: string, allowedHosts: string[] = []): boolean {
-  if (!hostHeader) return false
+  if (!hostHeader || hostHeader !== hostHeader.trim()) return false
   let requestHost: string
   try {
-    requestHost = new URL('http://' + hostHeader).hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    const parsed = new URL('http://' + hostHeader)
+    if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return false
+    requestHost = parsed.hostname.toLowerCase().replace(/^\\[|\\]$/g, '')
   } catch { return false }
   if (allowedHosts.includes(requestHost)) return true
   return isDashboardLoopbackHost(bindHost) && isDashboardLoopbackHost(requestHost)
