@@ -31,6 +31,8 @@ describe('Dashboard security primitives', () => {
 
   it('requires explicit host allowlists for non-loopback binds', () => {
     expect(normalizeDashboardAllowedHosts('dashboard.example,localhost')).toEqual(['dashboard.example', 'localhost'])
+    expect(normalizeDashboardAllowedHosts('')).toEqual([])
+    expect(normalizeDashboardAllowedHosts(undefined)).toEqual([])
     expect(() => normalizeDashboardAllowedHosts('https://dashboard.example')).toThrow('hostnames or IP addresses')
     expect(() => normalizeDashboardAllowedHosts('*.example.com')).toThrow('hostnames or IP addresses')
   })
