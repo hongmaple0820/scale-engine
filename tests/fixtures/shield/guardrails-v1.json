@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "policyVersion": 1,
   "detectorVersions": {
-    "dangerous-command": "1.1.0",
+    "dangerous-command": "1.2.0",
     "secret-leak": "1.0.0",
     "premature-done": "1.0.0"
   },
