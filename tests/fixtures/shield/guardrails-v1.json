@@ -212,6 +212,38 @@
       }
     },
     {
+      "id": "home-directory-delete-block",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf /home"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "home-shorthand-delete-block",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf ~/"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "absolute-temp-cleanup-allow",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf /tmp/test-output"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
       "id": "sql-drop-table-block",
       "tool": "Bash",
       "args": {
