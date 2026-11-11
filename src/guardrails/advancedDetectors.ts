@@ -5,6 +5,7 @@
 import type { IDetector, DetectorContext } from './Gateway.js'
 import type { ToolUseInput, DetectorResult } from '../artifact/types.js'
 import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION } from './versions.js'
+import { normalizeShellToolName } from './verificationCommands.js'
 
 // ============================================================================
 // 6. 危险命令检测器
@@ -15,6 +16,9 @@ export class DangerousCommandDetector implements IDetector {
 
   private patterns: Array<{ pattern: RegExp; description: string }> = [
     { pattern: /rm\s+-rf\s+[\/~]/, description: 'rm -rf on root/home' },
+    { pattern: /\b(?:remove-item|ri)\b(?=.*(?:-recurse|-r))(?=.*(?:-force|-fo))(?=.*(?:[a-z]:\\|\\\\))/i, description: 'PowerShell recursive forced delete on rooted path' },
+    { pattern: /\b(?:rmdir|rd)\b(?=.*\/s)(?=.*\/q)\s+[a-z]:\\/i, description: 'cmd recursive quiet delete on rooted path' },
+    { pattern: /\bformat(?:\.com)?\s+[a-z]:/i, description: 'format drive' },
     { pattern: /rm\s+-rf\s+\*/, description: 'rm -rf wildcard' },
     { pattern: /DROP\s+(TABLE|DATABASE|SCHEMA)/i, description: 'SQL DROP' },
     { pattern: /TRUNCATE\s+TABLE/i, description: 'SQL TRUNCATE' },
@@ -29,7 +33,7 @@ export class DangerousCommandDetector implements IDetector {
   ]
 
   async check(input: ToolUseInput, ctx: DetectorContext): Promise<DetectorResult> {
-    if (input.tool !== 'Bash') return { triggered: false }
+    if (normalizeShellToolName(input.tool) === null) return { triggered: false }
 
     const command = (input.args as { command?: string }).command ?? ''
 

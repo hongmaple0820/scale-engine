@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "policyVersion": 1,
   "detectorVersions": {
-    "dangerous-command": "1.0.0",
+    "dangerous-command": "1.1.0",
     "secret-leak": "1.0.0",
     "premature-done": "1.0.0"
   },
@@ -234,12 +234,45 @@
     },
     {
       "id": "non-shell-tool-allow",
-      "tool": "PowerShell",
+      "tool": "mcp__filesystem__write_file",
       "args": {
         "command": "rm -rf /"
       },
       "expected": {
         "triggered": false
+      }
+    },
+    {
+      "id": "powershell-rooted-recursive-delete-block",
+      "tool": "PowerShell",
+      "args": {
+        "command": "Remove-Item C:\\ -Recurse -Force"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "cmd-rooted-recursive-delete-block",
+      "tool": "cmd",
+      "args": {
+        "command": "rmdir /s /q C:\\"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "cmd-drive-format-block",
+      "tool": "cmd",
+      "args": {
+        "command": "format D:"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
       }
     }
   ]
