@@ -280,6 +280,7 @@ type EventType =
   | 'tool.completed'                // PostToolUse 成功
   | 'tool.failed'                   // PostToolUse 失败
   | 'tool.blocked'                  // Hook 拒绝
+  | 'tool.warned'                   // Hook 警告但允许继续
 
   // 护栏
   | 'gate.checked'
