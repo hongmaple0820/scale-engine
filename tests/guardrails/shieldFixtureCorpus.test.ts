@@ -14,6 +14,7 @@ type Fixture = {
   detectorVersions: Record<string, string>
   dangerousCommands: Array<{ id: string; tool: string; args: Record<string, unknown>; expected: { triggered: boolean; severity?: string } }>
   secretLeak: Array<{ id: string; tool: string; args: Record<string, unknown>; expected: { triggered: boolean; severity?: string } }>
+  secretLeakModes: Array<{ id: string; mode: 'block' | 'warn' | 'off'; tool: string; args: Record<string, unknown>; expected: { triggered: boolean; severity?: string } }>
   shellTools: Array<{ id: string; input: string; expected: string | null }>
   verificationOutcomes: Array<{ id: string; type: string; payload: unknown; expected: boolean }>
   verificationEvents: Array<{ id: string; type: string; payload: unknown; expected: boolean }>
@@ -50,6 +51,29 @@ describe('Shield / Guardrails versioned regression corpus', () => {
       policyVersion: fixtures.policyVersion,
       detectors: fixtures.detectorVersions,
     })
+  })
+
+  it.each(fixtures.secretLeakModes)('secret-leak mode fixture: $id', async fixture => {
+    process.env.SCALE_SECRET_LEAK_MODE = fixture.mode
+    const bus = new EventBus({ eventsDir: './tmp/shield-fixture-events' })
+    const result = await new SecretLeakDetector().check(
+      { sessionId: fixture.id, tool: fixture.tool, args: fixture.args },
+      { eventBus: bus, cache: new Map() },
+    )
+    expect(result.triggered).toBe(fixture.expected.triggered)
+    if (fixture.expected.severity) expect(result.severity).toBe(fixture.expected.severity)
+    else expect(result.severity).toBeUndefined()
+
+    const events = await bus.query({ sessionId: fixture.id, types: ['tool.blocked'], limit: 1 })
+    if (fixture.expected.triggered) {
+      expect(events[0]?.payload).toMatchObject({
+        detector: 'secret-leak',
+        detectorVersion: fixtures.detectorVersions['secret-leak'],
+        policyVersion: fixtures.policyVersion,
+      })
+    } else {
+      expect(events).toHaveLength(0)
+    }
   })
 
   it.each(fixtures.secretLeak)('secret-leak fixture: $id', async fixture => {

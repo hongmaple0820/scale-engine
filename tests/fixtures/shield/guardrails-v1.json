@@ -371,5 +371,65 @@
       },
       "expected": true
     }
+  ],
+  "secretLeakModes": [
+    {
+      "id": "high-confidence-keyed-secret-warn-mode",
+      "mode": "warn",
+      "tool": "Write",
+      "args": {
+        "content": "api_key='sk-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
+      }
+    },
+    {
+      "id": "high-confidence-aws-secret-warn-mode",
+      "mode": "warn",
+      "tool": "Write",
+      "args": {
+        "content": "AWS_ACCESS_KEY_ID=AKIA0000000000000000"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
+      }
+    },
+    {
+      "id": "high-confidence-keyed-secret-off-mode",
+      "mode": "off",
+      "tool": "Write",
+      "args": {
+        "content": "api_key='sk-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV'"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "low-confidence-token-remains-warning-in-block-mode",
+      "mode": "block",
+      "tool": "Write",
+      "args": {
+        "content": "\"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN\""
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
+      }
+    },
+    {
+      "id": "ordinary-path-allow-in-warn-mode",
+      "mode": "warn",
+      "tool": "Edit",
+      "args": {
+        "content": "C:/Users/developer/AppData/Local/Packages/Example.Application_1234567890/settings.json"
+      },
+      "expected": {
+        "triggered": false
+      }
+    }
   ]
 }
