@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { EventBus } from '../../src/core/eventBus.js'
 import { PrematureDoneDetector } from '../../src/guardrails/detectors.js'
+import { RuntimeEvidenceLedger } from '../../src/runtime/RuntimeEvidenceLedger.js'
 import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION } from '../../src/guardrails/versions.js'
 
 const ROOT = resolve('./tmp/test-premature-verification-evidence')
@@ -134,6 +135,69 @@ describe('PrematureDoneDetector verification evidence', () => {
     const result = await checkStop()
     expect(result.triggered).toBe(true)
     expect(result.reason).toContain('未运行任何验证命令')
+  })
+
+  it('accepts fresh successful runtime command evidence after the last edit', async () => {
+    addEdit()
+    const ledger = new RuntimeEvidenceLedger({ projectDir: ROOT, scaleDir: '.scale' })
+    ledger.record({
+      sessionId: SESSION,
+      kind: 'command',
+      title: 'Configured verification',
+      status: 'passed',
+      command: 'powershell -File tools/validate-patterns.ps1',
+      exitCode: 0,
+      summary: 'validation passed',
+    })
+
+    expect((await checkStop()).triggered).toBe(false)
+  })
+
+  it('blocks when the latest runtime command evidence failed after an earlier pass', async () => {
+    addEdit()
+    const ledger = new RuntimeEvidenceLedger({ projectDir: ROOT, scaleDir: '.scale' })
+    ledger.record({
+      sessionId: SESSION,
+      kind: 'command',
+      title: 'Configured verification',
+      status: 'passed',
+      command: 'powershell -File tools/validate-patterns.ps1',
+      exitCode: 0,
+      summary: 'validation passed',
+    })
+    await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+    ledger.record({
+      sessionId: SESSION,
+      kind: 'command',
+      title: 'Configured verification',
+      status: 'failed',
+      command: 'powershell -File tools/validate-patterns.ps1',
+      exitCode: 1,
+      summary: 'validation failed',
+    })
+
+    const result = await checkStop()
+    expect(result.triggered).toBe(true)
+    expect(result.reason).toContain('最近一次验证失败')
+  })
+
+  it('does not accept runtime verification evidence created before the last edit', async () => {
+    const ledger = new RuntimeEvidenceLedger({ projectDir: ROOT, scaleDir: '.scale' })
+    ledger.record({
+      sessionId: SESSION,
+      kind: 'command',
+      title: 'Configured verification',
+      status: 'passed',
+      command: 'powershell -File tools/validate-patterns.ps1',
+      exitCode: 0,
+      summary: 'validation passed',
+    })
+    await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+    addEdit()
+
+    const result = await checkStop()
+    expect(result.triggered).toBe(true)
+    expect(result.reason).toContain('最后一次验证是修改之前运行的')
   })
 
   it('does not let a successful verification hide a later failed attempt', async () => {
