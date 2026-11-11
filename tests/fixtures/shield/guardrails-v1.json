@@ -4,7 +4,7 @@
   "detectorVersions": {
     "dangerous-command": "1.2.0",
     "secret-leak": "1.0.0",
-    "premature-done": "1.0.0"
+    "premature-done": "1.1.0"
   },
   "secretLeak": [
     {
