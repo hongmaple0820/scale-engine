@@ -4,6 +4,7 @@
 
 import type { IDetector, DetectorContext } from './Gateway.js'
 import type { ToolUseInput, DetectorResult } from '../artifact/types.js'
+import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION } from './versions.js'
 
 // ============================================================================
 // 6. 危险命令检测器
@@ -37,6 +38,8 @@ export class DangerousCommandDetector implements IDetector {
         ctx.eventBus.emit('tool.blocked', {
           tool: input.tool,
           detector: this.name,
+          detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['secret-leak'],
+          policyVersion: GUARDRAILS_POLICY_VERSION,
           reason: description,
           command,
         }, { sessionId: input.sessionId })
@@ -97,6 +100,8 @@ export class SecretLeakDetector implements IDetector {
         ctx.eventBus.emit('tool.blocked', {
           tool: input.tool,
           detector: this.name,
+          detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['secret-leak'],
+          policyVersion: GUARDRAILS_POLICY_VERSION,
           reason: description,
         }, { sessionId: input.sessionId })
 
@@ -114,6 +119,8 @@ export class SecretLeakDetector implements IDetector {
         ctx.eventBus.emit('tool.blocked', {
           tool: input.tool,
           detector: this.name,
+          detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['secret-leak'],
+          policyVersion: GUARDRAILS_POLICY_VERSION,
           reason: description,
         }, { sessionId: input.sessionId })
 

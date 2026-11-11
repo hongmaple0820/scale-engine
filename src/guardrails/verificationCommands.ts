@@ -20,6 +20,8 @@ const VERIFICATION_KEYWORD_RE = /\b(test|lint|build|typecheck|tsc|vitest|jest|pl
 const COMMAND_PREFIX_MIN = 12
 
 export interface VerificationCommandCatalog {
+  /** Version declared by .scale/verification.json; 1 is the legacy/default schema. */
+  version: number
   /** 全部 profile + service 的命令（去重），用于匹配判定。 */
   commands: string[]
   /** default profile（或 defaultProfile 指向的 profile）的命令，用于建议文案。 */
@@ -34,10 +36,11 @@ export function loadVerificationCommandCatalog(
   const root = isAbsolute(scaleDir) ? scaleDir : join(resolve(projectDir), scaleDir)
   const matrixPath = join(root, 'verification.json')
   if (!existsSync(matrixPath)) {
-    return { commands: [], suggestionCommands: [], source: 'keyword-fallback' }
+    return { version: Number.isInteger(matrix.version) ? Number(matrix.version) : 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
   }
   try {
     const matrix = JSON.parse(readFileSync(matrixPath, 'utf-8').replace(/^\uFEFF/, '')) as {
+      version?: number
       defaultProfile?: string
       profiles?: Record<string, { commands?: Record<string, unknown> } | undefined>
       services?: Array<{ commands?: Record<string, unknown> }>
@@ -56,6 +59,7 @@ export function loadVerificationCommandCatalog(
     const suggestionCommands: string[] = []
     collectCommands(matrix.profiles?.[profileName]?.commands, suggestionCommands)
     return {
+      version: Number.isInteger(matrix.version) ? Number(matrix.version) : 1,
       commands: [...new Set(commands)],
       suggestionCommands,
       source: 'verification-matrix',
@@ -70,6 +74,18 @@ function collectCommands(source: Record<string, unknown> | undefined, sink: stri
   for (const value of Object.values(source)) {
     if (typeof value === 'string' && value.trim().length > 0) sink.push(value.trim())
   }
+}
+
+const SHELL_TOOL_ALIASES = new Set([
+  'bash', 'shell', 'terminal', 'powershell', 'powershell_core', 'pwsh',
+  'cmd', 'command', 'run_command', 'execute_command', 'run_terminal_command',
+])
+
+/** Canonical shell adapter name; unknown MCP tools intentionally return null. */
+export function normalizeShellToolName(tool: unknown): string | null {
+  if (typeof tool !== 'string') return null
+  const normalized = tool.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  return SHELL_TOOL_ALIASES.has(normalized) ? normalized : null
 }
 
 export function isVerificationCommand(

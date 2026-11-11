@@ -8,9 +8,11 @@ import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/Ru
 import {
   loadVerificationCommandCatalog,
   isVerificationCommand,
+  normalizeShellToolName,
   verificationSuggestion,
   type VerificationCommandCatalog,
 } from './verificationCommands.js'
+import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION } from './versions.js'
 
 const hashArgs = (args: unknown): string =>
   createHash('md5').update(JSON.stringify(args)).digest('hex').slice(0, 8)
@@ -149,7 +151,7 @@ export class PrematureDoneDetector implements IDetector {
 
     // 情况1：完全未验证
     if (!latestEventVerification && !latestRuntimeVerification) {
-      ctx.eventBus.emit('behavior.premature_done', { reason: 'no_verification' }, { sessionId: input.sessionId })
+      ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'no_verification' }, { sessionId: input.sessionId })
       return {
         triggered: true,
         severity: 'block',
@@ -171,7 +173,7 @@ export class PrematureDoneDetector implements IDetector {
       ? latestRuntimeVerification?.status !== 'passed'
       : isFailedVerificationEvent(latestEventVerification)
     if (latestVerificationFailed) {
-      ctx.eventBus.emit('behavior.premature_done', { reason: 'verification_failed' }, { sessionId: input.sessionId })
+      ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'verification_failed' }, { sessionId: input.sessionId })
       const failedCommand = latestVerificationIsRuntime
         ? latestRuntimeVerification?.command
         : commandFromVerificationEvent(latestEventVerification?.payload)
@@ -196,7 +198,7 @@ export class PrematureDoneDetector implements IDetector {
       const output = (testCmd.payload as { output?: string }).output ?? ''
       // 检测测试 0/0 异常
       if (/tests?\s*(0|no\s*tests?)/i.test(output) || /passed:\s*0/i.test(output)) {
-        ctx.eventBus.emit('behavior.premature_done', { reason: 'empty_tests' }, { sessionId: input.sessionId })
+        ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'empty_tests' }, { sessionId: input.sessionId })
         return {
           triggered: true,
           severity: 'block',
@@ -206,7 +208,7 @@ export class PrematureDoneDetector implements IDetector {
       }
       // 检测失败测试
       if (/failed:\s*[1-9]/i.test(output) || /FAIL/i.test(output)) {
-        ctx.eventBus.emit('behavior.premature_done', { reason: 'tests_failed' }, { sessionId: input.sessionId })
+        ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'tests_failed' }, { sessionId: input.sessionId })
         return {
           triggered: true,
           severity: 'block',
@@ -224,7 +226,7 @@ export class PrematureDoneDetector implements IDetector {
     if (buildCmd) {
       const exitCode = (buildCmd.payload as { exitCode?: number }).exitCode ?? 0
       if (exitCode !== 0) {
-        ctx.eventBus.emit('behavior.premature_done', { reason: 'build_failed' }, { sessionId: input.sessionId })
+        ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'build_failed' }, { sessionId: input.sessionId })
         return {
           triggered: true,
           severity: 'block',
@@ -257,7 +259,7 @@ function latestRuntimeVerificationForSession(
   return records[0] ?? null
 }
 
-function isVerificationEvidenceEvent(
+export function isVerificationEvidenceEvent(
   event: { type: string; payload: unknown },
   catalog: VerificationCommandCatalog,
 ): boolean {
@@ -268,16 +270,7 @@ function isVerificationEvidenceEvent(
   // count only when emitted by a known shell/terminal tool, never an arbitrary MCP tool.
   if (event.type === 'verification.recorded') return true
   const payload = event.payload as { tool?: unknown }
-  return isShellVerificationTool(payload.tool)
-}
-
-function isShellVerificationTool(tool: unknown): boolean {
-  if (typeof tool !== 'string') return false
-  const normalized = tool.trim().toLowerCase().replace(/[\s-]+/g, '_')
-  return new Set([
-    'bash', 'shell', 'terminal', 'powershell', 'powershell_core', 'pwsh',
-    'cmd', 'command', 'run_command', 'execute_command', 'run_terminal_command',
-  ]).has(normalized)
+  return normalizeShellToolName(payload.tool) !== null
 }
 
 function isFailedVerificationEvent(event: { type: string; payload: unknown } | undefined): boolean {
