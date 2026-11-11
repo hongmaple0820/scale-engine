@@ -78,6 +78,14 @@ describe('Shield / Guardrails versioned regression corpus', () => {
     )
     expect(result.triggered).toBe(fixture.expected.triggered)
     if (fixture.expected.severity) expect(result.severity).toBe(fixture.expected.severity)
+    if (fixture.expected.triggered) {
+      const events = await bus.query({ sessionId: fixture.id, types: ['tool.blocked'], limit: 1 })
+      expect(events[0]?.payload).toMatchObject({
+        detector: 'dangerous-command',
+        detectorVersion: fixtures.detectorVersions['dangerous-command'],
+        policyVersion: fixtures.policyVersion,
+      })
+    }
   })
 
   it.each(fixtures.shellTools)('shell adapter fixture: $id', fixture => {

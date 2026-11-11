@@ -44,7 +44,7 @@
       "id": "long-quoted-token-warn-only",
       "tool": "Write",
       "args": {
-        "content": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
+        "content": "\"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN\""
       },
       "expected": {
         "triggered": true,

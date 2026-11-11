@@ -38,7 +38,7 @@ export class DangerousCommandDetector implements IDetector {
         ctx.eventBus.emit('tool.blocked', {
           tool: input.tool,
           detector: this.name,
-          detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['secret-leak'],
+          detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['dangerous-command'],
           policyVersion: GUARDRAILS_POLICY_VERSION,
           reason: description,
           command,
