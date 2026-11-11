@@ -273,7 +273,7 @@ export function isVerificationEvidenceEvent(
   return normalizeShellToolName(payload.tool) !== null
 }
 
-function isFailedVerificationEvent(event: { type: string; payload: unknown } | undefined): boolean {
+export function isFailedVerificationEvent(event: { type: string; payload: unknown } | undefined): boolean {
   if (!event) return true
   if (event.type === 'tool.failed') return true
   const payload = event.payload as { exitCode?: unknown; passed?: unknown; status?: unknown }

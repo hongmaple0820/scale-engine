@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { EventBus } from '../../src/core/eventBus.js'
 import { DangerousCommandDetector, SecretLeakDetector } from '../../src/guardrails/advancedDetectors.js'
-import { isVerificationEvidenceEvent } from '../../src/guardrails/detectors.js'
-import { normalizeShellToolName, type VerificationCommandCatalog } from '../../src/guardrails/verificationCommands.js'
+import { isFailedVerificationEvent, isVerificationEvidenceEvent } from '../../src/guardrails/detectors.js'
+import { loadVerificationCommandCatalog, normalizeShellToolName, isVerificationCommand, type VerificationCommandCatalog } from '../../src/guardrails/verificationCommands.js'
 import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION, guardrailsVersionReport } from '../../src/guardrails/versions.js'
 
 type Fixture = {
@@ -13,6 +15,7 @@ type Fixture = {
   dangerousCommands: Array<{ id: string; tool: string; args: Record<string, unknown>; expected: { triggered: boolean; severity?: string } }>
   secretLeak: Array<{ id: string; tool: string; args: Record<string, unknown>; expected: { triggered: boolean; severity?: string } }>
   shellTools: Array<{ id: string; input: string; expected: string | null }>
+  verificationOutcomes: Array<{ id: string; type: string; payload: unknown; expected: boolean }>
   verificationEvents: Array<{ id: string; type: string; payload: unknown; expected: boolean }>
   verificationCatalog: {
     version: number
@@ -90,6 +93,26 @@ describe('Shield / Guardrails versioned regression corpus', () => {
 
   it.each(fixtures.shellTools)('shell adapter fixture: $id', fixture => {
     expect(normalizeShellToolName(fixture.input)).toBe(fixture.expected)
+  })
+
+
+  it('loads the configured verification matrix version and custom commands', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-shield-fixture-'))
+    try {
+      mkdirSync(join(projectDir, '.scale'), { recursive: true })
+      writeFileSync(join(projectDir, '.scale', 'verification.json'), JSON.stringify(fixtures.verificationCatalog))
+      const catalog = loadVerificationCommandCatalog(projectDir)
+      expect(catalog.version).toBe(fixtures.verificationCatalog.version)
+      expect(catalog.source).toBe('verification-matrix')
+      expect(catalog.commands).toContain('powershell -File tools/validate-patterns.ps1')
+      expect(isVerificationCommand('powershell -File tools/validate-patterns.ps1', catalog)).toBe(true)
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it.each(fixtures.verificationOutcomes)('verification outcome fixture: $id', fixture => {
+    expect(isFailedVerificationEvent({ type: fixture.type, payload: fixture.payload })).toBe(fixture.expected)
   })
 
   it.each(fixtures.verificationEvents)('verification evidence fixture: $id', fixture => {

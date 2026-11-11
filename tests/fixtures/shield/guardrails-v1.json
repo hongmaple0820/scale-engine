@@ -275,5 +275,49 @@
         "severity": "deny"
       }
     }
+  ],
+  "verificationOutcomes": [
+    {
+      "id": "successful-exit-zero",
+      "type": "tool.completed",
+      "payload": {
+        "exitCode": 0,
+        "status": "passed"
+      },
+      "expected": false
+    },
+    {
+      "id": "nonzero-exit",
+      "type": "tool.completed",
+      "payload": {
+        "exitCode": 1
+      },
+      "expected": true
+    },
+    {
+      "id": "explicit-tool-failed",
+      "type": "tool.failed",
+      "payload": {
+        "exitCode": 0,
+        "status": "passed"
+      },
+      "expected": true
+    },
+    {
+      "id": "explicit-failed-status",
+      "type": "tool.completed",
+      "payload": {
+        "status": "failed"
+      },
+      "expected": true
+    },
+    {
+      "id": "explicit-skipped-status",
+      "type": "tool.completed",
+      "payload": {
+        "status": "skipped"
+      },
+      "expected": true
+    }
   ]
 }
