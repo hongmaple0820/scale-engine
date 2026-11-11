@@ -63,6 +63,17 @@ describe('Shield / Guardrails versioned regression corpus', () => {
     expect(result.triggered).toBe(fixture.expected.triggered)
     if (fixture.expected.severity) expect(result.severity).toBe(fixture.expected.severity)
     else expect(result.severity).toBeUndefined()
+
+    const events = await bus.query({ sessionId: fixture.id, types: ['tool.blocked'], limit: 1 })
+    if (fixture.expected.triggered) {
+      expect(events[0]?.payload).toMatchObject({
+        detector: 'secret-leak',
+        detectorVersion: fixtures.detectorVersions['secret-leak'],
+        policyVersion: fixtures.policyVersion,
+      })
+    } else {
+      expect(events).toHaveLength(0)
+    }
   })
 
   it.each(fixtures.secretLeak)('secret-leak fixture: $id', async fixture => {
