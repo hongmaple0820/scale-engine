@@ -124,6 +124,27 @@ jobs:
           path: coverage/
           retention-days: 14
 
+  # Guardrails corpus gets a focused Windows run in addition to the full
+  # Ubuntu/macOS test matrix above. This exercises path and shell-name fixtures
+  # on the native Windows runtime without changing the shell used by SCALE gate.
+  guardrails-windows:
+    name: Guardrails fixture corpus (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run Shield / Guardrails regression corpus
+        run: npm test -- tests/guardrails/shieldFixtureCorpus.test.ts tests/guardrails/prematureDoneVerification.test.ts
+
   # Job 4: supply-chain audit, parallel with build.
   # No build needed. Runs in parallel with jobs 2-3 to not gate on build time.
   # Catches CVEs at PR time, not at release:check (too late).

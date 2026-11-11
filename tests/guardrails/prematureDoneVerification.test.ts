@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { EventBus } from '../../src/core/eventBus.js'
 import { PrematureDoneDetector } from '../../src/guardrails/detectors.js'
+import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION } from '../../src/guardrails/versions.js'
 
 const ROOT = resolve('./tmp/test-premature-verification-evidence')
 const SESSION = 'verification-regression'
@@ -42,6 +43,25 @@ describe('PrematureDoneDetector verification evidence', () => {
   async function checkStop() {
     return new PrematureDoneDetector().check({ sessionId: SESSION }, { eventBus: bus, cache: new Map() })
   }
+
+
+  it('reports the detector, policy, and verification-matrix versions', async () => {
+    addEdit()
+    const result = await checkStop()
+    expect(result.triggered).toBe(true)
+    const events = await bus.query({
+      sessionId: SESSION,
+      types: ['behavior.premature_done'],
+      limit: 1,
+    })
+    expect(events[0]?.payload).toMatchObject({
+      detector: 'premature-done',
+      detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'],
+      policyVersion: GUARDRAILS_POLICY_VERSION,
+      verificationMatrixVersion: 1,
+      reason: 'no_verification',
+    })
+  })
 
   it.each(['Bash', 'PowerShell', 'pwsh', 'cmd', 'Terminal'])('accepts a successful configured command from %s', async tool => {
     addEdit()
