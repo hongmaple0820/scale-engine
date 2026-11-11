@@ -128,8 +128,8 @@ jobs:
   # Ubuntu/macOS test matrix above. This exercises path and shell-name fixtures
   # on the native Windows runtime without changing the shell used by SCALE gate.
   guardrails-windows:
-    name: Guardrails fixture corpus (windows-latest)
-    runs-on: windows-latest
+    name: Guardrails fixture corpus (windows-2022)
+    runs-on: windows-2022
     timeout-minutes: 12
 
     steps:
