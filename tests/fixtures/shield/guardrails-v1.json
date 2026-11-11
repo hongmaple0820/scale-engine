@@ -90,6 +90,26 @@
       "expected": {
         "triggered": false
       }
+    },
+    {
+      "id": "encoded-base64-bundle-with-padding-allow",
+      "tool": "Write",
+      "args": {
+        "content": "certificate_bundle='YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXovKys9PQ=='"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "long-windows-deep-path-allow",
+      "tool": "Edit",
+      "args": {
+        "content": "C:\\Users\\developer\\AppData\\Local\\Packages\\Contoso.Example_2026.11.11.1234567890\\LocalCache\\Roaming\\Settings\\profile.json"
+      },
+      "expected": {
+        "triggered": false
+      }
     }
   ],
   "shellTools": [
@@ -429,6 +449,18 @@
       },
       "expected": {
         "triggered": false
+      }
+    },
+    {
+      "id": "quoted-build-fingerprint-warn-not-block",
+      "mode": "block",
+      "tool": "Write",
+      "args": {
+        "content": "build_fingerprint='abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
       }
     }
   ]
