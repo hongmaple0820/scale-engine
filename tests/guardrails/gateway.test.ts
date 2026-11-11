@@ -48,6 +48,7 @@ describe('Gateway + Detectors', () => {
       const r = await gw.preTool(mkInput('Bash', { command: 'rm -rf /' }))
       expect(r.allow).toBe(false)
       expect(r.reason).toContain('危险命令')
+      expect(await bus.query({ sessionId: 'test-session', types: ['tool.blocked'] })).toHaveLength(1)
     })
 
     it('blocks DROP TABLE', async () => {
@@ -126,6 +127,9 @@ describe('Gateway + Detectors', () => {
       // 40+ 位引号包裹的字母数字串仍会提示，但只 warn，不再硬阻塞编辑
       expect(r.allow).toBe(true)
       expect(r.reason).toContain('低置信')
+      expect(await bus.query({ sessionId: 'test-session', types: ['tool.warned'] })).toHaveLength(1)
+      expect(await bus.query({ sessionId: 'test-session', types: ['tool.blocked'] })).toHaveLength(0)
+      expect(await bus.query({ sessionId: 'test-session', types: ['tool.called'] })).toHaveLength(1)
     })
 
     it('blocks a keyed 32+ char credential (#35)', async () => {
@@ -157,6 +161,8 @@ describe('Gateway + Detectors', () => {
         const r = await gw.preTool(mkInput('Write', { content: `const key = "${fakePat}"` }))
         expect(r.allow).toBe(true)
         expect(r.reason).toContain('GitHub PAT')
+        expect(await bus.query({ sessionId: 'test-session', types: ['tool.warned'] })).toHaveLength(1)
+        expect(await bus.query({ sessionId: 'test-session', types: ['tool.blocked'] })).toHaveLength(0)
       } finally {
         vi.unstubAllEnvs()
       }
@@ -410,6 +416,8 @@ describe('Gateway + Detectors', () => {
       const r = await gw.preTool(mkInput('Edit', { file_path: 'src/extra.ts' }))
       expect(r.allow).toBe(true)
       expect(r.reason).toContain('范围蔓延')
+      expect(await bus.query({ sessionId: 'test-session', types: ['tool.warned'] })).toHaveLength(1)
+      expect(await bus.query({ sessionId: 'test-session', types: ['tool.blocked'] })).toHaveLength(0)
     })
 
     it('ignores non-edit tools', async () => {

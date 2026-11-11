@@ -51,6 +51,7 @@ export class DangerousCommandDetector implements IDetector {
         return {
           triggered: true,
           severity: 'deny',
+          eventEmitted: true,
           reason: `🛑 危险命令被拦截：${description}\n命令: ${command}\n此操作需要人工确认后才能执行。`,
           suggestion: '请使用安全的替代命令，或获取人工授权。',
         }
@@ -101,7 +102,7 @@ export class SecretLeakDetector implements IDetector {
 
     for (const { pattern, description } of this.blockPatterns) {
       if (pattern.test(content)) {
-        ctx.eventBus.emit('tool.blocked', {
+        ctx.eventBus.emit(mode === 'warn' ? 'tool.warned' : 'tool.blocked', {
           tool: input.tool,
           detector: this.name,
           detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['secret-leak'],
@@ -112,6 +113,7 @@ export class SecretLeakDetector implements IDetector {
         return {
           triggered: true,
           severity: mode === 'warn' ? 'warn' : 'block',
+          eventEmitted: true,
           reason: `🔑 检测到可能的密钥泄露：${description}\n请使用环境变量代替硬编码密钥。`,
           suggestion: '使用 process.env.XXX 或 .env 文件',
         }
@@ -120,7 +122,7 @@ export class SecretLeakDetector implements IDetector {
 
     for (const { pattern, description } of this.warnPatterns) {
       if (pattern.test(content)) {
-        ctx.eventBus.emit('tool.blocked', {
+        ctx.eventBus.emit('tool.warned', {
           tool: input.tool,
           detector: this.name,
           detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['secret-leak'],
@@ -131,6 +133,7 @@ export class SecretLeakDetector implements IDetector {
         return {
           triggered: true,
           severity: 'warn',
+          eventEmitted: true,
           reason: `⚠️ 疑似密钥泄露（低置信）：${description}。长路径/URL/base64 数据可能误报，已降级为警告。`,
           suggestion: '确认为密钥则改用环境变量；确认误报可忽略',
         }
@@ -258,7 +261,7 @@ export class ScopeCreepDetector implements IDetector {
 
     // Only warn when a NEW file is added and we exceed the threshold
     if (isNew && record.files.size > this.maxFiles) {
-      ctx.eventBus.emit('tool.blocked', {
+      ctx.eventBus.emit('tool.warned', {
         tool: input.tool,
         detector: this.name,
         reason: `scope_creep:${record.files.size}_files`,
@@ -268,6 +271,7 @@ export class ScopeCreepDetector implements IDetector {
       return {
         triggered: true,
         severity: 'warn',
+        eventEmitted: true,
         reason: `⚠️ 检测到「范围蔓延」：本会话已编辑 ${record.files.size} 个不同文件（阈值 ${this.maxFiles}）。请确认这些修改都在当前任务范围内，而非越界修改。`,
         suggestion: '请检查是否偏离了原始任务范围。考虑收窄修改范围或拆分为多个任务。',
       }

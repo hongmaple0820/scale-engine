@@ -43,10 +43,16 @@ export class Gateway implements IGateway {
       const result = await det.check(input, { eventBus: this.eventBus, cache: this.cache })
       if (result.triggered) {
         if (result.severity === 'deny' || result.severity === 'block') {
-          this.eventBus.emit('tool.blocked', { tool: input.tool, detector: det.name, reason: result.reason }, { sessionId: input.sessionId })
+          if (!result.eventEmitted) {
+            this.eventBus.emit('tool.blocked', { tool: input.tool, detector: det.name, reason: result.reason }, { sessionId: input.sessionId })
+          }
           return { allow: false, reason: result.reason, suggestion: result.suggestion }
         }
         if (result.severity === 'warn') {
+          if (!result.eventEmitted) {
+            this.eventBus.emit('tool.warned', { tool: input.tool, detector: det.name, reason: result.reason }, { sessionId: input.sessionId })
+          }
+          this.eventBus.emit('tool.called', { tool: input.tool, args: input.args }, { sessionId: input.sessionId })
           return { allow: true, reason: result.reason, injectContext: [result.reason ?? ''] }
         }
       }
