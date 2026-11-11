@@ -64,7 +64,7 @@ describe('Shield / Guardrails versioned regression corpus', () => {
     if (fixture.expected.severity) expect(result.severity).toBe(fixture.expected.severity)
     else expect(result.severity).toBeUndefined()
 
-    const events = await bus.query({ sessionId: fixture.id, types: ['tool.blocked'], limit: 1 })
+    const events = await bus.query({ sessionId: fixture.id, types: [fixture.expected.severity === 'warn' ? 'tool.warned' : 'tool.blocked'], limit: 1 })
     if (fixture.expected.triggered) {
       expect(events[0]?.payload).toMatchObject({
         detector: 'secret-leak',
@@ -87,7 +87,7 @@ describe('Shield / Guardrails versioned regression corpus', () => {
     else expect(result.severity).toBeUndefined()
 
     if (fixture.expected.triggered) {
-      const events = await bus.query({ sessionId: fixture.id, types: ['tool.blocked'], limit: 1 })
+      const events = await bus.query({ sessionId: fixture.id, types: [fixture.expected.severity === 'warn' ? 'tool.warned' : 'tool.blocked'], limit: 1 })
       expect(events[0]?.payload).toMatchObject({
         detector: 'secret-leak',
         detectorVersion: fixtures.detectorVersions['secret-leak'],
@@ -106,7 +106,7 @@ describe('Shield / Guardrails versioned regression corpus', () => {
     expect(result.triggered).toBe(fixture.expected.triggered)
     if (fixture.expected.severity) expect(result.severity).toBe(fixture.expected.severity)
     if (fixture.expected.triggered) {
-      const events = await bus.query({ sessionId: fixture.id, types: ['tool.blocked'], limit: 1 })
+      const events = await bus.query({ sessionId: fixture.id, types: [fixture.expected.severity === 'warn' ? 'tool.warned' : 'tool.blocked'], limit: 1 })
       expect(events[0]?.payload).toMatchObject({
         detector: 'dangerous-command',
         detectorVersion: fixtures.detectorVersions['dangerous-command'],
