@@ -274,6 +274,26 @@
         "triggered": true,
         "severity": "deny"
       }
+    },
+    {
+      "id": "powershell-relative-temp-cleanup-allow",
+      "tool": "PowerShell",
+      "args": {
+        "command": "Remove-Item .\\tmp\\test-output -Recurse -Force"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "cmd-relative-temp-cleanup-allow",
+      "tool": "cmd",
+      "args": {
+        "command": "rmdir /s /q .\\tmp\\test-output"
+      },
+      "expected": {
+        "triggered": false
+      }
     }
   ],
   "verificationOutcomes": [

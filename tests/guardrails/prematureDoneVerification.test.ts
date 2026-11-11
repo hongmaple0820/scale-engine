@@ -63,6 +63,32 @@ describe('PrematureDoneDetector verification evidence', () => {
     })
   })
 
+
+  it('reports versioned evidence when verification predates the last edit', async () => {
+    bus.emit('verification.recorded', {
+      tool: 'verification-service',
+      command: 'powershell -File tools/validate-patterns.ps1',
+      passed: true,
+    }, { sessionId: SESSION })
+    await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+    addEdit()
+
+    const result = await checkStop()
+    expect(result.triggered).toBe(true)
+    const events = await bus.query({
+      sessionId: SESSION,
+      types: ['behavior.premature_done'],
+      limit: 1,
+    })
+    expect(events[0]?.payload).toMatchObject({
+      detector: 'premature-done',
+      detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'],
+      policyVersion: GUARDRAILS_POLICY_VERSION,
+      verificationMatrixVersion: 1,
+      reason: 'stale_verification',
+    })
+  })
+
   it.each(['Bash', 'PowerShell', 'pwsh', 'cmd', 'Terminal'])('accepts a successful configured command from %s', async tool => {
     addEdit()
     await new Promise(resolveDelay => setTimeout(resolveDelay, 3))

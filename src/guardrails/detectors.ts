@@ -162,6 +162,13 @@ export class PrematureDoneDetector implements IDetector {
 
     // 情况2：验证在编辑之前（文章：Premature Victory Declaration）
     if (latestVerificationTimestamp < lastEditTimestamp) {
+      ctx.eventBus.emit('behavior.premature_done', {
+        detector: this.name,
+        detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'],
+        policyVersion: GUARDRAILS_POLICY_VERSION,
+        verificationMatrixVersion: catalog.version,
+        reason: 'stale_verification',
+      }, { sessionId: input.sessionId })
       return {
         triggered: true,
         severity: 'block',
