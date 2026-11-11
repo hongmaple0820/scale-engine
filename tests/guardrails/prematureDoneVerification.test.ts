@@ -216,4 +216,27 @@ describe('PrematureDoneDetector verification evidence', () => {
     }, { sessionId: SESSION })
     expect((await checkStop()).triggered).toBe(true)
   })
+
+  it.each([
+    { label: 'passed status with a non-zero exit code', status: 'passed' as const, exitCode: 1 },
+    { label: 'failed status with a zero exit code', status: 'failed' as const, exitCode: 0 },
+    { label: 'skipped status with a zero exit code', status: 'skipped' as const, exitCode: 0 },
+  ])('fails closed for runtime evidence with $label', async ({ status, exitCode }) => {
+    addEdit()
+    const ledger = new RuntimeEvidenceLedger({ projectDir: ROOT, scaleDir: '.scale' })
+    ledger.record({
+      sessionId: SESSION,
+      kind: 'command',
+      title: 'Configured verification',
+      status,
+      command: 'powershell -File tools/validate-patterns.ps1',
+      exitCode,
+      summary: 'runtime verification result',
+    })
+
+    const result = await checkStop()
+    expect(result.triggered).toBe(true)
+    expect(result.reason).toContain('最近一次验证失败')
+  })
+
 })

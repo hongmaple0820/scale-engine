@@ -177,7 +177,7 @@ export class PrematureDoneDetector implements IDetector {
     }
 
     const latestVerificationFailed = latestVerificationIsRuntime
-      ? latestRuntimeVerification?.status !== 'passed'
+      ? isFailedRuntimeVerification(latestRuntimeVerification)
       : isFailedVerificationEvent(latestEventVerification)
     if (latestVerificationFailed) {
       ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'verification_failed' }, { sessionId: input.sessionId })
@@ -262,6 +262,11 @@ function latestRuntimeVerificationForSession(
     .filter(record => isVerificationCommand(record.command, catalog))
 
   return records[0] ?? null
+}
+
+function isFailedRuntimeVerification(record: RuntimeEvidenceRecord | null): boolean {
+  if (!record || record.status !== 'passed') return true
+  return typeof record.exitCode === 'number' && record.exitCode !== 0
 }
 
 export function isVerificationEvidenceEvent(
