@@ -436,6 +436,7 @@ export type EventType =
   | 'tool.completed'
   | 'tool.failed'
   | 'tool.blocked'
+  | 'tool.warned'
   // 护栏
   | 'gate.checked'
   | 'gate.passed'
@@ -757,6 +758,8 @@ export interface DetectorResult {
   severity?: 'warn' | 'block' | 'deny'
   reason?: string
   suggestion?: string
+  /** True when the detector already emitted its severity-specific audit event. */
+  eventEmitted?: boolean
 }
 
 // ============================================================================
