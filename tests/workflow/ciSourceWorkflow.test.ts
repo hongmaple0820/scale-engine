@@ -20,6 +20,7 @@ type WorkflowJob = {
   }
   steps: WorkflowStep[]
   ['timeout-minutes']?: number
+  ['runs-on']?: string
 }
 
 type Workflow = {
@@ -40,12 +41,15 @@ describe('source CI workflow', () => {
 
     expect(workflow.name).toBe('Source CI')
     expect(workflow.permissions).toMatchObject({ contents: 'read' })
-    expect(Object.keys(workflow.jobs).sort()).toEqual(['audit', 'build', 'check', 'gate', 'test'])
+    expect(Object.keys(workflow.jobs).sort()).toEqual(['audit', 'build', 'check', 'gate', 'guardrails-windows', 'test'])
     expect(workflow.jobs.check['timeout-minutes']).toBeGreaterThanOrEqual(8)
     expect(workflow.jobs.build.needs).toBe('check')
     expect(workflow.jobs.audit.needs).toBe('check')
     expect(workflow.jobs.test.needs).toBe('build')
+    expect(workflow.jobs['guardrails-windows'].steps.some(step => step.run === 'npm ci')).toBe(true)
     expect(gateJob.needs).toBe('build')
+    expect(workflow.jobs['guardrails-windows']['timeout-minutes']).toBeGreaterThanOrEqual(10)
+    expect(workflow.jobs['guardrails-windows']['runs-on']).toBe('windows-2022')
     expect(gateJob.strategy?.matrix?.os).toEqual(['ubuntu-latest', 'macos-latest'])
     expect(gateJob['timeout-minutes']).toBeGreaterThanOrEqual(12)
     expect(scaleStep).toBeDefined()

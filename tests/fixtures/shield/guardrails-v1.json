@@ -1,0 +1,375 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": 1,
+  "detectorVersions": {
+    "dangerous-command": "1.2.0",
+    "secret-leak": "1.0.0",
+    "premature-done": "1.0.0"
+  },
+  "secretLeak": [
+    {
+      "id": "aws-key-high-confidence-block",
+      "tool": "Write",
+      "args": {
+        "content": "AWS_ACCESS_KEY_ID=AKIA0000000000000000"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "private-key-marker-block",
+      "tool": "Edit",
+      "args": {
+        "content": "-----BEGIN PRIVATE KEY-----"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "keyed-token-high-confidence-block",
+      "tool": "Write",
+      "args": {
+        "content": "api_key='sk-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "long-quoted-token-warn-only",
+      "tool": "Write",
+      "args": {
+        "content": "\"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN\""
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
+      }
+    },
+    {
+      "id": "ordinary-url-allow",
+      "tool": "Write",
+      "args": {
+        "content": "https://example.test/releases/download/2026/long-path-with-build-metadata-and-hash-0123456789"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "windows-path-allow",
+      "tool": "Edit",
+      "args": {
+        "content": "C:\\Users\\developer\\AppData\\Local\\Packages\\Example.Application_1234567890\\settings.json"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "lockfile-integrity-allow",
+      "tool": "MultiEdit",
+      "args": {
+        "content": "sha512-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=="
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "non-edit-tool-allow",
+      "tool": "Bash",
+      "args": {
+        "command": "printf safe"
+      },
+      "expected": {
+        "triggered": false
+      }
+    }
+  ],
+  "shellTools": [
+    {
+      "id": "bash",
+      "input": "Bash",
+      "expected": "bash"
+    },
+    {
+      "id": "powershell",
+      "input": "PowerShell",
+      "expected": "powershell"
+    },
+    {
+      "id": "powershell-core",
+      "input": "PowerShell Core",
+      "expected": "powershell_core"
+    },
+    {
+      "id": "pwsh",
+      "input": "pwsh",
+      "expected": "pwsh"
+    },
+    {
+      "id": "windows-cmd",
+      "input": "CMD",
+      "expected": "cmd"
+    },
+    {
+      "id": "terminal-alias",
+      "input": "run-terminal-command",
+      "expected": "run_terminal_command"
+    },
+    {
+      "id": "unknown-mcp",
+      "input": "mcp__filesystem__write_file",
+      "expected": null
+    }
+  ],
+  "verificationEvents": [
+    {
+      "id": "bash-configured-command",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "Bash",
+        "args": {
+          "command": "powershell -File tools/validate-patterns.ps1"
+        },
+        "exitCode": 0
+      },
+      "expected": true
+    },
+    {
+      "id": "powershell-configured-command",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "PowerShell Core",
+        "args": {
+          "command": "powershell -File tools/validate-patterns.ps1"
+        },
+        "exitCode": 0
+      },
+      "expected": true
+    },
+    {
+      "id": "untrusted-mcp-command-string",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "mcp__filesystem__write_file",
+        "args": {
+          "command": "powershell -File tools/validate-patterns.ps1"
+        },
+        "exitCode": 0
+      },
+      "expected": false
+    },
+    {
+      "id": "explicit-runtime-verification",
+      "type": "verification.recorded",
+      "payload": {
+        "tool": "verification-service",
+        "command": "powershell -File tools/validate-patterns.ps1",
+        "passed": true
+      },
+      "expected": true
+    },
+    {
+      "id": "unrelated-command",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "Bash",
+        "args": {
+          "command": "npm install"
+        }
+      },
+      "expected": false
+    }
+  ],
+  "verificationCatalog": {
+    "version": 7,
+    "defaultProfile": "default",
+    "profiles": {
+      "default": {
+        "commands": {
+          "smoke": "powershell -File tools/validate-patterns.ps1"
+        }
+      }
+    }
+  },
+  "dangerousCommands": [
+    {
+      "id": "root-filesystem-delete-block",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf /"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "home-directory-delete-block",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf /home"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "home-shorthand-delete-block",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf ~/"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "absolute-temp-cleanup-allow",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf /tmp/test-output"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "sql-drop-table-block",
+      "tool": "Bash",
+      "args": {
+        "command": "DROP TABLE users"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "scoped-temp-cleanup-allow",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf ./tmp/test-output"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "non-shell-tool-allow",
+      "tool": "mcp__filesystem__write_file",
+      "args": {
+        "command": "rm -rf /"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "powershell-rooted-recursive-delete-block",
+      "tool": "PowerShell",
+      "args": {
+        "command": "Remove-Item C:\\ -Recurse -Force"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "cmd-rooted-recursive-delete-block",
+      "tool": "cmd",
+      "args": {
+        "command": "rmdir /s /q C:\\"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "cmd-drive-format-block",
+      "tool": "cmd",
+      "args": {
+        "command": "format D:"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "powershell-relative-temp-cleanup-allow",
+      "tool": "PowerShell",
+      "args": {
+        "command": "Remove-Item .\\tmp\\test-output -Recurse -Force"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "cmd-relative-temp-cleanup-allow",
+      "tool": "cmd",
+      "args": {
+        "command": "rmdir /s /q .\\tmp\\test-output"
+      },
+      "expected": {
+        "triggered": false
+      }
+    }
+  ],
+  "verificationOutcomes": [
+    {
+      "id": "successful-exit-zero",
+      "type": "tool.completed",
+      "payload": {
+        "exitCode": 0,
+        "status": "passed"
+      },
+      "expected": false
+    },
+    {
+      "id": "nonzero-exit",
+      "type": "tool.completed",
+      "payload": {
+        "exitCode": 1
+      },
+      "expected": true
+    },
+    {
+      "id": "explicit-tool-failed",
+      "type": "tool.failed",
+      "payload": {
+        "exitCode": 0,
+        "status": "passed"
+      },
+      "expected": true
+    },
+    {
+      "id": "explicit-failed-status",
+      "type": "tool.completed",
+      "payload": {
+        "status": "failed"
+      },
+      "expected": true
+    },
+    {
+      "id": "explicit-skipped-status",
+      "type": "tool.completed",
+      "payload": {
+        "status": "skipped"
+      },
+      "expected": true
+    }
+  ]
+}

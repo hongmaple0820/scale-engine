@@ -19,6 +19,7 @@ permissions:
 #   check -> build -> test
 #      \       \----> gate
 #       \-----------> audit
+#   guardrails-windows (focused native Windows regression corpus)
 #
 # "check" is the fastest feedback path (<90s). Contributors know in <2min
 # whether their lint/types are broken, satisfying Greiler 2022 ICSE <10min
@@ -124,7 +125,28 @@ jobs:
           path: coverage/
           retention-days: 14
 
-  # Job 4: supply-chain audit, parallel with build.
+  # Guardrails corpus gets a focused Windows run in addition to the full
+  # Ubuntu/macOS test matrix above. This exercises path and shell-name fixtures
+  # on the native Windows runtime without changing the shell used by SCALE gate.
+  guardrails-windows:
+    name: Guardrails fixture corpus (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run Shield / Guardrails regression corpus
+        run: npm test -- tests/guardrails/shieldFixtureCorpus.test.ts tests/guardrails/prematureDoneVerification.test.ts
+
+  # Job 5: supply-chain audit, parallel with build.
   # No build needed. Runs in parallel with jobs 2-3 to not gate on build time.
   # Catches CVEs at PR time, not at release:check (too late).
   audit:
@@ -146,7 +168,7 @@ jobs:
       - name: npm audit (high+)
         run: npm audit --audit-level=high --omit=dev
 
-  # Job 5: SCALE preflight gate against the built dist.
+  # Job 6: SCALE preflight gate against the built dist.
   # Runs against the locally-built dist so it exercises the source version,
   # not the last-published npm version (version skew fixed in #21).
   gate:
