@@ -15,7 +15,7 @@ export class DangerousCommandDetector implements IDetector {
   name = 'dangerous-command'
 
   private patterns: Array<{ pattern: RegExp; description: string }> = [
-    { pattern: /rm\s+-rf\s+(?:\/(?:\s|$)|~(?:\/|$)|\/(?:home|root)(?:\/|$))/i, description: 'rm -rf on root/home' },
+    { pattern: /\brm\s+(?:-rf|-fr|-r\s+-f|-f\s+-r|--recursive\s+--force|--force\s+--recursive)(?:\s+--)?\s+(?:\/(?:\s|$)|~(?:\/|$)|\/(?:home|root)(?:\/|$))/i, description: 'recursive forced rm on root/home' },
     { pattern: /\b(?:remove-item|ri)\b(?=.*(?:-recurse|-r))(?=.*(?:-force|-fo))(?=.*(?:[a-z]:\\|\\\\))/i, description: 'PowerShell recursive forced delete on rooted path' },
     { pattern: /\b(?:rmdir|rd)\b(?=.*\/s)(?=.*\/q).*?\s+[a-z]:\\/i, description: 'cmd recursive quiet delete on rooted path' },
     { pattern: /\bformat(?:\.com)?\s+[a-z]:/i, description: 'format drive' },
