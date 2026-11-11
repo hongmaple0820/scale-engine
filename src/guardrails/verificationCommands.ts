@@ -36,7 +36,7 @@ export function loadVerificationCommandCatalog(
   const root = isAbsolute(scaleDir) ? scaleDir : join(resolve(projectDir), scaleDir)
   const matrixPath = join(root, 'verification.json')
   if (!existsSync(matrixPath)) {
-    return { version: Number.isInteger(matrix.version) ? Number(matrix.version) : 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
+    return { version: 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
   }
   try {
     const matrix = JSON.parse(readFileSync(matrixPath, 'utf-8').replace(/^\uFEFF/, '')) as {
@@ -53,7 +53,7 @@ export function loadVerificationCommandCatalog(
       collectCommands(service?.commands, commands)
     }
     if (commands.length === 0) {
-      return { commands: [], suggestionCommands: [], source: 'keyword-fallback' }
+      return { version: 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
     }
     const profileName = matrix.defaultProfile ?? 'default'
     const suggestionCommands: string[] = []

@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": 1,
+  "detectorVersions": {
+    "secret-leak": "1.0.0",
+    "premature-done": "1.0.0"
+  },
+  "secretLeak": [
+    {
+      "id": "aws-key-high-confidence-block",
+      "tool": "Write",
+      "args": {
+        "content": "AWS_ACCESS_KEY_ID=AKIA0000000000000000"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "private-key-marker-block",
+      "tool": "Edit",
+      "args": {
+        "content": "-----BEGIN PRIVATE KEY-----"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "keyed-token-high-confidence-block",
+      "tool": "Write",
+      "args": {
+        "content": "api_key='sk-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "long-quoted-token-warn-only",
+      "tool": "Write",
+      "args": {
+        "content": "token='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
+      }
+    },
+    {
+      "id": "ordinary-url-allow",
+      "tool": "Write",
+      "args": {
+        "content": "https://example.test/releases/download/2026/long-path-with-build-metadata-and-hash-0123456789"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "windows-path-allow",
+      "tool": "Edit",
+      "args": {
+        "content": "C:\\Users\\developer\\AppData\\Local\\Packages\\Example.Application_1234567890\\settings.json"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "lockfile-integrity-allow",
+      "tool": "MultiEdit",
+      "args": {
+        "content": "sha512-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=="
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "non-edit-tool-allow",
+      "tool": "Bash",
+      "args": {
+        "command": "printf safe"
+      },
+      "expected": {
+        "triggered": false
+      }
+    }
+  ],
+  "shellTools": [
+    {
+      "id": "bash",
+      "input": "Bash",
+      "expected": "bash"
+    },
+    {
+      "id": "powershell",
+      "input": "PowerShell",
+      "expected": "powershell"
+    },
+    {
+      "id": "powershell-core",
+      "input": "PowerShell Core",
+      "expected": "powershell_core"
+    },
+    {
+      "id": "pwsh",
+      "input": "pwsh",
+      "expected": "pwsh"
+    },
+    {
+      "id": "windows-cmd",
+      "input": "CMD",
+      "expected": "cmd"
+    },
+    {
+      "id": "terminal-alias",
+      "input": "run-terminal-command",
+      "expected": "run_terminal_command"
+    },
+    {
+      "id": "unknown-mcp",
+      "input": "mcp__filesystem__write_file",
+      "expected": null
+    }
+  ],
+  "verificationEvents": [
+    {
+      "id": "bash-configured-command",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "Bash",
+        "args": {
+          "command": "powershell -File tools/validate-patterns.ps1"
+        },
+        "exitCode": 0
+      },
+      "expected": true
+    },
+    {
+      "id": "powershell-configured-command",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "PowerShell Core",
+        "args": {
+          "command": "powershell -File tools/validate-patterns.ps1"
+        },
+        "exitCode": 0
+      },
+      "expected": true
+    },
+    {
+      "id": "untrusted-mcp-command-string",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "mcp__filesystem__write_file",
+        "args": {
+          "command": "powershell -File tools/validate-patterns.ps1"
+        },
+        "exitCode": 0
+      },
+      "expected": false
+    },
+    {
+      "id": "explicit-runtime-verification",
+      "type": "verification.recorded",
+      "payload": {
+        "tool": "verification-service",
+        "command": "powershell -File tools/validate-patterns.ps1",
+        "passed": true
+      },
+      "expected": true
+    },
+    {
+      "id": "unrelated-command",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "Bash",
+        "args": {
+          "command": "npm install"
+        }
+      },
+      "expected": false
+    }
+  ],
+  "verificationCatalog": {
+    "version": 7,
+    "defaultProfile": "default",
+    "profiles": {
+      "default": {
+        "commands": {
+          "smoke": "powershell -File tools/validate-patterns.ps1"
+        }
+      }
+    }
+  }
+}
