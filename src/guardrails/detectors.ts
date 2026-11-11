@@ -136,7 +136,7 @@ export class PrematureDoneDetector implements IDetector {
     const latestEventVerification = [...verifications]
       .sort((a, b) => b.timestamp - a.timestamp)[0]
 
-    const latestRuntimeVerification = latestRuntimeVerificationForSession(input.sessionId, lastEditTimestamp, catalog)
+    const latestRuntimeVerification = latestRuntimeVerificationForSession(input.sessionId, catalog)
     const latestEventVerificationTimestamp = latestEventVerification?.timestamp ?? 0
     const latestRuntimeVerificationTimestamp = latestRuntimeVerification
       ? Date.parse(latestRuntimeVerification.createdAt)
@@ -249,7 +249,6 @@ export class PrematureDoneDetector implements IDetector {
 
 function latestRuntimeVerificationForSession(
   sessionId: string,
-  afterTimestamp: number,
   catalog: VerificationCommandCatalog,
 ): RuntimeEvidenceRecord | null {
   const evidence = new RuntimeEvidenceLedger({
