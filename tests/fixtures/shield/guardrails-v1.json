@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "policyVersion": 1,
   "detectorVersions": {
+    "dangerous-command": "1.0.0",
     "secret-leak": "1.0.0",
     "premature-done": "1.0.0"
   },
@@ -43,7 +44,7 @@
       "id": "long-quoted-token-warn-only",
       "tool": "Write",
       "args": {
-        "content": "token='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN'"
+        "content": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
       },
       "expected": {
         "triggered": true,
@@ -197,5 +198,49 @@
         }
       }
     }
-  }
+  },
+  "dangerousCommands": [
+    {
+      "id": "root-filesystem-delete-block",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf /"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "sql-drop-table-block",
+      "tool": "Bash",
+      "args": {
+        "command": "DROP TABLE users"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
+    },
+    {
+      "id": "scoped-temp-cleanup-allow",
+      "tool": "Bash",
+      "args": {
+        "command": "rm -rf ./tmp/test-output"
+      },
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "non-shell-tool-allow",
+      "tool": "PowerShell",
+      "args": {
+        "command": "rm -rf /"
+      },
+      "expected": {
+        "triggered": false
+      }
+    }
+  ]
 }

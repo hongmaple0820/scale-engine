@@ -53,7 +53,7 @@ export function loadVerificationCommandCatalog(
       collectCommands(service?.commands, commands)
     }
     if (commands.length === 0) {
-      return { version: 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
+      return { version: Number.isInteger(matrix.version) ? Number(matrix.version) : 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
     }
     const profileName = matrix.defaultProfile ?? 'default'
     const suggestionCommands: string[] = []
@@ -65,7 +65,7 @@ export function loadVerificationCommandCatalog(
       source: 'verification-matrix',
     }
   } catch {
-    return { commands: [], suggestionCommands: [], source: 'keyword-fallback' }
+    return { version: 1, commands: [], suggestionCommands: [], source: 'keyword-fallback' }
   }
 }
 
