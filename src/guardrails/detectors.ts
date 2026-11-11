@@ -261,7 +261,6 @@ function latestRuntimeVerificationForSession(
   const records = evidence.list({ sessionId, limit: 100 })
     .filter(record => record.kind === 'command')
     .filter(record => isVerificationCommand(record.command, catalog))
-    .filter(record => Date.parse(record.createdAt) >= afterTimestamp)
 
   return records[0] ?? null
 }
