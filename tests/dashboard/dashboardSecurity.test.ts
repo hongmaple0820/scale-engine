@@ -191,6 +191,7 @@ describe('DashboardServer security middleware', () => {
     const adminToken = 'admin'.padEnd(32, 'x')
     const viewerToken = 'viewer'.padEnd(32, 'x')
     const app = new DashboardServer({
+      projectDir,
       host: '0.0.0.0',
       authToken: adminToken,
       scopedTokens: [{ id: 'viewer', token: viewerToken, scopes: ['dashboard:read', 'integrations:read'] }],
@@ -199,6 +200,9 @@ describe('DashboardServer security middleware', () => {
     const headers = { Authorization: 'Bearer ' + viewerToken }
     expect((await app.request('/api/health', { headers })).status).toBe(200)
     expect((await app.request('/api/integrations/agent-connect', { headers })).status).toBe(200)
+    const audit = readFileSync(join(projectDir, '.scale', 'audit', 'dashboard-security.jsonl'), 'utf8')
+    expect(audit).toContain('scoped-token')
+    expect(audit).not.toContain(viewerToken)
     const denied = await app.request('/api/agent-control/sessions/s1/messages', {
       method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'not allowed' }),
     })
