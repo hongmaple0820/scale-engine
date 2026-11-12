@@ -1251,7 +1251,7 @@ describe('DashboardServer API', () => {
     const managementModel = await json<{
       ok: boolean
       session: { sessionId: string; platformId: string; modelId: string; channelProvider: string }
-    }>(await app.request('/api/v1/projects/capability-project/model', {
+    }>(await confirmedRequest('/api/v1/projects/capability-project/model', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
