@@ -42,19 +42,23 @@ describe('AgentControl successRate KPI', () => {
     const completed = plane.sendMessage('s1', { text: 'a', dryRun: false })
     const failed = plane.sendMessage('s1', { text: 'b', dryRun: false })
     const cancelled = plane.sendMessage('s1', { text: 'c', dryRun: false })
+    const blocked = plane.sendMessage('s1', { text: 'd', dryRun: false })
     plane.completeMessage('s1', completed.id, { status: 'completed', text: 'ok', agentId: 'x' })
     plane.completeMessage('s1', failed.id, { status: 'failed', text: 'no', agentId: 'x' })
     plane.completeMessage('s1', cancelled.id, { status: 'cancelled', text: 'stop', agentId: 'x' })
+    plane.completeMessage('s1', blocked.id, { status: 'blocked', text: 'not configured', agentId: 'governed-runner' })
 
     const summary = plane.getReport().summary
     expect(summary.completedMessages).toBe(1)
     expect(summary.failedMessages).toBe(1)
     expect(summary.cancelledMessages).toBe(1)
+    expect(summary.blockedMessages).toBe(1)
     expect(summary.successRate).toBeCloseTo(0.5)
 
     const convo = plane.getTranscript('s1').summary
     expect(convo.failedMessages).toBe(1)
     expect(convo.cancelledMessages).toBe(1)
+    expect(convo.blockedMessages).toBe(1)
     expect(convo.successRate).toBeCloseTo(0.5)
   })
 
