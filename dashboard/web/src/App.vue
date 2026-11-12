@@ -1219,13 +1219,14 @@ const agentControlAlertText = computed(() => {
 const agentExecutionModeText = computed(() => {
   const session = selectedAgentSession.value
   if (!session) return ''
-  return session.localExecutor && session.mode === 'live-guarded'
-    ? t('agents.executionModeLive')
-    : t('agents.executionModeDry')
+  if (!session.localExecutor || session.mode !== 'live-guarded') return t('agents.executionModeDry')
+  return session.executor === 'agent-cli'
+    ? t('agents.executionModeAgentCli')
+    : t('agents.executionModeGoverned')
 })
 const agentExecutionModeType = computed(() => {
   const session = selectedAgentSession.value
-  return session?.localExecutor && session?.mode === 'live-guarded' ? 'success' : 'warning'
+  return session?.localExecutor && session.mode === 'live-guarded' && session.executor === 'agent-cli' ? 'success' : 'warning'
 })
 const documentSource = computed(() => sourceById('documents'))
 const commandSource = computed(() => sourceById('command-runs'))
@@ -3501,7 +3502,7 @@ async function enableAgentLiveExecution() {
       notice.value = payload.error || `${response.status} ${response.statusText}`
       return
     }
-    notice.value = t('agents.liveEnabled')
+    notice.value = session.executor === 'agent-cli' ? t('agents.liveEnabledAgentCli') : t('agents.liveEnabledGoverned')
     await refreshAgentControl()
     await refreshCapabilitiesOnly()
   } catch (error) {
@@ -3529,7 +3530,7 @@ async function sendAgentMessage() {
     }
     agentMessageDraft.value = ''
     if (payload.willExecute) {
-      notice.value = t('agents.messageExecuting')
+      notice.value = session.executor === 'agent-cli' ? t('agents.messageExecutingAgentCli') : t('agents.messageExecutingGoverned')
     } else if (payload.message?.status === 'blocked') {
       notice.value = t('agents.messageBlocked')
     } else {
@@ -5106,7 +5107,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.setupPassed': 'setup 执行成功',
     'integrations.setupFailed': 'setup 执行失败，请查看输出',
     'integrations.feishuBridge': '飞书桥接（入站→执行→回复）',
-    'integrations.feishuBridgeDesc': '常驻消费飞书消息事件，自动派给本地执行器，并把 agent 回复发回原聊天。启动前需满足右侧全部就绪条件。',
+    'integrations.feishuBridgeDesc': '常驻消费飞书消息事件，按当前会话选择的执行器处理并回传结果；“治理运行”只做规划、门禁和验证，不会调用外部 Agent，真实 Agent 执行需选择“真实 Agent CLI”。启动前需满足右侧全部就绪条件。',
     'integrations.bridgeStart': '启动桥接',
     'integrations.bridgeStop': '停止桥接',
     'integrations.bridgeRunning': '运行中',
@@ -5137,17 +5138,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'agents.avgLatencyMs': '平均时延',
     'agents.dryRunRatio': '预演占比',
     'agents.closedLoopCoverage': '闭环覆盖率',
-    'agents.localExecutor': '本地执行器（实跑）',
-    'agents.executionModeLive': '实跑模式：消息将触发本地执行器自动执行。',
-    'agents.executionModeDry': '预演模式：消息仅入队、不会真正执行。点击右侧按钮一键开启实跑。',
-    'agents.liveEnable': '一键开启实跑',
-    'agents.liveEnabled': '实跑已开启：live-guarded 模式下消息将由本地执行器自动执行。',
+    'agents.localExecutor': '启用自动本地处理',
+    'agents.executionModeAgentCli': '真实 Agent CLI 已启用：消息会派发到配置的本地 Agent CLI；只有进程成功退出才记为完成。',
+    'agents.executionModeGoverned': '治理运行已启用：消息只执行治理规划、门禁和配置的验证命令，不会调用外部 Agent；结果会明确标记为 not-configured/blocked。',
+    'agents.executionModeDry': '预演模式：消息仅入队，不触发本地运行。开启自动本地处理后，按所选执行器处理。',
+    'agents.liveEnable': '一键开启自动本地处理',
+    'agents.liveEnabledAgentCli': '自动 Agent CLI 派发已开启：live-guarded 模式下消息将发送到配置的 CLI。',
+    'agents.liveEnabledGoverned': '自动治理运行已开启：只运行治理规划和验证，不会启动外部 Agent CLI。',
     'agents.executorKind': '执行器类型',
-    'agents.executorGoverned': '治理规划（进程内）',
-    'agents.executorAgentCli': '真实 CLI（派发 agent）',
+    'agents.executorGoverned': '治理运行（不调用 Agent）',
+    'agents.executorAgentCli': '真实 Agent CLI 派发',
     'agents.agentCommand': '命令模板（可选覆盖）',
     'agents.agentCommandPlaceholder': '如 claude -p {prompt} --output-format text',
-    'agents.messageExecuting': '已触发本地执行器，正在执行…',
+    'agents.messageExecutingAgentCli': '已派发到本地 Agent CLI，正在等待进程结果…',
+    'agents.messageExecutingGoverned': '治理运行已启动；这不是 Agent 执行，结果将单独显示验证与治理状态。',
     'common.themeLight': '浅色',
     'common.themeDark': '深色',
     'common.themeSystem': '跟随系统',
@@ -5770,7 +5774,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'integrations.setupPassed': 'Setup completed successfully',
     'integrations.setupFailed': 'Setup failed; check the output above',
     'integrations.feishuBridge': 'Feishu bridge (inbound → execute → reply)',
-    'integrations.feishuBridgeDesc': 'Continuously consumes Feishu message events, dispatches them to the local executor, and sends the agent reply back to the originating chat. All readiness conditions must be met before starting.',
+    'integrations.feishuBridgeDesc': 'Consumes Feishu events and routes them through the selected session executor. Governed runs only plan, apply gates, and verify; they do not invoke an external Agent. Select Real Agent CLI for actual Agent dispatch. All readiness conditions must be met before starting.',
     'integrations.bridgeStart': 'Start bridge',
     'integrations.bridgeStop': 'Stop bridge',
     'integrations.bridgeRunning': 'Running',
@@ -5801,17 +5805,20 @@ const translations: Record<Lang, Record<string, string>> = {
     'agents.avgLatencyMs': 'Avg latency',
     'agents.dryRunRatio': 'Dry-run ratio',
     'agents.closedLoopCoverage': 'Closed-loop coverage',
-    'agents.localExecutor': 'Local executor (live run)',
-    'agents.executionModeLive': 'Live mode: messages trigger the local executor automatically.',
-    'agents.executionModeDry': 'Dry-run mode: messages are queued but not executed. Click the button to enable live run in one click.',
-    'agents.liveEnable': 'Enable live run',
-    'agents.liveEnabled': 'Live run enabled: the local executor will execute messages automatically in live-guarded mode.',
+    'agents.localExecutor': 'Enable automatic local handling',
+    'agents.executionModeAgentCli': 'Real Agent CLI is enabled: messages are dispatched to the configured local Agent CLI; completion requires a successful process exit.',
+    'agents.executionModeGoverned': 'Governed run is enabled: messages run planning, gates, and configured verification only. No external Agent is invoked; results are marked not-configured/blocked.',
+    'agents.executionModeDry': 'Dry-run mode: messages are queued without local processing. Enable automatic handling to use the selected executor.',
+    'agents.liveEnable': 'Enable automatic local handling',
+    'agents.liveEnabledAgentCli': 'Automatic Agent CLI dispatch is enabled: live-guarded messages are sent to the configured CLI.',
+    'agents.liveEnabledGoverned': 'Automatic governed runs are enabled: governance and verification run, but no external Agent CLI is started.',
     'agents.executorKind': 'Executor',
-    'agents.executorGoverned': 'Governed plan (in-process)',
-    'agents.executorAgentCli': 'Real CLI (dispatch agent)',
+    'agents.executorGoverned': 'Governed run (no Agent CLI)',
+    'agents.executorAgentCli': 'Real Agent CLI dispatch',
     'agents.agentCommand': 'Command template (optional)',
     'agents.agentCommandPlaceholder': 'e.g. claude -p {prompt} --output-format text',
-    'agents.messageExecuting': 'Local executor triggered, executing…',
+    'agents.messageExecutingAgentCli': 'Dispatched to local Agent CLI; waiting for process result…',
+    'agents.messageExecutingGoverned': 'Governed run started; this is not Agent execution. Verification and governance status will be reported separately.',
     'common.themeLight': 'Light',
     'common.themeDark': 'Dark',
     'common.themeSystem': 'System',
