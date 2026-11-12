@@ -177,7 +177,7 @@ describe('ai-os CLI', () => {
       dryRun: boolean
       status: string
       plan: { task: { taskId: string }; agentCollaboration: { summary: { totalRoles: number } } }
-      agentExecution: { status: string; summary: { totalRoles: number; settledRoles: number; settledReviewGates: number }; evidence: { pending: string[] } }
+      agentExecution: { status: string; executorStatus?: string; summary: { totalRoles: number; settledRoles: number; settledReviewGates: number }; evidence: { pending: string[] } }
       steps: Array<{ id: string; status: string; kind: string }>
       evidence: { required: string[] }
       artifacts: { runReport: string }
@@ -189,11 +189,12 @@ describe('ai-os CLI', () => {
     expect(report.plan.task.taskId).toBe('TASK-AI-OS-RUN-CLI')
     expect(report.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'runtime-plan', status: 'passed' }),
-      expect.objectContaining({ id: 'agent-collaboration-plan', status: 'passed', kind: 'agent' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', status: 'passed', kind: 'plan' }),
       expect.objectContaining({ id: 'runtime-evidence', status: 'planned' }),
     ]))
     expect(report.plan.agentCollaboration.summary.totalRoles).toBeGreaterThan(0)
     expect(report.agentExecution.status).toBe('planned')
+    expect(report.agentExecution.executorStatus).toBe('not-configured')
     expect(report.agentExecution.summary.totalRoles).toBe(report.plan.agentCollaboration.summary.totalRoles)
     expect(report.agentExecution.summary.settledRoles).toBe(0)
     expect(report.agentExecution.summary.settledReviewGates).toBe(0)
@@ -232,7 +233,7 @@ describe('ai-os CLI', () => {
     const report = parseJson<{
       mode: string
       status: string
-      agentExecution: { status: string; summary: { totalRoles: number; settledRoles: number; producedEvidence: number }; evidence: { produced: string[] } }
+      agentExecution: { status: string; executorStatus?: string; summary: { totalRoles: number; settledRoles: number; producedEvidence: number }; evidence: { produced: string[] } }
       verification: { commands: Array<{ status: string; exitCode: number; evidenceId: string }> }
       evidence: { produced: string[] }
       steps: Array<{ id: string; status: string }>
@@ -244,12 +245,14 @@ describe('ai-os CLI', () => {
     ])
     expect(report.verification.commands[0].evidenceId).toMatch(/^RTE-/)
     expect(report.agentExecution.status).toBe('planned')
+    expect(report.agentExecution.executorStatus).toBe('not-configured')
     expect(report.agentExecution.summary.settledRoles).toBe(0)
     expect(report.agentExecution.summary.producedEvidence).toBe(0)
     expect(report.agentExecution.evidence.produced).toEqual([])
     expect(report.agentExecution.evidence.pending.length).toBeGreaterThan(0)
     expect(report.evidence.produced).toContain('runtime-evidence')
-    expect(report.evidence.produced).toContain('agent-collaboration')
+    expect(report.evidence.produced).toContain('agent-collaboration-plan')
+    expect(report.evidence.produced).not.toContain('agent-collaboration')
     expect(report.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'verify-command:1', status: 'passed' }),
     ]))

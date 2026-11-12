@@ -1228,7 +1228,7 @@ const aiOsPlanCommand = defineCommand({
 })
 
 const aiOsRunCommand = defineCommand({
-  meta: { name: 'run', description: 'Run the AI OS beta loop in dry-run or guarded mode and write an execution report' },
+  meta: { name: 'run', description: 'Create a governed AI OS run report; guarded mode may execute configured verification commands but never invokes an external Agent Executor' },
   args: {
     dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
     'task-id': { type: 'string', description: 'Task id' },
@@ -1278,7 +1278,8 @@ const aiOsRunCommand = defineCommand({
     console.log(`  Evidence: ${report.evidence.produced.length} produced, ${report.evidence.pending.length} pending`)
     console.log(`  Agent collaboration: ${report.plan.agentCollaboration.mode}; ${report.plan.agentCollaboration.summary.totalRoles} role(s), ${report.plan.agentCollaboration.summary.handoffCount} handoff(s), ${report.plan.agentCollaboration.summary.reviewGateCount} review gate(s)`)
     if (report.agentExecution) {
-      console.log(`  Agent execution: ${report.agentExecution.status}; ${report.agentExecution.summary.settledRoles}/${report.agentExecution.summary.totalRoles} role(s) executed, ${report.agentExecution.summary.settledReviewGates}/${report.agentExecution.summary.reviewGates} review gate(s) executed`)
+      console.log(`  Agent Executor: ${report.agentExecution.executorStatus ?? 'unknown'}; no external Agent was invoked by ai-os run`)
+      console.log(`  Agent execution settlement: ${report.agentExecution.status}; ${report.agentExecution.summary.settledRoles}/${report.agentExecution.summary.totalRoles} role(s) settled, ${report.agentExecution.summary.settledReviewGates}/${report.agentExecution.summary.reviewGates} review gate(s) settled`)
     }
     console.log(`  Report: ${report.artifacts.runReport}`)
     for (const action of report.nextActions.slice(0, 6)) console.log(`  next: ${action}`)

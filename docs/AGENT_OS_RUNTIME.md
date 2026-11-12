@@ -34,7 +34,7 @@ An agent is done when it records an explicit task completion.
 
 ## Governed Run vs. Real Agent Execution
 
-`scale ai-os run --mode guarded` creates a governed run: it builds the collaboration plan, applies runtime gates, and may execute configured verification commands. It does **not** invoke an external Agent CLI. A passing verification command is evidence about that command only; it does not settle Agent roles, handoffs, or review gates.
+`scale ai-os run --mode guarded` creates a governed run: it builds the collaboration plan, applies runtime gates, and may execute configured verification commands. It does **not** invoke an external Agent CLI. A passing verification command is evidence about that command only; it does not settle Agent roles, handoffs, or review gates. New run reports expose `agentExecution.executorStatus: not-configured`; `agent-collaboration-plan` is recorded as planning evidence, while `agent-collaboration` remains pending until an external Agent Runtime produces role, handoff, and review evidence.
 
 The Dashboard Agent Control runner defaults to `executor: governed`. It records the governed run and reports the message as `blocked` / `not-configured` when no real Agent Executor is configured. To dispatch work to a real local Agent CLI, explicitly configure `executor: agent-cli` and a supported platform command or `agentCommand`. Only the Agent CLI process result may settle that execution message.
 

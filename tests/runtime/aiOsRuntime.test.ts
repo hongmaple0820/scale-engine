@@ -170,7 +170,7 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({ id: 'runtime-plan', status: 'passed' }),
       expect.objectContaining({ id: 'context-compiler', status: 'passed' }),
       expect.objectContaining({ id: 'memory-provider-recall', status: 'passed' }),
-      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'plan', status: 'passed' }),
       expect.objectContaining({ id: 'agent:security-agent', kind: 'agent', status: 'planned', required: true }),
       expect.objectContaining({ id: 'agent-review:security-review', kind: 'agent', status: 'planned', required: true }),
       expect.objectContaining({ id: 'skill-evidence', status: 'planned' }),
@@ -191,6 +191,7 @@ describe('AI OS runtime planner', () => {
     ]))
     expect(report.agentExecution).toEqual(expect.objectContaining({
       strategy: 'agent-execution-settlement-v1',
+      executorStatus: 'not-configured',
       status: 'planned',
       summary: expect.objectContaining({
         totalRoles: expect.any(Number),
@@ -236,6 +237,7 @@ describe('AI OS runtime planner', () => {
     ]))
     expect(report.agentExecution).toEqual(expect.objectContaining({
       strategy: 'agent-execution-settlement-v1',
+      executorStatus: 'not-configured',
       status: 'planned',
       summary: expect.objectContaining({
         settledRoles: 0,
@@ -247,10 +249,11 @@ describe('AI OS runtime planner', () => {
     expect(report.agentExecution?.evidence.pending.length).toBeGreaterThan(0)
     expect(report.agentExecution?.recommendations.join(' ')).toContain('no Agent Executor was invoked')
     expect(report.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'plan', status: 'passed' }),
     ]))
     expect(report.evidence.produced).toContain('runtime-evidence')
-    expect(report.evidence.produced).toContain('agent-collaboration')
+    expect(report.evidence.produced).toContain('agent-collaboration-plan')
+    expect(report.evidence.produced).not.toContain('agent-collaboration')
     expect(report.verification.commands).toEqual([
       expect.objectContaining({ command: 'node -e "process.stdout.write(\'ok\')"', status: 'passed', exitCode: 0 }),
     ])
@@ -301,7 +304,7 @@ describe('AI OS runtime planner', () => {
     const projectDir = makeDir('scale-ai-os-dashboard-project-')
     const scaleDir = makeScaleDir('scale-ai-os-dashboard-scale-')
 
-    await createAiOsRun({
+    const legacyRun = await createAiOsRun({
       projectDir,
       scaleDir,
       taskId: 'TASK-AI-OS-DASH-READY',
@@ -311,6 +314,14 @@ describe('AI OS runtime planner', () => {
       mode: 'guarded',
       verificationCommands: ['node -v'],
     })
+    const legacyReport = JSON.parse(readFileSync(legacyRun.artifacts.runReport, 'utf-8')) as {
+      agentExecution?: { executorStatus?: string }
+      steps: Array<{ id: string; kind: string }>
+    }
+    if (legacyReport.agentExecution) delete legacyReport.agentExecution.executorStatus
+    const legacyPlanStep = legacyReport.steps.find(step => step.id === 'agent-collaboration-plan')
+    if (legacyPlanStep) legacyPlanStep.kind = 'agent'
+    writeFileSync(legacyRun.artifacts.runReport, JSON.stringify(legacyReport, null, 2), 'utf-8')
     await createAiOsRun({
       projectDir,
       scaleDir,
@@ -333,6 +344,7 @@ describe('AI OS runtime planner', () => {
       failureLearningCandidates: 1,
     })
     expect(dashboard.health.status).toBe('attention')
+    expect(dashboard.warnings).toEqual([])
     expect(dashboard.latestRuns.map(run => run.taskId)).toEqual([
       'TASK-AI-OS-DASH-BLOCKED',
       'TASK-AI-OS-DASH-READY',
