@@ -994,7 +994,7 @@ describe('DashboardServer API', () => {
         automation: { cronEnabled: boolean; heartbeatEnabled: boolean; heartbeatIntervalMins: number; maxTurnTimeMins: number; resetOnIdleMins: number }
         endpoints: { managementApi: string; bridgeWebSocket: string; webhook: string }
       }
-    }>(await app.request('/api/integrations/agent-connect', {
+    }>(await confirmedRequest('/api/integrations/agent-connect', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
