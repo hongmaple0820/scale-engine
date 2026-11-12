@@ -959,7 +959,8 @@ export class AgentControlPlane {
     const completedMessages = operatorMessages.filter(message => message.status === 'completed')
     const failedMessages = operatorMessages.filter(message => message.status === 'failed')
     const cancelledMessages = operatorMessages.filter(message => message.status === 'cancelled')
-    const blockedMessages = ordered.filter(message => ['blocked', 'failed', 'cancelled'].includes(message.status))
+    const blockedMessages = operatorMessages.filter(message => message.status === 'blocked')
+    const terminalMessages = ordered.filter(message => ['blocked', 'failed', 'cancelled'].includes(message.status))
     const latestOperator = [...operatorMessages].reverse().find(message => message.text.trim())
     const latestAgent = [...agentMessages].reverse().find(message => message.text.trim())
     const openItems = pendingMessages.map(message => trimForSummary(message.text, 120))
@@ -975,7 +976,7 @@ export class AgentControlPlane {
         : ['No open agent-control action is currently queued.']
     const warnings = uniqueStrings([
       ...session.warnings,
-      ...blockedMessages.flatMap(message => message.warnings),
+      ...terminalMessages.flatMap(message => message.warnings),
     ])
     const firstMessageAt = ordered[0]?.createdAt
     const lastMessageAt = ordered[ordered.length - 1]?.createdAt
