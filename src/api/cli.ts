@@ -1228,7 +1228,7 @@ const aiOsPlanCommand = defineCommand({
 })
 
 const aiOsRunCommand = defineCommand({
-  meta: { name: 'run', description: 'Run the AI OS beta loop in dry-run or guarded mode and write an execution report' },
+  meta: { name: 'run', description: 'Create a governed AI OS run report; guarded mode may execute configured verification commands but never invokes an external Agent Executor' },
   args: {
     dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
     'task-id': { type: 'string', description: 'Task id' },
