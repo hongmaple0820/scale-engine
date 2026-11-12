@@ -108,3 +108,46 @@ export function appendDashboardAuditEvent(path: string, event: DashboardAuditEve
   mkdirSync(dirname(path), { recursive: true })
   appendFileSync(path, JSON.stringify(event) + '\n', { encoding: 'utf8', flag: 'a', mode: 0o600 })
 }
+
+
+export interface DashboardRateLimitDecision {
+  allowed: boolean
+  retryAfterSeconds: number
+}
+
+/** Process-local fixed-window limiter for Dashboard HTTP requests. */
+export class DashboardRateLimiter {
+  private readonly windows = new Map<string, { count: number; resetAt: number }>()
+
+  constructor(private readonly maxEntries = 4096) {}
+
+  consume(key: string, limit: number, windowMs: number, now = Date.now()): DashboardRateLimitDecision {
+    const normalizedLimit = Math.max(1, Math.floor(limit))
+    const normalizedWindow = Math.max(1, Math.floor(windowMs))
+    const current = this.windows.get(key)
+    if (!current || current.resetAt <= now) {
+      this.prune(now)
+      this.windows.set(key, { count: 1, resetAt: now + normalizedWindow })
+      return { allowed: true, retryAfterSeconds: 0 }
+    }
+    if (current.count >= normalizedLimit) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+      }
+    }
+    current.count += 1
+    return { allowed: true, retryAfterSeconds: 0 }
+  }
+
+  private prune(now: number): void {
+    for (const [key, value] of this.windows) {
+      if (value.resetAt <= now) this.windows.delete(key)
+    }
+    while (this.windows.size >= this.maxEntries) {
+      const oldest = this.windows.keys().next().value
+      if (oldest === undefined) break
+      this.windows.delete(oldest)
+    }
+  }
+}
