@@ -26,6 +26,39 @@ it to inject this header upstream, keep the Dashboard port firewalled from
 direct client access, and terminate TLS at the proxy. Do not expose the token
 to browser JavaScript or place it in a URL.
 
+## Scoped bearer tokens
+
+The legacy `SCALE_DASHBOARD_TOKEN` remains a full operator/admin token for
+backward compatibility. Additional least-privilege bearer tokens can be
+configured with `SCALE_DASHBOARD_SCOPED_TOKENS` as a JSON array:
+
+```json
+[
+  {
+    "id": "viewer",
+    "token": "<at-least-32-random-characters>",
+    "scopes": ["dashboard:read", "integrations:read"]
+  },
+  {
+    "id": "agent-operator",
+    "token": "<a-different-at-least-32-character-token>",
+    "scopes": ["dashboard:read", "agent-control:read", "agent-control:write"]
+  }
+]
+```
+
+Supported scopes are `dashboard:read`, `dashboard:write`,
+`dashboard:admin`, `agent-control:read`, `agent-control:write`,
+`integrations:read`, `integrations:write`, `integrations:admin`,
+`bridge:read`, `bridge:write`, `bridge:admin`, `tasks:read`,
+`tasks:write`, `governance:read`, and `governance:write`.
+The admin token and `dashboard:admin` scope bypass route scopes; all other
+tokens are limited to the exact route family and operation scope. Sensitive
+integration authorization/configuration, bridge registration/deletion, and
+Dashboard restart operations require their admin scope. Tokens are compared
+without logging their values; audit records identify only the actor class.
+
+
 ## Browser request boundary
 
 The Dashboard accepts browser requests only from the request's own origin or
