@@ -237,6 +237,7 @@ describe('AI OS runtime planner', () => {
     ]))
     expect(report.agentExecution).toEqual(expect.objectContaining({
       strategy: 'agent-execution-settlement-v1',
+      executorStatus: 'not-configured',
       status: 'planned',
       summary: expect.objectContaining({
         settledRoles: 0,
@@ -248,7 +249,7 @@ describe('AI OS runtime planner', () => {
     expect(report.agentExecution?.evidence.pending.length).toBeGreaterThan(0)
     expect(report.agentExecution?.recommendations.join(' ')).toContain('no Agent Executor was invoked')
     expect(report.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'plan', status: 'passed' }),
     ]))
     expect(report.evidence.produced).toContain('runtime-evidence')
     expect(report.evidence.produced).toContain('agent-collaboration-plan')
