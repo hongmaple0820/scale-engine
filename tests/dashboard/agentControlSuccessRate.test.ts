@@ -53,6 +53,7 @@ describe('AgentControl successRate KPI', () => {
     expect(summary.failedMessages).toBe(1)
     expect(summary.cancelledMessages).toBe(1)
     expect(summary.blockedMessages).toBe(1)
+    expect(plane.getReport().summary.blockedMessages).toBe(1)
     expect(summary.successRate).toBeCloseTo(0.5)
 
     const convo = plane.getTranscript('s1').summary
