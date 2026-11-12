@@ -110,6 +110,49 @@
       "expected": {
         "triggered": false
       }
+    },
+    {
+      "id": "github-personal-access-token-block",
+      "tool": "Write",
+      "args": {
+        "content": "GITHUB_TOKEN='ghp_0123456789abcdefghijklmnopqrstuvwxyz'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "openai-key-without-key-name-block",
+      "tool": "Write",
+      "args": {
+        "content": "sk-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "hardcoded-password-block",
+      "tool": "Edit",
+      "args": {
+        "content": "password='synthetic-test-password-123'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "block"
+      }
+    },
+    {
+      "id": "short-password-value-allow",
+      "tool": "Write",
+      "args": {
+        "content": "password='short'"
+      },
+      "expected": {
+        "triggered": false
+      }
     }
   ],
   "shellTools": [
@@ -835,6 +878,29 @@
       "expected": {
         "triggered": true,
         "severity": "warn"
+      }
+    },
+    {
+      "id": "github-token-high-confidence-warn-mode",
+      "mode": "warn",
+      "tool": "Write",
+      "args": {
+        "content": "GITHUB_TOKEN='ghp_0123456789abcdefghijklmnopqrstuvwxyz'"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "warn"
+      }
+    },
+    {
+      "id": "hardcoded-password-off-mode",
+      "mode": "off",
+      "tool": "Edit",
+      "args": {
+        "content": "password='synthetic-test-password-123'"
+      },
+      "expected": {
+        "triggered": false
       }
     }
   ],
