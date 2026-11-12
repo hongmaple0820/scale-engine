@@ -1,17 +1,18 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { timingSafeEqual } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
 
 export interface DashboardAuditEvent {
-  event: 'request.started' | 'request.completed'
+  event: 'request.started' | 'request.completed' | 'request.denied'
   requestId: string
   timestamp: number
   method: string
   path: string
   origin: string | null
-  actor: 'loopback' | 'bearer-token' | 'scoped-token'
+  actor: 'loopback' | 'bearer-token' | 'scoped-token' | 'unauthenticated'
   status?: number
+  reason?: 'rate-limit' | 'authentication' | 'scope' | 'confirmation'
 }
 
 export function isDashboardLoopbackHost(host: string): boolean {
@@ -206,7 +207,7 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
     return scope('agent-control:read', 'agent-control:write')
   }
   if (path.startsWith('/api/integrations')) {
-    if (/\/(auth|config|setup|bootstrap-local|acceptance|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
+    if (/\/(auth|config|setup|bootstrap-local|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
       || path.startsWith('/api/integrations/feishu/actions/')
       || path === '/api/integrations/agent-connect'
       || path === '/api/integrations/feishu/route'
@@ -240,6 +241,77 @@ export function appendDashboardAuditEvent(path: string, event: DashboardAuditEve
   appendFileSync(path, JSON.stringify(event) + '\n', { encoding: 'utf8', flag: 'a', mode: 0o600 })
 }
 
+
+export interface DashboardConfirmationChallenge {
+  token: string
+  expiresAt: number
+}
+
+interface StoredDashboardConfirmation {
+  principal: string
+  method: string
+  path: string
+  expiresAt: number
+}
+
+/** Short-lived, single-use confirmation tokens bound to one principal and exact HTTP action. */
+export class DashboardConfirmationStore {
+  private readonly challenges = new Map<string, StoredDashboardConfirmation>()
+
+  constructor(private readonly ttlMs = 60_000, private readonly maxEntries = 512) {}
+
+  issue(principal: string, method: string, path: string, now = Date.now()): DashboardConfirmationChallenge {
+    this.prune(now)
+    while (this.challenges.size >= this.maxEntries) {
+      const oldest = this.challenges.keys().next().value
+      if (oldest === undefined) break
+      this.challenges.delete(oldest)
+    }
+    const token = randomBytes(32).toString('hex')
+    const expiresAt = now + Math.max(1_000, this.ttlMs)
+    this.challenges.set(token, { principal, method: method.toUpperCase(), path, expiresAt })
+    return { token, expiresAt }
+  }
+
+  consume(token: string | undefined, principal: string, method: string, path: string, now = Date.now()): boolean {
+    if (!token) return false
+    const challenge = this.challenges.get(token)
+    if (!challenge) return false
+    this.challenges.delete(token)
+    return challenge.expiresAt > now
+      && challenge.principal === principal
+      && challenge.method === method.toUpperCase()
+      && challenge.path === path
+  }
+
+  private prune(now: number): void {
+    for (const [token, challenge] of this.challenges) {
+      if (challenge.expiresAt <= now) this.challenges.delete(token)
+    }
+  }
+}
+
+export function requiresDashboardConfirmation(method: string, path: string): boolean {
+  const verb = method.toUpperCase()
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(verb)) return false
+  return path === '/api/v1/restart'
+    || path === '/api/v1/reload'
+    || path === '/api/dashboard/service/actions/restart'
+    || /^\/api\/v1\/projects\/[^/]+\/model$/.test(path)
+    || /^\/api\/v1\/cron\/[^/]+\/exec$/.test(path)
+    || /^\/api\/agent-control\/sessions\/[^/]+\/enable-local-executor$/.test(path)
+    || /^\/api\/v1\/governance\/config\/.+$/.test(path)
+    || /^\/api\/lessons\/[^/]+\/approve$/.test(path)
+    || /^\/api\/knowledge\/local\/[^/]+\/review$/.test(path)
+    || (path.startsWith('/api/integrations/') && (
+      /\/(auth|config|setup|bootstrap-local|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
+      || path.startsWith('/api/integrations/feishu/actions/')
+      || path === '/api/integrations/agent-connect'
+      || path === '/api/integrations/feishu/route'
+      || path === '/api/integrations/knowledge/tencent-ima'
+    ))
+    || (verb === 'DELETE' && (path.startsWith('/api/v1/bridges/') || path.startsWith('/bridge/sessions/')))
+}
 
 export interface DashboardRateLimitDecision {
   allowed: boolean

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
-import { assertDashboardSecurityConfig, DashboardRateLimiter, dashboardAuthorizationAllows, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization } from '../../src/dashboard/DashboardSecurity.js'
+import { assertDashboardSecurityConfig, DashboardConfirmationStore, DashboardRateLimiter, dashboardAuthorizationAllows, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, requiresDashboardConfirmation, resolveDashboardAuthorization } from '../../src/dashboard/DashboardSecurity.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -43,6 +43,26 @@ describe('Dashboard security primitives', () => {
   it('requires exact HTTP(S) origins in the allowlist', () => {
     expect(normalizeDashboardAllowedOrigins('https://console.example,http://localhost:3210')).toEqual(['https://console.example', 'http://localhost:3210'])
     expect(() => normalizeDashboardAllowedOrigins('https://console.example/path')).toThrow('exact HTTP(S) origins')
+  })
+
+  it('binds confirmation tokens to one actor, method, path, and expiry', () => {
+    const store = new DashboardConfirmationStore(1000)
+    const issued = store.issue('operator-1', 'post', '/api/v1/restart', 100)
+    expect(issued.expiresAt).toBe(1100)
+    expect(store.consume(issued.token, 'operator-2', 'POST', '/api/v1/restart', 200)).toBe(false)
+    expect(store.consume(issued.token, 'operator-1', 'POST', '/api/v1/restart', 200)).toBe(false)
+    const second = store.issue('operator-1', 'POST', '/api/v1/restart', 100)
+    expect(store.consume(second.token, 'operator-1', 'POST', '/api/v1/restart', 1100)).toBe(false)
+    const third = store.issue('operator-1', 'POST', '/api/v1/restart', 100)
+    expect(store.consume(third.token, 'operator-1', 'POST', '/api/v1/restart', 200)).toBe(true)
+    expect(store.consume(third.token, 'operator-1', 'POST', '/api/v1/restart', 201)).toBe(false)
+  })
+
+  it('requires confirmation only for configured high-impact actions', () => {
+    expect(requiresDashboardConfirmation('POST', '/api/v1/restart')).toBe(true)
+    expect(requiresDashboardConfirmation('POST', '/api/v1/projects/demo/model')).toBe(true)
+    expect(requiresDashboardConfirmation('POST', '/api/agent-control/sessions/s1/messages')).toBe(false)
+    expect(requiresDashboardConfirmation('GET', '/api/v1/restart')).toBe(false)
   })
 
   it('allows scoped credentials to satisfy remote binding requirements without an admin token', () => {
@@ -164,8 +184,9 @@ describe('DashboardServer security middleware', () => {
     roots.push(projectDir)
     const token = '0123456789abcdef0123456789abcdef'
     const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()
-    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'GET' } })
+    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type,x-scale-dashboard-confirmation' } })
     expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('Access-Control-Allow-Headers')?.toLowerCase()).toContain('x-scale-dashboard-confirmation')
     const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })
     expect(unauthorized.status).toBe(401)
   })
@@ -183,6 +204,43 @@ describe('DashboardServer security middleware', () => {
     const limited = await app.request('/api/health', { headers })
     expect(limited.status).toBe(429)
     expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(0)
+  })
+
+  it('requires an actor-bound confirmation token for high-impact actions and consumes it once', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-confirmation-'))
+    roots.push(projectDir)
+    const token = 'agent-admin'.padEnd(32, 'x')
+    const app = new DashboardServer({
+      projectDir,
+      host: '0.0.0.0',
+      scopedTokens: [{ id: 'agent-admin', token, scopes: ['agent-control:admin'] }],
+      allowedHosts: ['localhost'],
+    }).getApp()
+    const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
+    const actionPath = '/api/agent-control/sessions/missing-session/enable-local-executor'
+    const missing = await app.request(actionPath, { method: 'POST', headers, body: '{}' })
+    expect(missing.status).toBe(428)
+    const issued = await app.request('/api/security/confirmations', {
+      method: 'POST', headers, body: JSON.stringify({ method: 'POST', path: actionPath }),
+    })
+    expect(issued.status).toBe(200)
+    const challenge = await issued.json() as { confirmationToken: string }
+    expect(challenge.confirmationToken).toMatch(/^[a-f0-9]{64}$/)
+    const confirmed = await app.request(actionPath, {
+      method: 'POST', headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken }, body: '{}',
+    })
+    expect(confirmed.status).toBe(200)
+    expect(await confirmed.json()).toEqual(expect.objectContaining({ ok: true }))
+    const replay = await app.request(actionPath, {
+      method: 'POST', headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken }, body: '{}',
+    })
+    expect(replay.status).toBe(428)
+    const audit = readFileSync(join(projectDir, '.scale', 'audit', 'dashboard-security.jsonl'), 'utf8')
+    expect(audit).toContain('scoped-token')
+    expect(audit).not.toContain(challenge.confirmationToken)
+    expect(audit).not.toContain(token)
+    expect(audit).toContain('"event":"request.denied"')
+    expect(audit).toContain('"reason":"confirmation"')
   })
 
   it('allows scoped remote tokens only the configured read permissions', async () => {
@@ -208,6 +266,9 @@ describe('DashboardServer security middleware', () => {
     })
     expect(denied.status).toBe(403)
     expect(await denied.text()).toContain('required scope')
+    const auditAfterDenied = readFileSync(join(projectDir, '.scale', 'audit', 'dashboard-security.jsonl'), 'utf8')
+    expect(auditAfterDenied).toContain('"reason":"scope"')
+    expect(auditAfterDenied).not.toContain(viewerToken)
   })
 
   it('supports scoped-only authentication on non-loopback bindings', async () => {

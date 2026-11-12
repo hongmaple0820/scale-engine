@@ -634,6 +634,21 @@ describe('DashboardServer API', () => {
 
     const server = new DashboardServer({ projectDir, scaleDir, projectName: 'Capability Project' })
     const app = server.getApp()
+    const confirmedRequest = async (path: string, init: RequestInit = {}) => {
+      const method = (init.method ?? 'GET').toUpperCase()
+      const actorHeaders = new Headers(init.headers)
+      actorHeaders.set('Host', 'localhost')
+      actorHeaders.set('Origin', 'http://localhost')
+      const challengeResponse = await app.request('/api/security/confirmations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Host: 'localhost', Origin: 'http://localhost' },
+        body: JSON.stringify({ method, path }),
+      })
+      expect(challengeResponse.status).toBe(200)
+      const challenge = await challengeResponse.json() as { confirmationToken: string }
+      actorHeaders.set('X-SCALE-DASHBOARD-CONFIRMATION', challenge.confirmationToken)
+      return app.request(path, { ...init, headers: actorHeaders })
+    }
     const report = await json<{
       summary: { total: number; ready: number; partial: number; missing: number }
       realtime: { mode: string; heartbeatOnly: boolean }
@@ -884,7 +899,7 @@ describe('DashboardServer API', () => {
       }
       secrets: { path: string; rawStored: boolean; tokens: { managementApi: string; bridge: string; webhook: string } }
       actions: string[]
-    }>(await app.request('/api/integrations/agent-os/bootstrap-local', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/agent-os/bootstrap-local', { method: 'POST' }))
     expect(bootstrappedAgentOs).toEqual(expect.objectContaining({
       ok: true,
       saved: true,
@@ -948,7 +963,7 @@ describe('DashboardServer API', () => {
       verificationUrl?: string
       setupCommand?: string
       error?: string
-    }>(await app.request('/api/integrations/feishu/auth/start', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/feishu/auth/start', { method: 'POST' }))
     expect(feishuAuth).toEqual(expect.objectContaining({
       provider: 'feishu',
       command: 'lark-cli',
@@ -981,7 +996,7 @@ describe('DashboardServer API', () => {
         automation: { cronEnabled: boolean; heartbeatEnabled: boolean; heartbeatIntervalMins: number; maxTurnTimeMins: number; resetOnIdleMins: number }
         endpoints: { managementApi: string; bridgeWebSocket: string; webhook: string }
       }
-    }>(await app.request('/api/integrations/agent-connect', {
+    }>(await confirmedRequest('/api/integrations/agent-connect', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1076,7 +1091,7 @@ describe('DashboardServer API', () => {
         projectDir: string
         dryRunSendPlan?: { command: string; args: string[]; requiresConfirmation: boolean }
       }
-    }>(await app.request('/api/integrations/feishu/route', {
+    }>(await confirmedRequest('/api/integrations/feishu/route', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1238,7 +1253,7 @@ describe('DashboardServer API', () => {
     const managementModel = await json<{
       ok: boolean
       session: { sessionId: string; platformId: string; modelId: string; channelProvider: string }
-    }>(await app.request('/api/v1/projects/capability-project/model', {
+    }>(await confirmedRequest('/api/v1/projects/capability-project/model', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1318,7 +1333,7 @@ describe('DashboardServer API', () => {
       ok: boolean
       result: string
       loop: { id: string }
-    }>(await app.request('/api/v1/cron/heartbeat/exec', { method: 'POST' }))
+    }>(await confirmedRequest('/api/v1/cron/heartbeat/exec', { method: 'POST' }))
     expect(heartbeatExec).toEqual(expect.objectContaining({
       ok: true,
       result: 'trigger-recorded',
@@ -1551,7 +1566,7 @@ describe('DashboardServer API', () => {
     const bridgeDeleted = await json<{
       ok: boolean
       deleted: { id: string; agentSessionId: string }
-    }>(await app.request(`/bridge/sessions/${bridgeCreated.session.id}`, { method: 'DELETE' }))
+    }>(await confirmedRequest(`/bridge/sessions/${bridgeCreated.session.id}`, { method: 'DELETE' }))
     expect(bridgeDeleted).toEqual(expect.objectContaining({
       ok: true,
       deleted: expect.objectContaining({ id: bridgeCreated.session.id, agentSessionId: 'bridge-release' }),
@@ -1765,7 +1780,7 @@ describe('DashboardServer API', () => {
       error: expect.stringContaining('Unsupported model'),
     }))
 
-    const invalidRouteResponse = await app.request('/api/integrations/feishu/route', {
+    const invalidRouteResponse = await confirmedRequest('/api/integrations/feishu/route', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agentPlatformId: 'unknown-agent' }),
@@ -1782,7 +1797,7 @@ describe('DashboardServer API', () => {
       ok: boolean
       status: string
       error: string
-    }>(await app.request('/api/integrations/feishu/actions/live-send', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/feishu/actions/live-send', { method: 'POST' }))
     expect(blockedAction).toEqual(expect.objectContaining({
       ok: false,
       status: 'blocked',
@@ -1882,9 +1897,18 @@ describe('DashboardServer API', () => {
     }
 
     const server = new DashboardServer({ projectDir, scaleDir })
-    const response = await server.getApp().request('/api/knowledge/local/MEM-REVIEW/review', {
+    const app = server.getApp()
+    const reviewPath = '/api/knowledge/local/MEM-REVIEW/review'
+    const challengeResponse = await app.request('/api/security/confirmations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'POST', path: reviewPath }),
+    })
+    expect(challengeResponse.status).toBe(200)
+    const challenge = await challengeResponse.json() as { confirmationToken: string }
+    const response = await app.request(reviewPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken },
       body: JSON.stringify({ action: 'approve', reason: 'test approval' }),
     })
     const result = await json<{
@@ -1952,9 +1976,18 @@ describe('DashboardServer API', () => {
     }
 
     const server = new DashboardServer({ projectDir, scaleDir })
-    const response = await server.getApp().request('/api/knowledge/local/MEM-ACTIVE/review', {
+    const app = server.getApp()
+    const reviewPath = '/api/knowledge/local/MEM-ACTIVE/review'
+    const challengeResponse = await app.request('/api/security/confirmations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'POST', path: reviewPath }),
+    })
+    expect(challengeResponse.status).toBe(200)
+    const challenge = await challengeResponse.json() as { confirmationToken: string }
+    const response = await app.request(reviewPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken },
       body: JSON.stringify({ action: 'reject' }),
     })
     expect(response.status).toBe(422)

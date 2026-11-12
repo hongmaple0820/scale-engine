@@ -72,13 +72,42 @@ an exact origin listed in `SCALE_DASHBOARD_ALLOWED_ORIGINS` (comma-separated
 HTTP(S) origins). Cross-origin requests outside this allowlist are rejected,
 including preflight requests. Only add origins controlled by the same operator.
 
+## High-impact action confirmation
+
+High-impact mutations require a short-lived, single-use confirmation bound to
+the authenticated principal, exact HTTP method, and exact route. The Dashboard
+Vue client handles this automatically: when a protected action receives HTTP
+428, it requests a confirmation challenge, displays a confirmation dialog in
+the selected UI language, and retries once only after the operator accepts.
+
+Non-browser clients must use the same two-step protocol:
+
+1. Send `POST /api/security/confirmations` with the same bearer credential
+   used for the action and JSON body `{"method":"POST","path":"/api/v1/restart"}`.
+2. Read the returned `confirmationToken` and send the intended request with
+   `X-SCALE-DASHBOARD-CONFIRMATION: <confirmationToken>`.
+3. Use the token within 60 seconds. It is invalid after one use and cannot be
+   replayed by another principal, method, or route. Missing, expired, mismatched,
+   or replayed tokens receive HTTP 428.
+
+The protected set includes Dashboard restart/reload, Agent model routing and
+local-executor enablement, cron execution, governance policy/configuration,
+lesson approval, integration authorization/configuration/setup, bridge deletion. The route matcher is explicit;
+ordinary message sending and read-only operations do not trigger confirmation.
+
+This is an explicit intent-confirmation step, not second-person approval or
+identity proof. A stolen credential can still request and consume its own
+challenge; use TLS, a firewall, scoped credentials, and operator controls.
+
 ## Mutation audit
 
 All HTTP mutations (POST, PUT, PATCH, DELETE), including bridge routes outside
 `/api/`, and sensitive reads under Agent Control, integrations, task, bridge,
 event, and governance APIs are recorded in
 `.scale/audit/dashboard-security.jsonl`. Records contain method, path, origin,
-actor class, timestamp, request ID, and response status. Request bodies, bearer
+actor class, timestamp, request ID, and response status. Authentication, scope,
+rate-limit, and confirmation denials are also recorded as `request.denied`
+with a reason and HTTP status. Request bodies, bearer
 tokens, and credential values are never written to this log. If the audit log
 cannot record the start of an audited request, that request is rejected before
 its handler runs.
