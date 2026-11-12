@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventBus } from '../../src/core/eventBus.js'
 import { DangerousCommandDetector, SecretLeakDetector } from '../../src/guardrails/advancedDetectors.js'
+import { PrematureDoneDetector } from '../../src/guardrails/detectors.js'
 import { isFailedVerificationEvent, isVerificationEvidenceEvent } from '../../src/guardrails/detectors.js'
 import { loadVerificationCommandCatalog, normalizeShellToolName, isVerificationCommand, type VerificationCommandCatalog } from '../../src/guardrails/verificationCommands.js'
 import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION, guardrailsVersionReport } from '../../src/guardrails/versions.js'
@@ -18,6 +19,7 @@ type Fixture = {
   shellTools: Array<{ id: string; input: string; expected: string | null }>
   verificationOutcomes: Array<{ id: string; type: string; payload: unknown; expected: boolean }>
   verificationEvents: Array<{ id: string; type: string; payload: unknown; expected: boolean }>
+  verificationResults: Array<{ id: string; command: string; exitCode: number; output: string; expected: { triggered: boolean; reason?: string } }>
   verificationCatalog: {
     version: number
     defaultProfile: string
@@ -131,6 +133,42 @@ describe('Shield / Guardrails versioned regression corpus', () => {
       expect(catalog.commands).toContain('powershell -File tools/validate-patterns.ps1')
       expect(isVerificationCommand('powershell -File tools/validate-patterns.ps1', catalog)).toBe(true)
     } finally {
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it.each(fixtures.verificationResults)('verification output fixture: $id', async fixture => {
+    const previousProjectDir = process.env.SCALE_PROJECT_DIR
+    const previousScaleDir = process.env.SCALE_DIR
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-shield-output-fixture-'))
+    const sessionId = fixture.id
+    try {
+      process.env.SCALE_PROJECT_DIR = projectDir
+      process.env.SCALE_DIR = '.scale'
+      const bus = new EventBus({ eventsDir: join(projectDir, 'events') })
+      bus.emit('tool.completed', {
+        tool: 'Edit',
+        args: { file_path: 'src/example.ts' },
+      }, { sessionId })
+      await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+      bus.emit('tool.completed', {
+        tool: 'Bash',
+        args: { command: fixture.command },
+        exitCode: fixture.exitCode,
+        output: fixture.output,
+      }, { sessionId })
+
+      const result = await new PrematureDoneDetector().check(
+        { sessionId },
+        { eventBus: bus, cache: new Map() },
+      )
+      expect(result.triggered).toBe(fixture.expected.triggered)
+      if (fixture.expected.reason) expect(result.reason).toContain(fixture.expected.reason)
+    } finally {
+      if (previousProjectDir === undefined) delete process.env.SCALE_PROJECT_DIR
+      else process.env.SCALE_PROJECT_DIR = previousProjectDir
+      if (previousScaleDir === undefined) delete process.env.SCALE_DIR
+      else process.env.SCALE_DIR = previousScaleDir
       rmSync(projectDir, { recursive: true, force: true })
     }
   })
