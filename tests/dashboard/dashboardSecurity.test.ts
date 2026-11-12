@@ -89,6 +89,10 @@ describe('Dashboard security primitives', () => {
     expect(dashboardAuthorizationAllows(viewer!, 'dashboard:read')).toBe(true)
     expect(dashboardAuthorizationAllows(viewer!, 'agent-control:write')).toBe(false)
     expect(dashboardAuthorizationAllows(viewer!, 'agent-control:admin')).toBe(false)
+    const agentAdmin = { principal: 'agent-admin', kind: 'scoped' as const, scopes: ['agent-control:admin'] as Array<'agent-control:admin'> }
+    expect(dashboardAuthorizationAllows(agentAdmin, 'agent-control:read')).toBe(true)
+    expect(dashboardAuthorizationAllows(agentAdmin, 'agent-control:write')).toBe(true)
+    expect(dashboardAuthorizationAllows(agentAdmin, 'integrations:write')).toBe(false)
     expect(dashboardAuthorizationAllows(admin!, 'agent-control:write')).toBe(true)
   })
 
