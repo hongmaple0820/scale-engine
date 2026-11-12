@@ -92,8 +92,7 @@ Non-browser clients must use the same two-step protocol:
 
 The protected set includes Dashboard restart/reload, Agent model routing and
 local-executor enablement, cron execution, governance policy/configuration,
-lesson approval, integration authorization/configuration/setup, bridge
-registration/deletion, and capability mapping. The route matcher is explicit;
+lesson approval, integration authorization/configuration/setup, bridge deletion. The route matcher is explicit;
 ordinary message sending and read-only operations do not trigger confirmation.
 
 This is an explicit intent-confirmation step, not second-person approval or
