@@ -54,15 +54,16 @@ Supported scopes are `dashboard:read`, `dashboard:write`,
 `bridge:read`, `bridge:write`, `bridge:admin`, `tasks:read`,
 `tasks:write`, `tasks:admin`, `governance:read`, `governance:write`,
 and `governance:admin`.
-The legacy operator token and `dashboard:admin` scope bypass route scopes; all
-other tokens are limited to the exact route family and operation scope. Agent
+The legacy operator token and `dashboard:admin` scope bypass route scopes;
+domain `*:admin` scopes include read/write access within that same domain, but
+do not grant permissions in other domains. Other tokens are limited to the
+exact route family and operation scope. Agent
 model routing and local executor enablement require `agent-control:admin`;
 cron execution requires `tasks:admin`; governance policy/configuration and
 lesson approval/rejection require `governance:admin`. Sensitive integration
 authorization/configuration, bridge registration/deletion, and Dashboard
 restart/reload operations require their admin scope. Tokens are compared
 without logging their values; audit records identify only the actor class.
-
 
 ## Browser request boundary
 
