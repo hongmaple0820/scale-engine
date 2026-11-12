@@ -83,6 +83,17 @@ const SHELL_TOOL_ALIASES = new Set([
 ])
 
 /** Canonical shell adapter name; unknown MCP tools intentionally return null. */
+/** Extract a command string from common explicit Shell adapter argument shapes. */
+export function extractShellCommand(args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined
+  const values = args as Record<string, unknown>
+  for (const key of ['command', 'cmd', 'script', 'command_line', 'commandLine']) {
+    const value = values[key]
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+  }
+  return undefined
+}
+
 export function normalizeShellToolName(tool: unknown): string | null {
   if (typeof tool !== 'string') return null
   const normalized = tool.trim().toLowerCase().replace(/[\s-]+/g, '_')

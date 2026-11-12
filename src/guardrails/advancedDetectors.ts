@@ -5,7 +5,7 @@
 import type { IDetector, DetectorContext } from './Gateway.js'
 import type { ToolUseInput, DetectorResult } from '../artifact/types.js'
 import { GUARDRAILS_DETECTOR_VERSIONS, GUARDRAILS_POLICY_VERSION } from './versions.js'
-import { normalizeShellToolName } from './verificationCommands.js'
+import { extractShellCommand, normalizeShellToolName } from './verificationCommands.js'
 
 // ============================================================================
 // 6. 危险命令检测器
@@ -35,7 +35,7 @@ export class DangerousCommandDetector implements IDetector {
   async check(input: ToolUseInput, ctx: DetectorContext): Promise<DetectorResult> {
     if (normalizeShellToolName(input.tool) === null) return { triggered: false }
 
-    const command = (input.args as { command?: string }).command ?? ''
+    const command = extractShellCommand(input.args) ?? ''
 
     for (const { pattern, description } of this.patterns) {
       if (pattern.test(command)) {

@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { RuntimeEvidenceLedger, type RuntimeEvidenceRecord } from '../runtime/RuntimeEvidenceLedger.js'
 import {
   loadVerificationCommandCatalog,
+  extractShellCommand,
   isVerificationCommand,
   normalizeShellToolName,
   verificationSuggestion,
@@ -294,18 +295,20 @@ export function isFailedVerificationEvent(event: { type: string; payload: unknow
 
 function commandFromVerificationEvent(payload: unknown): string | undefined {
   const event = payload as {
-    args?: { command?: unknown; cmd?: unknown; script?: unknown }
+    args?: Record<string, unknown>
     command?: unknown
     cmd?: unknown
     script?: unknown
+    command_line?: unknown
+    commandLine?: unknown
   }
   return firstString(
-    event.args?.command,
-    event.args?.cmd,
-    event.args?.script,
+    extractShellCommand(event.args),
     event.command,
     event.cmd,
     event.script,
+    event.command_line,
+    event.commandLine,
   )
 }
 
