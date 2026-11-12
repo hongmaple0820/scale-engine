@@ -110,6 +110,7 @@ export const DASHBOARD_SCOPES = [
   'dashboard:admin',
   'agent-control:read',
   'agent-control:write',
+  'agent-control:admin',
   'integrations:read',
   'integrations:write',
   'integrations:admin',
@@ -120,6 +121,7 @@ export const DASHBOARD_SCOPES = [
   'tasks:write',
   'governance:read',
   'governance:write',
+  'governance:admin',
 ] as const
 
 export type DashboardScope = typeof DASHBOARD_SCOPES[number]
@@ -193,8 +195,13 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
   const write = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(verb)
   const scope = (read: DashboardScope, mutation: DashboardScope): DashboardScope => write ? mutation : read
 
-  if (path === '/api/v1/restart' || path.startsWith('/api/dashboard/service/actions/')) return 'dashboard:admin'
+  if (path === '/api/v1/restart' || path === '/api/v1/reload'
+    || path.startsWith('/api/dashboard/service/actions/')
+    || path === '/api/v1/capabilities/map'
+    || /^\\/api\\/v1\\/cron\\/[^/]+\\/exec$/.test(path)
+    || /^\\/api\\/v1\\/projects\\/[^/]+\\/model$/.test(path)) return 'dashboard:admin'
   if (path.startsWith('/api/agent-control') || path.startsWith('/api/v1/projects/')) {
+    if (path.includes('/enable-local-executor')) return 'agent-control:admin'
     return scope('agent-control:read', 'agent-control:write')
   }
   if (path.startsWith('/api/integrations')) {
@@ -212,7 +219,12 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
     return scope('bridge:read', 'bridge:write')
   }
   if (path.startsWith('/api/v1/tasks')) return scope('tasks:read', 'tasks:write')
-  if (path.startsWith('/api/v1/governance')) return scope('governance:read', 'governance:write')
+  if (path.startsWith('/api/v1/governance')) {
+    if (path.startsWith('/api/v1/governance/config/')) return 'governance:admin'
+    return scope('governance:read', 'governance:write')
+  }
+  if (/^\\/api\\/lessons\\/[^/]+\\/(approve|reject)$/.test(path)
+    || /^\\/api\\/knowledge\\/local\\/[^/]+\\/review$/.test(path)) return 'governance:admin'
   return scope('dashboard:read', 'dashboard:write')
 }
 
