@@ -967,7 +967,7 @@ export class DashboardServer {
     this.scopedTokens = options.scopedTokens ?? parseDashboardScopedTokens(process.env.SCALE_DASHBOARD_SCOPED_TOKENS)
     assertDashboardScopedTokens(this.authToken, this.scopedTokens)
     this.allowedHosts = normalizeDashboardAllowedHosts(options.allowedHosts ?? process.env.SCALE_DASHBOARD_ALLOWED_HOSTS)
-    assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts)
+    assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts, this.scopedTokens.length > 0)
     this.allowedOrigins = normalizeDashboardAllowedOrigins(options.allowedOrigins ?? process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS)
     this.projectDir = resolve(options.projectDir ?? process.cwd())
     this.auditPath = resolve(options.auditPath ?? join(options.scaleDir ?? join(this.projectDir, '.scale'), 'audit', 'dashboard-security.jsonl'))
