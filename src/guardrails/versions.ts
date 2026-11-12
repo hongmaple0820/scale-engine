@@ -7,7 +7,7 @@
 export const GUARDRAILS_POLICY_VERSION = 1
 
 export const GUARDRAILS_DETECTOR_VERSIONS = Object.freeze({
-  'dangerous-command': '1.5.0',
+  'dangerous-command': '1.6.0',
   'secret-leak': '1.0.0',
   'premature-done': '1.5.0',
 } as const)
