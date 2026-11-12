@@ -205,7 +205,7 @@ export class PrematureDoneDetector implements IDetector {
     if (testCmd) {
       const output = (testCmd.payload as { output?: string }).output ?? ''
       // 检测测试 0/0 异常
-      if (/tests?\s*(0|no\s*tests?)/i.test(output) || /passed:\s*0/i.test(output)) {
+      if (/(?:\btests?\s*:?\s*(?:0|no\s*tests?)\b|\bno\s+tests?\b|passed:\s*0\b)/i.test(output)) {
         ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'empty_tests' }, { sessionId: input.sessionId })
         return {
           triggered: true,
@@ -215,7 +215,10 @@ export class PrematureDoneDetector implements IDetector {
         }
       }
       // 检测失败测试
-      if (/failed:\s*[1-9]/i.test(output) || /FAIL/i.test(output)) {
+      if (/failed:\s*[1-9]\d*/i.test(output)
+        || /\b[1-9]\d*\s+failed\b/i.test(output)
+        || /\b[1-9]\d*\s+failing\b/i.test(output)
+        || /(?:^|\n)\s*FAIL(?:ED)?\s+\S+/m.test(output)) {
         ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'tests_failed' }, { sessionId: input.sessionId })
         return {
           triggered: true,
