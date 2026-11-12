@@ -172,8 +172,9 @@ describe('DashboardServer security middleware', () => {
     const token = '0123456789abcdef0123456789abcdef'
     const app = new DashboardServer({ host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()
     const headers = { Origin: 'https://console.example' }
+    const paths = ['/api/health', '/health', '/api/project', '/api/projects', '/api/state']
     for (let index = 0; index < 10; index += 1) {
-      expect((await app.request('/api/health', { headers })).status).toBe(401)
+      expect((await app.request(paths[index % paths.length]!, { headers })).status).toBe(401)
     }
     const limited = await app.request('/api/health', { headers })
     expect(limited.status).toBe(429)
