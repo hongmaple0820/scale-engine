@@ -119,6 +119,7 @@ export const DASHBOARD_SCOPES = [
   'bridge:admin',
   'tasks:read',
   'tasks:write',
+  'tasks:admin',
   'governance:read',
   'governance:write',
   'governance:admin',
@@ -198,8 +199,9 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
   if (path === '/api/v1/restart' || path === '/api/v1/reload'
     || path.startsWith('/api/dashboard/service/actions/')
     || path === '/api/v1/capabilities/map'
-    || /^\\/api\\/v1\\/cron\\/[^/]+\\/exec$/.test(path)
-    || /^\\/api\\/v1\\/projects\\/[^/]+\\/model$/.test(path)) return 'dashboard:admin'
+    || path === '/api/v1/capabilities/map') return 'dashboard:admin'
+  if (/^\\/api\\/v1\\/cron\\/[^/]+\\/exec$/.test(path)) return 'tasks:admin'
+  if (/^\\/api\\/v1\\/projects\\/[^/]+\\/model$/.test(path)) return 'agent-control:admin'
   if (path.startsWith('/api/agent-control') || path.startsWith('/api/v1/projects/')) {
     if (path.includes('/enable-local-executor')) return 'agent-control:admin'
     return scope('agent-control:read', 'agent-control:write')
