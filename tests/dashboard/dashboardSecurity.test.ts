@@ -184,8 +184,9 @@ describe('DashboardServer security middleware', () => {
     roots.push(projectDir)
     const token = '0123456789abcdef0123456789abcdef'
     const app = new DashboardServer({ projectDir, host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()
-    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'GET' } })
+    const preflight = await app.request('/api/health', { method: 'OPTIONS', headers: { Origin: 'https://console.example', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type,x-scale-dashboard-confirmation' } })
     expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('Access-Control-Allow-Headers')?.toLowerCase()).toContain('x-scale-dashboard-confirmation')
     const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })
     expect(unauthorized.status).toBe(401)
   })
