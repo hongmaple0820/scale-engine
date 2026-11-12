@@ -6,9 +6,10 @@ intended for a trusted local operator on the same machine.
 ## Non-loopback binding
 
 Binding to `0.0.0.0`, a LAN address, or another non-loopback interface is
-rejected unless `SCALE_DASHBOARD_TOKEN` is configured. The token must contain
-at least 32 characters. Generate it with a cryptographically secure random
-generator and keep it out of source control, shell history, logs, and support
+rejected unless either `SCALE_DASHBOARD_TOKEN` or at least one valid
+`SCALE_DASHBOARD_SCOPED_TOKENS` entry is configured. Every token must contain
+at least 32 characters. Generate tokens with a cryptographically secure random
+generator and keep them out of source control, shell history, logs, and support
 bundles.
 
 Every non-loopback bind also requires `SCALE_DASHBOARD_ALLOWED_HOSTS`, a
@@ -48,14 +49,18 @@ configured with `SCALE_DASHBOARD_SCOPED_TOKENS` as a JSON array:
 ```
 
 Supported scopes are `dashboard:read`, `dashboard:write`,
-`dashboard:admin`, `agent-control:read`, `agent-control:write`,
+`dashboard:admin`, `agent-control:read`, `agent-control:write`, `agent-control:admin`,
 `integrations:read`, `integrations:write`, `integrations:admin`,
 `bridge:read`, `bridge:write`, `bridge:admin`, `tasks:read`,
-`tasks:write`, `governance:read`, and `governance:write`.
-The admin token and `dashboard:admin` scope bypass route scopes; all other
-tokens are limited to the exact route family and operation scope. Sensitive
-integration authorization/configuration, bridge registration/deletion, and
-Dashboard restart operations require their admin scope. Tokens are compared
+`tasks:write`, `tasks:admin`, `governance:read`, `governance:write`,
+and `governance:admin`.
+The legacy operator token and `dashboard:admin` scope bypass route scopes; all
+other tokens are limited to the exact route family and operation scope. Agent
+model routing and local executor enablement require `agent-control:admin`;
+cron execution requires `tasks:admin`; governance policy/configuration and
+lesson approval/rejection require `governance:admin`. Sensitive integration
+authorization/configuration, bridge registration/deletion, and Dashboard
+restart/reload operations require their admin scope. Tokens are compared
 without logging their values; audit records identify only the actor class.
 
 
