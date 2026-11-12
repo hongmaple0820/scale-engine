@@ -297,14 +297,14 @@ export function requiresDashboardConfirmation(method: string, path: string): boo
     || path === '/api/v1/reload'
     || path === '/api/dashboard/service/actions/restart'
     || path === '/api/v1/capabilities/map'
-    || /^\\/api\\/v1\\/projects\\/[^/]+\\/model$/.test(path)
-    || /^\\/api\\/v1\\/cron\\/[^/]+\\/exec$/.test(path)
-    || /^\\/api\\/agent-control\\/sessions\\/[^/]+\\/enable-local-executor$/.test(path)
-    || /^\\/api\\/v1\\/governance\\/config\\/.+$/.test(path)
-    || /^\\/api\\/lessons\\/[^/]+\\/approve$/.test(path)
-    || /^\\/api\\/knowledge\\/local\\/[^/]+\\/review$/.test(path)
+    || /^\/api\/v1\/projects\/[^/]+\/model$/.test(path)
+    || /^\/api\/v1\/cron\/[^/]+\/exec$/.test(path)
+    || /^\/api\/agent-control\/sessions\/[^/]+\/enable-local-executor$/.test(path)
+    || /^\/api\/v1\/governance\/config\/.+$/.test(path)
+    || /^\/api\/lessons\/[^/]+\/approve$/.test(path)
+    || /^\/api\/knowledge\/local\/[^/]+\/review$/.test(path)
     || (path.startsWith('/api/integrations/') && (
-      /\\/(auth|config|setup|bootstrap-local|acceptance|bridge\\/start|bridge\\/stop)(\\/|$)/i.test(path)
+      /\/(auth|config|setup|bootstrap-local|acceptance|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
       || path.startsWith('/api/integrations/feishu/actions/')
       || path === '/api/integrations/agent-connect'
       || path === '/api/integrations/feishu/route'
