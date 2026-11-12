@@ -86,9 +86,15 @@ protective abuse-control layer, not a replacement for proxy-level limits.
 
 ## Current authorization model and limits
 
-The configured bearer token grants one operator-level permission set; this is
-not a multi-user role/permission system. Loopback mode without a token remains
-a local-trust mode and does not authenticate individual local processes.
-Origin checks are a browser CSRF boundary, not a substitute for authentication.
-For remote access, use the token together with a TLS reverse proxy and firewall.
-Do not expose the Dashboard directly to the public internet.
+The legacy configured bearer token grants the full operator permission set.
+Scoped tokens provide least-privilege remote roles, but they do not authenticate
+individual OS users. Loopback mode without either token configuration remains a
+local-trust mode; configuring scoped tokens also enables bearer authentication
+on loopback. Origin checks are a browser CSRF boundary, not a substitute for
+authentication. For remote access, use a bearer token together with a TLS reverse
+proxy and firewall. Do not expose the Dashboard directly to the public internet.
+
+The Agent OS local API token (`SCALE_AGENT_OS_API_TOKEN`) is a separate
+route-specific credential used by local bridge registration flows. Per-bridge
+tokens authenticate bridge heartbeats/events; they are not Dashboard operator
+tokens and do not grant Dashboard UI or Agent Control permissions.
