@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
-import { DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from '../../src/dashboard/DashboardSecurity.js'
+import { DashboardRateLimiter, dashboardAuthorizationAllows, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization } from '../../src/dashboard/DashboardSecurity.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -43,6 +43,40 @@ describe('Dashboard security primitives', () => {
   it('requires exact HTTP(S) origins in the allowlist', () => {
     expect(normalizeDashboardAllowedOrigins('https://console.example,http://localhost:3210')).toEqual(['https://console.example', 'http://localhost:3210'])
     expect(() => normalizeDashboardAllowedOrigins('https://console.example/path')).toThrow('exact HTTP(S) origins')
+  })
+
+  it('parses scoped bearer tokens and rejects malformed or duplicate credentials', () => {
+    const token = 'a'.repeat(32)
+    expect(parseDashboardScopedTokens(JSON.stringify([{ id: 'viewer', token, scopes: ['dashboard:read', 'agent-control:read'] }]))).toEqual([
+      { id: 'viewer', token, scopes: ['dashboard:read', 'agent-control:read'] },
+    ])
+    expect(() => parseDashboardScopedTokens('{broken')).toThrow('JSON array')
+    expect(() => parseDashboardScopedTokens(JSON.stringify([{ id: 'viewer', token: 'short', scopes: ['dashboard:read'] }]))).toThrow('at least 32 characters')
+    expect(() => parseDashboardScopedTokens(JSON.stringify([
+      { id: 'viewer', token, scopes: ['dashboard:read'] },
+      { id: 'viewer', token: 'b'.repeat(32), scopes: ['dashboard:read'] },
+    ]))).toThrow('unique')
+  })
+
+  it('maps Dashboard routes to least-privilege scopes', () => {
+    expect(requiredDashboardScope('GET', '/api/health')).toBe('dashboard:read')
+    expect(requiredDashboardScope('POST', '/api/agent-control/sessions/s1/messages')).toBe('agent-control:write')
+    expect(requiredDashboardScope('GET', '/api/integrations/agent-connect')).toBe('integrations:read')
+    expect(requiredDashboardScope('PUT', '/api/integrations/agent-connect')).toBe('integrations:admin')
+    expect(requiredDashboardScope('POST', '/api/v1/bridges/register')).toBe('bridge:admin')
+    expect(requiredDashboardScope('POST', '/api/v1/restart')).toBe('dashboard:admin')
+  })
+
+  it('resolves scoped and admin bearer tokens without widening scoped permissions', () => {
+    const adminToken = 'admin'.padEnd(32, 'x')
+    const viewerToken = 'viewer'.padEnd(32, 'x')
+    const scopedTokens = parseDashboardScopedTokens(JSON.stringify([{ id: 'viewer', token: viewerToken, scopes: ['dashboard:read'] }]))
+    const viewer = resolveDashboardAuthorization('Bearer ' + viewerToken, adminToken, scopedTokens)
+    const admin = resolveDashboardAuthorization('Bearer ' + adminToken, adminToken, scopedTokens)
+    expect(viewer?.kind).toBe('scoped')
+    expect(dashboardAuthorizationAllows(viewer!, 'dashboard:read')).toBe(true)
+    expect(dashboardAuthorizationAllows(viewer!, 'agent-control:write')).toBe(false)
+    expect(dashboardAuthorizationAllows(admin!, 'agent-control:write')).toBe(true)
   })
 
   it('enforces fixed-window request limits and resets expired buckets', () => {
@@ -131,6 +165,27 @@ describe('DashboardServer security middleware', () => {
     const limited = await app.request('/api/health', { headers })
     expect(limited.status).toBe(429)
     expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(0)
+  })
+
+  it('allows scoped remote tokens only the configured read permissions', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-scoped-auth-'))
+    roots.push(projectDir)
+    const adminToken = 'admin'.padEnd(32, 'x')
+    const viewerToken = 'viewer'.padEnd(32, 'x')
+    const app = new DashboardServer({
+      host: '0.0.0.0',
+      authToken: adminToken,
+      scopedTokens: [{ id: 'viewer', token: viewerToken, scopes: ['dashboard:read', 'integrations:read'] }],
+      allowedHosts: ['localhost'],
+    }).getApp()
+    const headers = { Authorization: 'Bearer ' + viewerToken }
+    expect((await app.request('/api/health', { headers })).status).toBe(200)
+    expect((await app.request('/api/integrations/agent-connect', { headers })).status).toBe(200)
+    const denied = await app.request('/api/agent-control/sessions/s1/messages', {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'not allowed' }),
+    })
+    expect(denied.status).toBe(403)
+    expect(await denied.text()).toContain('required scope')
   })
 
   it('requires a valid bearer token for non-loopback bindings', async () => {
