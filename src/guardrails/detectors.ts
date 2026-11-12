@@ -215,7 +215,10 @@ export class PrematureDoneDetector implements IDetector {
         }
       }
       // 检测失败测试
-      if (/failed:\s*[1-9]/i.test(output) || /FAIL/i.test(output)) {
+      if (/failed:\s*[1-9]\d*/i.test(output)
+        || /\b[1-9]\d*\s+failed\b/i.test(output)
+        || /\b[1-9]\d*\s+failing\b/i.test(output)
+        || /(?:^|\n)\s*FAIL(?:ED)?\s+\S+/m.test(output)) {
         ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'tests_failed' }, { sessionId: input.sessionId })
         return {
           triggered: true,
