@@ -1012,6 +1012,19 @@ export class DashboardServer {
       const tokenValid = dashboardAuthorization !== null
       const principal = dashboardAuthorization?.principal
         ?? `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
+      const requestId = randomBytes(8).toString('hex')
+      const actor = dashboardAuthorization?.kind === 'scoped' ? 'scoped-token' as const
+        : dashboardAuthorization ? 'bearer-token' as const : requiresAuth ? 'unauthenticated' as const : 'loopback' as const
+      const recordDenied = (reason: 'rate-limit' | 'authentication' | 'scope' | 'confirmation', status: number) => {
+        try {
+          appendDashboardAuditEvent(this.auditPath, {
+            event: 'request.denied', requestId, timestamp: Date.now(), method,
+            path: c.req.path, origin: origin ?? null, actor, reason, status,
+          })
+        } catch (error) {
+          logger.error({ error, path: c.req.path, requestId, reason }, 'Dashboard security denial audit write failed')
+        }
+      }
 
       if (method !== 'OPTIONS') {
         const authFailure = requiresAuth && !tokenValid
@@ -1019,6 +1032,7 @@ export class DashboardServer {
         const rateWindowMs = 60_000
         const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${authFailure ? '*' : c.req.path}`, limit, rateWindowMs)
         if (!rateLimit.allowed) {
+          recordDenied('rate-limit', 429)
           return c.json(
             { error: 'Dashboard request rate limit exceeded.', retryAfterSeconds: rateLimit.retryAfterSeconds },
             429,
@@ -1028,16 +1042,19 @@ export class DashboardServer {
       }
 
       if (requiresAuth && method !== 'OPTIONS' && !tokenValid) {
+        recordDenied('authentication', 401)
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
       }
       if (requiresAuth && method !== 'OPTIONS' && c.req.path !== '/api/security/confirmations' && dashboardAuthorization
         && !dashboardAuthorizationAllows(dashboardAuthorization, requiredDashboardScope(method, c.req.path))) {
+        recordDenied('scope', 403)
         return c.json({ error: 'Dashboard token does not have the required scope.' }, 403)
       }
 
       if (requiresDashboardConfirmation(method, c.req.path)) {
         const confirmationToken = c.req.header('X-SCALE-DASHBOARD-CONFIRMATION')
         if (!this.confirmationStore.consume(confirmationToken, principal, method, c.req.path)) {
+          recordDenied('confirmation', 428)
           return c.json({
             error: 'This high-impact action requires an explicit, short-lived confirmation token.',
             confirmationRequired: true,
@@ -1058,9 +1075,6 @@ export class DashboardServer {
         '/bridge/',
       ].some(prefix => c.req.path.startsWith(prefix))
       const isAuditedRequest = isMutation || isSensitiveRead
-      const requestId = randomBytes(8).toString('hex')
-      const actor = dashboardAuthorization?.kind === 'scoped' ? 'scoped-token' as const
-        : dashboardAuthorization ? 'bearer-token' as const : 'loopback' as const
       if (isAuditedRequest) {
         try {
           appendDashboardAuditEvent(this.auditPath, {
