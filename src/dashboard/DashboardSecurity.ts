@@ -297,7 +297,6 @@ export function requiresDashboardConfirmation(method: string, path: string): boo
   return path === '/api/v1/restart'
     || path === '/api/v1/reload'
     || path === '/api/dashboard/service/actions/restart'
-    || path === '/api/v1/capabilities/map'
     || /^\/api\/v1\/projects\/[^/]+\/model$/.test(path)
     || /^\/api\/v1\/cron\/[^/]+\/exec$/.test(path)
     || /^\/api\/agent-control\/sessions\/[^/]+\/enable-local-executor$/.test(path)
@@ -311,7 +310,6 @@ export function requiresDashboardConfirmation(method: string, path: string): boo
       || path === '/api/integrations/feishu/route'
       || path === '/api/integrations/knowledge/tencent-ima'
     ))
-    || path === '/api/v1/bridges/register'
     || (verb === 'DELETE' && (path.startsWith('/api/v1/bridges/') || path.startsWith('/bridge/sessions/')))
 }
 
