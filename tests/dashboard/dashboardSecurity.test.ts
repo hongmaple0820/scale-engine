@@ -265,9 +265,9 @@ describe('DashboardServer security middleware', () => {
     })
     expect(denied.status).toBe(403)
     expect(await denied.text()).toContain('required scope')
-    const audit = readFileSync(join(projectDir, '.scale', 'audit', 'dashboard-security.jsonl'), 'utf8')
-    expect(audit).toContain('"reason":"scope"')
-    expect(audit).not.toContain(viewerToken)
+    const auditAfterDenied = readFileSync(join(projectDir, '.scale', 'audit', 'dashboard-security.jsonl'), 'utf8')
+    expect(auditAfterDenied).toContain('"reason":"scope"')
+    expect(auditAfterDenied).not.toContain(viewerToken)
   })
 
   it('supports scoped-only authentication on non-loopback bindings', async () => {
