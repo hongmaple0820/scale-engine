@@ -935,7 +935,7 @@ describe('DashboardServer API', () => {
       path: string
       steps: Array<{ id: string; status: string; error?: string }>
       nextActions: string[]
-    }>(await app.request('/api/integrations/agent-os/acceptance', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/agent-os/acceptance', { method: 'POST' }))
     expect(acceptance.status).toMatch(/^(passed|failed|blocked)$/)
     expect(acceptance.score).toBeGreaterThanOrEqual(0)
     expect(acceptance.score).toBeLessThanOrEqual(100)
@@ -1564,7 +1564,7 @@ describe('DashboardServer API', () => {
     const bridgeDeleted = await json<{
       ok: boolean
       deleted: { id: string; agentSessionId: string }
-    }>(await app.request(`/bridge/sessions/${bridgeCreated.session.id}`, { method: 'DELETE' }))
+    }>(await confirmedRequest(`/bridge/sessions/${bridgeCreated.session.id}`, { method: 'DELETE' }))
     expect(bridgeDeleted).toEqual(expect.objectContaining({
       ok: true,
       deleted: expect.objectContaining({ id: bridgeCreated.session.id, agentSessionId: 'bridge-release' }),
