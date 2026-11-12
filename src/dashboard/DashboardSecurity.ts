@@ -304,7 +304,7 @@ export function requiresDashboardConfirmation(method: string, path: string): boo
     || /^\/api\/lessons\/[^/]+\/approve$/.test(path)
     || /^\/api\/knowledge\/local\/[^/]+\/review$/.test(path)
     || (path.startsWith('/api/integrations/') && (
-      /\/(auth|config|setup|bootstrap-local|acceptance|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
+      /\/(auth|config|setup|bootstrap-local|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
       || path.startsWith('/api/integrations/feishu/actions/')
       || path === '/api/integrations/agent-connect'
       || path === '/api/integrations/feishu/route'
