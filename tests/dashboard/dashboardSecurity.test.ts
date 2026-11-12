@@ -229,7 +229,8 @@ describe('DashboardServer security middleware', () => {
     const confirmed = await app.request(actionPath, {
       method: 'POST', headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken }, body: '{}',
     })
-    expect(confirmed.status).toBe(400)
+    expect(confirmed.status).toBe(200)
+    expect(await confirmed.json()).toEqual(expect.objectContaining({ ok: true }))
     const replay = await app.request(actionPath, {
       method: 'POST', headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken }, body: '{}',
     })
