@@ -199,6 +199,7 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
   }
   if (path.startsWith('/api/integrations')) {
     if (/\/(auth|config|setup|bootstrap-local|acceptance|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
+      || path.startsWith('/api/integrations/feishu/actions/')
       || path === '/api/integrations/agent-connect'
       || path === '/api/integrations/feishu/route'
       || path === '/api/integrations/knowledge/tencent-ima') {
