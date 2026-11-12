@@ -8,7 +8,7 @@ import { streamSSE } from 'hono/streaming'
 import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, mkdirSync, type Dirent } from 'node:fs'
 import { basename, join, dirname, extname, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import yaml from 'js-yaml'
 import Database from 'better-sqlite3'
@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardRateLimiter, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -920,6 +920,7 @@ export interface DashboardOptions {
   currentProjectId?: string
   projects?: DashboardProjectSummary[]
   authToken?: string
+  scopedTokens?: DashboardScopedToken[]
   allowedOrigins?: string[]
   allowedHosts?: string[]
   auditPath?: string
@@ -938,6 +939,7 @@ export class DashboardServer {
   private port: number
   private host: string
   private authToken: string | undefined
+  private scopedTokens: DashboardScopedToken[]
   private allowedOrigins: string[]
   private allowedHosts: string[]
   private auditPath: string
@@ -962,8 +964,10 @@ export class DashboardServer {
     this.port = options.port ?? 3210
     this.host = options.host ?? '127.0.0.1'
     this.authToken = (options.authToken ?? process.env.SCALE_DASHBOARD_TOKEN)?.trim() || undefined
+    this.scopedTokens = options.scopedTokens ?? parseDashboardScopedTokens(process.env.SCALE_DASHBOARD_SCOPED_TOKENS)
+    assertDashboardScopedTokens(this.authToken, this.scopedTokens)
     this.allowedHosts = normalizeDashboardAllowedHosts(options.allowedHosts ?? process.env.SCALE_DASHBOARD_ALLOWED_HOSTS)
-    assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts)
+    assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts, this.scopedTokens.length > 0)
     this.allowedOrigins = normalizeDashboardAllowedOrigins(options.allowedOrigins ?? process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS)
     this.projectDir = resolve(options.projectDir ?? process.cwd())
     this.auditPath = resolve(options.auditPath ?? join(options.scaleDir ?? join(this.projectDir, '.scale'), 'audit', 'dashboard-security.jsonl'))
@@ -1001,18 +1005,18 @@ export class DashboardServer {
 
       const method = c.req.method.toUpperCase()
       const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-      const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
+      const requiresAuth = Boolean(this.authToken) || this.scopedTokens.length > 0 || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
       const authorization = c.req.header('Authorization')
-      const tokenValid = hasValidDashboardBearerToken(authorization, this.authToken)
-      const principal = tokenValid
-        ? createHash('sha256').update(authorization ?? '').digest('hex')
-        : `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
+      const dashboardAuthorization = resolveDashboardAuthorization(authorization, this.authToken, this.scopedTokens)
+      const tokenValid = dashboardAuthorization !== null
+      const principal = dashboardAuthorization?.principal
+        ?? `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
 
       if (method !== 'OPTIONS') {
         const authFailure = requiresAuth && !tokenValid
         const limit = authFailure ? 10 : isMutation ? 60 : 300
         const rateWindowMs = 60_000
-        const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${c.req.path}`, limit, rateWindowMs)
+        const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${authFailure ? '*' : c.req.path}`, limit, rateWindowMs)
         if (!rateLimit.allowed) {
           return c.json(
             { error: 'Dashboard request rate limit exceeded.', retryAfterSeconds: rateLimit.retryAfterSeconds },
@@ -1024,6 +1028,10 @@ export class DashboardServer {
 
       if (requiresAuth && method !== 'OPTIONS' && !tokenValid) {
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
+      }
+      if (requiresAuth && method !== 'OPTIONS' && dashboardAuthorization
+        && !dashboardAuthorizationAllows(dashboardAuthorization, requiredDashboardScope(method, c.req.path))) {
+        return c.json({ error: 'Dashboard token does not have the required scope.' }, 403)
       }
 
       const isSensitiveRead = method === 'GET' && [
@@ -1037,7 +1045,8 @@ export class DashboardServer {
       ].some(prefix => c.req.path.startsWith(prefix))
       const isAuditedRequest = isMutation || isSensitiveRead
       const requestId = randomBytes(8).toString('hex')
-      const actor = requiresAuth ? 'bearer-token' as const : 'loopback' as const
+      const actor = dashboardAuthorization?.kind === 'scoped' ? 'scoped-token' as const
+        : dashboardAuthorization ? 'bearer-token' as const : 'loopback' as const
       if (isAuditedRequest) {
         try {
           appendDashboardAuditEvent(this.auditPath, {

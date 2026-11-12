@@ -6,9 +6,10 @@ intended for a trusted local operator on the same machine.
 ## Non-loopback binding
 
 Binding to `0.0.0.0`, a LAN address, or another non-loopback interface is
-rejected unless `SCALE_DASHBOARD_TOKEN` is configured. The token must contain
-at least 32 characters. Generate it with a cryptographically secure random
-generator and keep it out of source control, shell history, logs, and support
+rejected unless either `SCALE_DASHBOARD_TOKEN` or at least one valid
+`SCALE_DASHBOARD_SCOPED_TOKENS` entry is configured. Every token must contain
+at least 32 characters. Generate tokens with a cryptographically secure random
+generator and keep them out of source control, shell history, logs, and support
 bundles.
 
 Every non-loopback bind also requires `SCALE_DASHBOARD_ALLOWED_HOSTS`, a
@@ -25,6 +26,44 @@ Every request to a token-protected Dashboard must include an
 it to inject this header upstream, keep the Dashboard port firewalled from
 direct client access, and terminate TLS at the proxy. Do not expose the token
 to browser JavaScript or place it in a URL.
+
+## Scoped bearer tokens
+
+The legacy `SCALE_DASHBOARD_TOKEN` remains a full operator/admin token for
+backward compatibility. Additional least-privilege bearer tokens can be
+configured with `SCALE_DASHBOARD_SCOPED_TOKENS` as a JSON array:
+
+```json
+[
+  {
+    "id": "viewer",
+    "token": "<at-least-32-random-characters>",
+    "scopes": ["dashboard:read", "integrations:read"]
+  },
+  {
+    "id": "agent-operator",
+    "token": "<a-different-at-least-32-character-token>",
+    "scopes": ["dashboard:read", "agent-control:read", "agent-control:write"]
+  }
+]
+```
+
+Supported scopes are `dashboard:read`, `dashboard:write`,
+`dashboard:admin`, `agent-control:read`, `agent-control:write`, `agent-control:admin`,
+`integrations:read`, `integrations:write`, `integrations:admin`,
+`bridge:read`, `bridge:write`, `bridge:admin`, `tasks:read`,
+`tasks:write`, `tasks:admin`, `governance:read`, `governance:write`,
+and `governance:admin`.
+The legacy operator token and `dashboard:admin` scope bypass route scopes;
+domain `*:admin` scopes include read/write access within that same domain, but
+do not grant permissions in other domains. Other tokens are limited to the
+exact route family and operation scope. Agent
+model routing and local executor enablement require `agent-control:admin`;
+cron execution requires `tasks:admin`; governance policy/configuration and
+lesson approval/rejection require `governance:admin`. Sensitive integration
+authorization/configuration, bridge registration/deletion, and Dashboard
+restart/reload operations require their admin scope. Tokens are compared
+without logging their values; audit records identify only the actor class.
 
 ## Browser request boundary
 
@@ -53,9 +92,15 @@ protective abuse-control layer, not a replacement for proxy-level limits.
 
 ## Current authorization model and limits
 
-The configured bearer token grants one operator-level permission set; this is
-not a multi-user role/permission system. Loopback mode without a token remains
-a local-trust mode and does not authenticate individual local processes.
-Origin checks are a browser CSRF boundary, not a substitute for authentication.
-For remote access, use the token together with a TLS reverse proxy and firewall.
-Do not expose the Dashboard directly to the public internet.
+The legacy configured bearer token grants the full operator permission set.
+Scoped tokens provide least-privilege remote roles, but they do not authenticate
+individual OS users. Loopback mode without either token configuration remains a
+local-trust mode; configuring scoped tokens also enables bearer authentication
+on loopback. Origin checks are a browser CSRF boundary, not a substitute for
+authentication. For remote access, use a bearer token together with a TLS reverse
+proxy and firewall. Do not expose the Dashboard directly to the public internet.
+
+The Agent OS local API token (`SCALE_AGENT_OS_API_TOKEN`) is a separate
+route-specific credential used by local bridge registration flows. Per-bridge
+tokens authenticate bridge heartbeats/events; they are not Dashboard operator
+tokens and do not grant Dashboard UI or Agent Control permissions.
