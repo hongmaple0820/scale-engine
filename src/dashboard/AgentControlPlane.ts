@@ -556,7 +556,7 @@ export class AgentControlPlane {
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text: '[agent-cli] 该会话已有一个 agent 正在执行，请等待完成后再发下一条。',
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       }).message
     }
 
@@ -565,7 +565,7 @@ export class AgentControlPlane {
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text: `[agent-cli] 平台 "${session.platformId}" 没有可用的 CLI 命令映射，也没有配置 agentCommand。可在会话配置里填 agentCommand，例如：claude -p {prompt} --output-format text`,
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       }).message
     }
 
@@ -585,7 +585,7 @@ export class AgentControlPlane {
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text: `[agent-cli] 启动失败：${error instanceof Error ? error.message : String(error)}`,
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       }).message
     }
     this.runningAgentCliChildren.set(sessionId, child)
@@ -608,7 +608,7 @@ export class AgentControlPlane {
         .then(() => this.completeMessage(sessionId, messageId, {
           status,
           text,
-          agentId: AgentControlPlane.LOCAL_AGENT_ID,
+          agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
         }))
         .catch(() => { /* 消息已被清理或会话已结束：忽略 */ })
     }
@@ -1247,7 +1247,7 @@ function synthesizeGovernedRunReply(report: AiOsRunReport): { result: 'completed
   )
   const nextActions = report.nextActions
   if (nextActions.length) lines.push(`下一步：${nextActions.slice(0, 2).join('；')}`)
-  return { result, text: lines.join('\\n'), evidencePath: report.artifacts.runReport }
+  return { result, text: lines.join('\n'), evidencePath: report.artifacts.runReport }
 }
 
 function safeAgentControlSegment(value: string): string {
