@@ -35,12 +35,21 @@ including preflight requests. Only add origins controlled by the same operator.
 
 ## Mutation audit
 
-API mutations (POST, PUT, PATCH, DELETE) are recorded in
+All HTTP mutations (POST, PUT, PATCH, DELETE), including bridge routes outside
+`/api/`, and sensitive reads under Agent Control, integrations, task, bridge,
+event, and governance APIs are recorded in
 `.scale/audit/dashboard-security.jsonl`. Records contain method, path, origin,
 actor class, timestamp, request ID, and response status. Request bodies, bearer
 tokens, and credential values are never written to this log. If the audit log
-cannot record the start of a mutation, that mutation is rejected before its
-handler runs.
+cannot record the start of an audited request, that request is rejected before
+its handler runs.
+
+Dashboard requests also use process-local fixed-window rate limits per caller
+credential/origin and route: unauthenticated remote requests are limited to 10
+attempts per minute, mutations to 60 requests per minute, and reads to 300
+requests per minute. Excess requests receive HTTP 429 and a `Retry-After`
+header. These limits reset when the Dashboard process restarts; they are a
+protective abuse-control layer, not a replacement for proxy-level limits.
 
 ## Current authorization model and limits
 
