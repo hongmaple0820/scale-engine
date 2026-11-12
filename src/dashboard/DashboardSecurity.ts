@@ -4,14 +4,15 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
 
 export interface DashboardAuditEvent {
-  event: 'request.started' | 'request.completed'
+  event: 'request.started' | 'request.completed' | 'request.denied'
   requestId: string
   timestamp: number
   method: string
   path: string
   origin: string | null
-  actor: 'loopback' | 'bearer-token' | 'scoped-token'
+  actor: 'loopback' | 'bearer-token' | 'scoped-token' | 'unauthenticated'
   status?: number
+  reason?: 'rate-limit' | 'authentication' | 'scope' | 'confirmation'
 }
 
 export function isDashboardLoopbackHost(host: string): boolean {
