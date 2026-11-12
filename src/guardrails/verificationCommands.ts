@@ -122,7 +122,9 @@ function matchesConfiguredVerification(command: string, configured: string[]): b
   return configured.some(entry => {
     const target = normalizeCommand(entry)
     if (target.length < COMMAND_PREFIX_MIN) return false
-    if (normalized.includes(target)) return true
+    // A configured command must be invoked at the start of the command line.
+    // Substring matching would accept inert argument text such as echoing a command.
+    if (normalized === target || normalized.startsWith(target + ' ')) return true
     const targetEntry = entryPointTokens(target)
     return commandEntry.length > 0 && commandEntry.join(' ') === targetEntry.join(' ')
   })
