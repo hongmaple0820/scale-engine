@@ -133,7 +133,7 @@ export interface DashboardScopedToken {
 export interface DashboardAuthorization {
   principal: string
   kind: 'admin' | 'scoped'
-  scopes: DashboardScope[] | ['*']
+  scopes: Array<DashboardScope | '*'>
 }
 
 export function parseDashboardScopedTokens(value: string | undefined): DashboardScopedToken[] {
