@@ -189,7 +189,7 @@ export class FeishuBridge {
     }
     if (inbound.messageId) this.seenMessageIds.add(inbound.messageId)
     // 回环保护：自己在聊天里发出的内容不会再被当作指令执行
-    if (inbound.text.startsWith('[agent-cli]') || inbound.text.startsWith('[local-executor]')) {
+    if (inbound.text.startsWith('[agent-cli]') || inbound.text.startsWith('[local-executor]') || inbound.text.startsWith('[governed-run]')) {
       this.counters.skipped += 1
       return
     }

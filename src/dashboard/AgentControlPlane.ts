@@ -105,7 +105,7 @@ export interface AgentControlMessageRecord {
   claimedBy?: string
   claimedAt?: number
   completedAt?: number
-  result?: 'completed' | 'failed' | 'cancelled'
+  result?: 'completed' | 'failed' | 'cancelled' | 'blocked'
   evidencePath?: string
   warnings: string[]
 }
@@ -122,6 +122,7 @@ export interface AgentControlReport {
     claimedMessages: number
     completedMessages: number
     failedMessages: number
+    blockedMessages: number
     cancelledMessages: number
     successRate: number | null
     avgLatencyMs: number | null
@@ -266,6 +267,7 @@ export class AgentControlPlane {
         claimedMessages: messages.filter(message => message.status === 'claimed').length,
         completedMessages: messages.filter(message => message.status === 'completed').length,
         failedMessages: messages.filter(message => message.status === 'failed').length,
+        blockedMessages: messages.filter(message => message.status === 'blocked').length,
         cancelledMessages: messages.filter(message => message.status === 'cancelled').length,
         successRate: summarizeAgentControlSuccessRate(
           messages.filter(message => message.status === 'completed').length,
@@ -407,8 +409,8 @@ export class AgentControlPlane {
   }
 
   /**
-   * 一键开闸：切换到 live-guarded 模式并启用本地执行器。
-   * 其余会话字段经 saveSession 的 existing 合并语义原样保留。
+   * 一键开闸：切换到 live-guarded 模式并启用本地治理运行器。
+   * 这不会配置或启动外部 Agent Executor；真实 Agent CLI 需显式选择 executor=agent-cli。
    */
   enableLocalExecution(sessionId: string): AgentControlSessionSummary {
     return this.saveSession(sessionId, { mode: 'live-guarded', localExecutor: true })
@@ -424,18 +426,19 @@ export class AgentControlPlane {
       // 完成/失败经 completeMessage 自动回帖并 emit SSE 事件。
       return this.executeViaAgentCli(sessionId, messageId)
     }
-    return this.executeLocally(sessionId, messageId)
+    return this.executeGovernedRun(sessionId, messageId)
   }
 
-  private static readonly LOCAL_AGENT_ID = 'local-executor'
+  private static readonly GOVERNED_RUNNER_ID = 'governed-runner'
+  private static readonly AGENT_CLI_AGENT_ID = 'agent-cli-executor'
 
-  private async executeLocally(sessionId: string, messageId: string): Promise<AgentControlMessageRecord> {
+  private async executeGovernedRun(sessionId: string, messageId: string): Promise<AgentControlMessageRecord> {
     // 1) 互斥认领：claimMessage 用 claimedBy ?? agentId（first-wins）。若已被他人认领 → 让位返回。
     const claimed = this.claimMessage(sessionId, messageId, {
-      agentId: AgentControlPlane.LOCAL_AGENT_ID,
-      note: 'Claimed by local executor.',
+      agentId: AgentControlPlane.GOVERNED_RUNNER_ID,
+      note: 'Claimed by governed runner; this is not an external Agent execution.',
     })
-    if (claimed.claimedBy && claimed.claimedBy !== AgentControlPlane.LOCAL_AGENT_ID) {
+    if (claimed.claimedBy && claimed.claimedBy !== AgentControlPlane.GOVERNED_RUNNER_ID) {
       return claimed
     }
 
@@ -455,21 +458,21 @@ export class AgentControlPlane {
         'Local executor timed out.',
       )
     } catch (error) {
-      const text = `[local-executor] 执行异常：${error instanceof Error ? error.message : String(error)}`
+      const text = `[governed-run] 治理运行异常：${error instanceof Error ? error.message : String(error)}`
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text,
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.GOVERNED_RUNNER_ID,
       }).message
     }
 
     // 3) 映射 + 完成（completeMessage 传 text 会自动 postReply，生成 agent-to-operator 回复）。
-    const { result, text, evidencePath } = synthesizeLocalExecutorReply(report)
+    const { result, text, evidencePath } = synthesizeGovernedRunReply(report)
     return this.completeMessage(sessionId, messageId, {
       status: result,
       text,
       evidencePath,
-      agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      agentId: AgentControlPlane.GOVERNED_RUNNER_ID,
     }).message
   }
 
@@ -543,17 +546,17 @@ export class AgentControlPlane {
   private executeViaAgentCli(sessionId: string, messageId: string): AgentControlMessageRecord {
     const session = this.getSessionConfig(sessionId)
     const claimed = this.claimMessage(sessionId, messageId, {
-      agentId: AgentControlPlane.LOCAL_AGENT_ID,
+      agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       note: 'Claimed by agent-cli executor.',
     })
-    if (claimed.claimedBy && claimed.claimedBy !== AgentControlPlane.LOCAL_AGENT_ID) {
+    if (claimed.claimedBy && claimed.claimedBy !== AgentControlPlane.AGENT_CLI_AGENT_ID) {
       return claimed
     }
     if (this.runningAgentCliChildren.has(sessionId)) {
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text: '[agent-cli] 该会话已有一个 agent 正在执行，请等待完成后再发下一条。',
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       }).message
     }
 
@@ -562,7 +565,7 @@ export class AgentControlPlane {
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text: `[agent-cli] 平台 "${session.platformId}" 没有可用的 CLI 命令映射，也没有配置 agentCommand。可在会话配置里填 agentCommand，例如：claude -p {prompt} --output-format text`,
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       }).message
     }
 
@@ -582,7 +585,7 @@ export class AgentControlPlane {
       return this.completeMessage(sessionId, messageId, {
         status: 'failed',
         text: `[agent-cli] 启动失败：${error instanceof Error ? error.message : String(error)}`,
-        agentId: AgentControlPlane.LOCAL_AGENT_ID,
+        agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
       }).message
     }
     this.runningAgentCliChildren.set(sessionId, child)
@@ -605,7 +608,7 @@ export class AgentControlPlane {
         .then(() => this.completeMessage(sessionId, messageId, {
           status,
           text,
-          agentId: AgentControlPlane.LOCAL_AGENT_ID,
+          agentId: AgentControlPlane.AGENT_CLI_AGENT_ID,
         }))
         .catch(() => { /* 消息已被清理或会话已结束：忽略 */ })
     }
@@ -665,7 +668,7 @@ export class AgentControlPlane {
       if (current.direction !== 'operator-to-agent') {
         throw new Error(`Message ${messageId} is not an operator-to-agent task.`)
       }
-      if (!['queued', 'claimed', 'completed', 'failed', 'cancelled'].includes(current.status)) {
+      if (!['queued', 'claimed', 'completed', 'failed', 'cancelled', 'blocked'].includes(current.status)) {
         throw new Error(`Message ${messageId} cannot be completed from status ${current.status}.`)
       }
       return {
@@ -768,6 +771,7 @@ export class AgentControlPlane {
     if (platform && platform.status !== 'ready') warnings.push(`Agent platform ${platform.name} is not installed in this project.`)
     if (!model) warnings.push(`Model ${session.modelId} is not in the model catalog.`)
     if (session.channelProvider === 'feishu' && !route.configured) warnings.push(`Feishu route target is not configured for ${platform?.name ?? session.platformId}.`)
+    if (session.localExecutor && session.executor !== 'agent-cli') warnings.push('Governed runner only: no external Agent Executor is configured; messages are not reported as Agent execution.')
     const status: AgentControlStatus = !platform || !model
       ? 'missing'
       : platform.status !== 'ready'
@@ -955,7 +959,8 @@ export class AgentControlPlane {
     const completedMessages = operatorMessages.filter(message => message.status === 'completed')
     const failedMessages = operatorMessages.filter(message => message.status === 'failed')
     const cancelledMessages = operatorMessages.filter(message => message.status === 'cancelled')
-    const blockedMessages = ordered.filter(message => ['blocked', 'failed', 'cancelled'].includes(message.status))
+    const blockedMessages = operatorMessages.filter(message => message.status === 'blocked')
+    const terminalMessages = ordered.filter(message => ['blocked', 'failed', 'cancelled'].includes(message.status))
     const latestOperator = [...operatorMessages].reverse().find(message => message.text.trim())
     const latestAgent = [...agentMessages].reverse().find(message => message.text.trim())
     const openItems = pendingMessages.map(message => trimForSummary(message.text, 120))
@@ -971,7 +976,7 @@ export class AgentControlPlane {
         : ['No open agent-control action is currently queued.']
     const warnings = uniqueStrings([
       ...session.warnings,
-      ...blockedMessages.flatMap(message => message.warnings),
+      ...terminalMessages.flatMap(message => message.warnings),
     ])
     const firstMessageAt = ordered[0]?.createdAt
     const lastMessageAt = ordered[ordered.length - 1]?.createdAt
@@ -1076,9 +1081,9 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return normalized || undefined
 }
 
-function normalizeCompletionResult(value: unknown): 'completed' | 'failed' | 'cancelled' {
+function normalizeCompletionResult(value: unknown): 'completed' | 'failed' | 'cancelled' | 'blocked' {
   const normalized = String(value ?? 'completed').trim().toLowerCase()
-  if (normalized === 'completed' || normalized === 'failed' || normalized === 'cancelled') return normalized
+  if (normalized === 'completed' || normalized === 'failed' || normalized === 'cancelled' || normalized === 'blocked') return normalized
   throw new Error(`Unsupported agent task result: ${String(value)}`)
 }
 
@@ -1212,26 +1217,34 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, message: string):
   }
 }
 
-function synthesizeLocalExecutorReply(report: AiOsRunReport): { result: 'completed' | 'failed'; text: string; evidencePath: string } {
-  const failed = report.status === 'blocked' || !report.verification.allPassed
-  const result: 'completed' | 'failed' = failed ? 'failed' : 'completed'
+function synthesizeGovernedRunReply(report: AiOsRunReport): { result: 'completed' | 'failed' | 'blocked'; text: string; evidencePath: string } {
+  const verificationFailed = report.status === 'blocked'
+    || !report.verification.allPassed
+    || report.agentExecution?.status === 'blocked'
+  const agentExecutionSettled = report.agentExecution?.status === 'settled'
+  const result: 'completed' | 'failed' | 'blocked' = verificationFailed
+    ? 'failed'
+    : agentExecutionSettled
+      ? 'completed'
+      : 'blocked'
   const passedSteps = report.steps.filter(step => step.status === 'passed').length
   const blockedSteps = report.steps.filter(step => step.status === 'blocked').length
   const verificationCommands = report.verification.commands
   const passedVerification = verificationCommands.filter(command => command.status === 'passed').length
   const lines: string[] = [
-    `[local-executor] ${result === 'completed' ? '已完成' : '失败'} · mode=${report.mode} · status=${report.status}`,
+    `[governed-run] ${result === 'completed' ? 'Agent execution settled' : result === 'failed' ? 'governed verification failed' : 'not-configured'} · mode=${report.mode} · status=${report.status}`,
     `任务：${report.plan.task.task ?? '(未命名)'}`,
-    `验证：${passedVerification}/${verificationCommands.length} 通过`,
-    `步骤：${passedSteps} 通过 / ${blockedSteps} 阻断 / 共 ${report.steps.length}`,
+    `治理验证：${passedVerification}/${verificationCommands.length} 通过`,
+    `治理步骤：${passedSteps} 通过 / ${blockedSteps} 阻断 / 共 ${report.steps.length}`,
   ]
-  const agentSummary = report.agentExecution?.summary
-  if (agentSummary) {
-    lines.push(`Agent 实际执行：${agentSummary.settledRoles}/${agentSummary.totalRoles} 个角色 · 评审门 ${agentSummary.settledReviewGates}/${agentSummary.reviewGates}`)
+  if (agentExecutionSettled && report.agentExecution) {
+    lines.push(`Agent execution: settled · ${report.agentExecution.summary.settledRoles}/${report.agentExecution.summary.totalRoles} roles · ${report.agentExecution.summary.settledReviewGates}/${report.agentExecution.summary.reviewGates} review gates`)
+  } else {
+    lines.push('Agent Executor: not-configured; no external Agent CLI was invoked, and roles/handoffs/reviews remain planned.')
   }
   lines.push(
-    `证据：${report.evidence.produced.length} 已产出 / ${report.evidence.pending.length} 待补`,
-    `报告：${report.artifacts.runReport}`,
+    `治理证据：${report.evidence.produced.length} 已产出 / ${report.evidence.pending.length} 待补`,
+    `治理报告：${report.artifacts.runReport}`,
   )
   const nextActions = report.nextActions
   if (nextActions.length) lines.push(`下一步：${nextActions.slice(0, 2).join('；')}`)

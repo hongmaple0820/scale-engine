@@ -15,7 +15,7 @@ function mockRunReport(task: string): AiOsRunReport {
     version: '1', generatedAt: '', mode: 'guarded', dryRun: false, status: 'ready',
     plan: { task: { task } } as never,
     steps: [{ id: 's1', kind: 'plan', title: 'Plan', status: 'passed', required: true, summary: '', evidence: [] }] as never,
-    agentExecution: { summary: { totalRoles: 2, settledRoles: 2, reviewGates: 1, settledReviewGates: 1 } } as never,
+    agentExecution: { status: 'planned', summary: { totalRoles: 2, settledRoles: 0, reviewGates: 1, settledReviewGates: 0 } } as never,
     evidence: { produced: ['e1'], pending: [] } as never,
     verification: { commands: [], allPassed: true } as never,
     failureLearning: { status: 'idle', candidates: [] } as never,
@@ -56,23 +56,27 @@ function buildPlane(localExecutor: boolean): AgentControlPlane {
 }
 
 describe('AgentControl local executor', () => {
-  it('runs a real-run message end-to-end and posts a synthesized reply', async () => {
+  it('records a governed run as not-configured instead of claiming Agent execution', async () => {
     const plane = buildPlane(true)
+    expect(plane.getReport().sessions[0]?.warnings.join(' ')).toContain('Governed runner only')
     const record = plane.sendMessage('s1', { text: 'do the thing', dryRun: false, from: 'dashboard' })
     expect(record.status).toBe('queued')
     expect(record.dryRun).toBe(false)
 
     const final = await plane.executeLocallyIfEnabled('s1', record.id)
     expect(final).not.toBeNull()
-    expect(final!.status).toBe('completed')
-    expect(final!.claimedBy).toBe('local-executor')
+    expect(final!.status).toBe('blocked')
+    expect(final!.result).toBe('blocked')
+    expect(final!.claimedBy).toBe('governed-runner')
     expect(final!.evidencePath).toBe('/tmp/aios-run.json')
 
     const messages = plane.getTranscript('s1').messages
     const reply = messages.find(m => m.direction === 'agent-to-operator')
     expect(reply).toBeDefined()
-    expect(reply!.text).toContain('[local-executor]')
-    expect(reply!.text).toContain('报告：/tmp/aios-run.json')
+    expect(reply!.text).toContain('[governed-run]')
+    expect(reply!.text).toContain('Agent Executor: not-configured')
+    expect(reply!.text).toContain('no external Agent CLI was invoked')
+    expect(reply!.text).toContain('治理报告：/tmp/aios-run.json')
   })
 
   it('does not execute when localExecutor is disabled', async () => {
@@ -154,17 +158,17 @@ describe('AgentControl enableLocalExecution (one-click gate)', () => {
     expect(plane.isLocalExecutorEnabled('s1')).toBe(true)
   })
 
-  it('persists the gate so a later live message executes end-to-end with a reply', async () => {
+  it('persists the gate but keeps governed runs distinct from Agent execution', async () => {
     const plane = buildDefaultPlane()
     plane.enableLocalExecution('s1')
     const record = plane.sendMessage('s1', { text: 'do the thing', dryRun: false, from: 'dashboard' })
     expect(record.dryRun).toBe(false)
     const final = await plane.executeLocallyIfEnabled('s1', record.id)
     expect(final).not.toBeNull()
-    expect(final!.status).toBe('completed')
+    expect(final!.status).toBe('blocked')
     const reply = plane.getTranscript('s1').messages.find(m => m.direction === 'agent-to-operator')
     expect(reply).toBeDefined()
-    expect(reply!.text).toContain('[local-executor]')
+    expect(reply!.text).toContain('not-configured')
   })
 
   it('still treats a message as dry-run when the caller does not explicitly opt out', () => {
