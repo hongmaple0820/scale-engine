@@ -1089,7 +1089,7 @@ describe('DashboardServer API', () => {
         projectDir: string
         dryRunSendPlan?: { command: string; args: string[]; requiresConfirmation: boolean }
       }
-    }>(await app.request('/api/integrations/feishu/route', {
+    }>(await confirmedRequest('/api/integrations/feishu/route', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
