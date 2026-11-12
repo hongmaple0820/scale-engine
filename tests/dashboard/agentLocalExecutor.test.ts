@@ -58,6 +58,7 @@ function buildPlane(localExecutor: boolean): AgentControlPlane {
 describe('AgentControl local executor', () => {
   it('records a governed run as not-configured instead of claiming Agent execution', async () => {
     const plane = buildPlane(true)
+    expect(plane.getReport().sessions[0]?.warnings.join(' ')).toContain('Governed runner only')
     const record = plane.sendMessage('s1', { text: 'do the thing', dryRun: false, from: 'dashboard' })
     expect(record.status).toBe('queued')
     expect(record.dryRun).toBe(false)
