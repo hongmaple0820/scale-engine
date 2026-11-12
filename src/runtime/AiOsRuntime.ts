@@ -251,6 +251,8 @@ export interface AiOsAgentReviewExecutionSettlement {
 
 export interface AiOsAgentExecutionReport {
   strategy: 'agent-execution-settlement-v1'
+  /** External Agent dispatch state; absent only in legacy reports. */
+  executorStatus?: 'not-configured'
   generatedAt: string
   mode: AiOsRunMode
   status: AiOsAgentExecutionStatus
@@ -1839,7 +1841,7 @@ function buildRunSteps(plan: AiOsRuntimePlan): AiOsRunStep[] {
 
   upsert({
     id: 'agent-collaboration-plan',
-    kind: 'agent',
+    kind: 'plan',
     title: 'Plan agent collaboration',
     status: 'passed',
     required: true,
@@ -2091,6 +2093,7 @@ function settleAgentExecution(options: {
 
   return {
     strategy: 'agent-execution-settlement-v1',
+    executorStatus: 'not-configured',
     generatedAt: options.generatedAt,
     mode: options.mode,
     status,
@@ -2137,7 +2140,8 @@ function evidenceCategory(step: AiOsRunStep): string[] {
   if (step.id === 'runtime-plan') return ['ai-os-plan']
   if (step.id === 'context-compiler') return ['context-compiler']
   if (step.id === 'memory-provider-recall') return ['memory-provider-recall']
-  if (step.id === 'agent-collaboration-plan' || step.kind === 'agent') return ['agent-collaboration']
+  if (step.id === 'agent-collaboration-plan') return ['agent-collaboration-plan']
+  if (step.kind === 'agent') return ['agent-collaboration']
   if (step.id === 'skill-evidence' || step.kind === 'skill') return ['skill-routing-engine']
   if (step.id === 'runtime-evidence' || step.kind === 'evidence') return ['runtime-evidence']
   if (step.kind === 'gate') return [`gate:${step.id}`]
