@@ -212,6 +212,6 @@ describe('AgentControl agent-cli executor', () => {
     expect(spawnCalls).toHaveLength(0)
     expect(final).not.toBeNull()
     expect(final!.status).toBe('completed')
-    expect(final!.claimedBy).toBe('local-executor')
+    expect(final!.claimedBy).toBe('agent-cli-executor')
   })
 })
