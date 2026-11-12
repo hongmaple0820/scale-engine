@@ -304,7 +304,7 @@ describe('AI OS runtime planner', () => {
     const projectDir = makeDir('scale-ai-os-dashboard-project-')
     const scaleDir = makeScaleDir('scale-ai-os-dashboard-scale-')
 
-    await createAiOsRun({
+    const legacyRun = await createAiOsRun({
       projectDir,
       scaleDir,
       taskId: 'TASK-AI-OS-DASH-READY',
@@ -314,6 +314,14 @@ describe('AI OS runtime planner', () => {
       mode: 'guarded',
       verificationCommands: ['node -v'],
     })
+    const legacyReport = JSON.parse(readFileSync(legacyRun.artifacts.runReport, 'utf-8')) as {
+      agentExecution?: { executorStatus?: string }
+      steps: Array<{ id: string; kind: string }>
+    }
+    if (legacyReport.agentExecution) delete legacyReport.agentExecution.executorStatus
+    const legacyPlanStep = legacyReport.steps.find(step => step.id === 'agent-collaboration-plan')
+    if (legacyPlanStep) legacyPlanStep.kind = 'agent'
+    writeFileSync(legacyRun.artifacts.runReport, JSON.stringify(legacyReport, null, 2), 'utf-8')
     await createAiOsRun({
       projectDir,
       scaleDir,
@@ -336,6 +344,7 @@ describe('AI OS runtime planner', () => {
       failureLearningCandidates: 1,
     })
     expect(dashboard.health.status).toBe('attention')
+    expect(dashboard.warnings).toEqual([])
     expect(dashboard.latestRuns.map(run => run.taskId)).toEqual([
       'TASK-AI-OS-DASH-BLOCKED',
       'TASK-AI-OS-DASH-READY',
