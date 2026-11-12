@@ -230,6 +230,18 @@
         "exitCode": 0
       },
       "expected": false
+    },
+    {
+      "id": "configured-script-path-in-node-eval-argument",
+      "type": "tool.completed",
+      "payload": {
+        "tool": "Bash",
+        "args": {
+          "command": "node -e \"console.log('scripts/workflow/lint.mjs')\""
+        },
+        "exitCode": 0
+      },
+      "expected": false
     }
   ],
   "verificationCatalog": {
