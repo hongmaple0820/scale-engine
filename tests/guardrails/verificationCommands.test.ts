@@ -94,6 +94,14 @@ describe('verification command catalog (#36)', () => {
     expect(isVerificationCommand('node scripts/workflow/run-vitest.mjs --timeout-ms 300000 tests/guardrails', catalog)).toBe(true)
   })
 
+  it('does not accept a truncated prefix that never invokes the configured script', () => {
+    writeMatrix()
+    const catalog = loadVerificationCommandCatalog()
+    expect(isVerificationCommand('powershell -File', catalog)).toBe(false)
+    expect(isVerificationCommand('powershell -File tools/validate-patterns', catalog)).toBe(false)
+    expect(isVerificationCommand('node scripts/workflow/lint', catalog)).toBe(false)
+  })
+
   it('does not treat unrelated commands as verification', () => {
     writeMatrix()
     const catalog = loadVerificationCommandCatalog()

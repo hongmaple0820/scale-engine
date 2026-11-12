@@ -6,8 +6,7 @@
 //
 // 匹配语义（均基于规范化命令文本，见 normalizeCommand）：
 // 1) 会话命令包含配置命令（容忍 rtk/npx 包装前缀与尾部追加参数）；
-// 2) 配置命令以会话命令为前缀（会话运行了配置命令的截断形态）；
-// 3) 入口一致：首个 token + 首个含路径分隔符的 token 完全相同
+// 2) 入口一致：首个 token + 首个含路径分隔符的 token 完全相同
 //    （同一脚本不同参数值，如 --timeout-ms 差异，仍算命中）。
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -123,7 +122,7 @@ function matchesConfiguredVerification(command: string, configured: string[]): b
   return configured.some(entry => {
     const target = normalizeCommand(entry)
     if (target.length < COMMAND_PREFIX_MIN) return false
-    if (normalized.includes(target) || target.startsWith(normalized)) return true
+    if (normalized.includes(target)) return true
     const targetEntry = entryPointTokens(target)
     return commandEntry.length > 0 && commandEntry.join(' ') === targetEntry.join(' ')
   })
