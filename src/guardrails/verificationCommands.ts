@@ -122,7 +122,9 @@ function matchesConfiguredVerification(command: string, configured: string[]): b
   return configured.some(entry => {
     const target = normalizeCommand(entry)
     if (target.length < COMMAND_PREFIX_MIN) return false
-    if (normalized.includes(target)) return true
+    // A configured command must be invoked at the start of the command line.
+    // Substring matching would accept inert argument text such as echoing a command.
+    if (normalized === target || normalized.startsWith(target + ' ')) return true
     const targetEntry = entryPointTokens(target)
     return commandEntry.length > 0 && commandEntry.join(' ') === targetEntry.join(' ')
   })
@@ -134,9 +136,9 @@ function matchesConfiguredVerification(command: string, configured: string[]): b
  */
 function entryPointTokens(normalized: string): string[] {
   const tokens = normalized.split(' ').filter(Boolean)
-  const pathToken = tokens.find(token => token.includes('/'))
-  if (pathToken) return [tokens[0], pathToken]
-  return tokens.slice(0, 2)
+  const pathIndex = tokens.findIndex(token => token.includes('/'))
+  if (pathIndex >= 0) return [String(pathIndex), tokens[0], tokens[pathIndex]]
+  return ['0', ...tokens.slice(0, 2)]
 }
 
 /** 命令文本规范化：压空白、去引号、反斜杠转正斜杠、小写、剥 rtk 包装前缀。 */

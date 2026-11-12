@@ -102,6 +102,16 @@ describe('verification command catalog (#36)', () => {
     expect(isVerificationCommand('node scripts/workflow/lint', catalog)).toBe(false)
   })
 
+  it('does not accept configured command text embedded in an inert shell argument', () => {
+    writeMatrix()
+    const catalog = loadVerificationCommandCatalog()
+    expect(isVerificationCommand('echo "powershell -File tools/validate-patterns.ps1"', catalog)).toBe(false)
+    expect(isVerificationCommand('printf \'%s\\n\' "powershell -File tools/validate-patterns.ps1"', catalog)).toBe(false)
+    expect(isVerificationCommand(`node -e "console.log('scripts/workflow/lint.mjs')"`, catalog)).toBe(false)
+    expect(isVerificationCommand('powershell -File tools/validate-patterns.ps1', catalog)).toBe(true)
+    expect(isVerificationCommand('powershell -File tools/validate-patterns.ps1 --report out.json', catalog)).toBe(true)
+  })
+
   it('does not treat unrelated commands as verification', () => {
     writeMatrix()
     const catalog = loadVerificationCommandCatalog()
