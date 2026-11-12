@@ -71,6 +71,12 @@ describe('Dashboard security primitives', () => {
     expect(requiredDashboardScope('PUT', '/api/integrations/agent-connect')).toBe('integrations:admin')
     expect(requiredDashboardScope('POST', '/api/v1/bridges/register')).toBe('bridge:admin')
     expect(requiredDashboardScope('POST', '/api/v1/restart')).toBe('dashboard:admin')
+    expect(requiredDashboardScope('POST', '/api/v1/reload')).toBe('dashboard:admin')
+    expect(requiredDashboardScope('POST', '/api/v1/projects/demo/model')).toBe('agent-control:admin')
+    expect(requiredDashboardScope('POST', '/api/v1/cron/nightly/exec')).toBe('tasks:admin')
+    expect(requiredDashboardScope('POST', '/api/v1/governance/config/policy')).toBe('governance:admin')
+    expect(requiredDashboardScope('POST', '/api/lessons/lesson-1/approve')).toBe('governance:admin')
+    expect(requiredDashboardScope('POST', '/api/agent-control/sessions/s1/enable-local-executor')).toBe('agent-control:admin')
   })
 
   it('resolves scoped and admin bearer tokens without widening scoped permissions', () => {
@@ -82,6 +88,7 @@ describe('Dashboard security primitives', () => {
     expect(viewer?.kind).toBe('scoped')
     expect(dashboardAuthorizationAllows(viewer!, 'dashboard:read')).toBe(true)
     expect(dashboardAuthorizationAllows(viewer!, 'agent-control:write')).toBe(false)
+    expect(dashboardAuthorizationAllows(viewer!, 'agent-control:admin')).toBe(false)
     expect(dashboardAuthorizationAllows(admin!, 'agent-control:write')).toBe(true)
   })
 
