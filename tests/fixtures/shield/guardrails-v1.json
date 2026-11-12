@@ -4,7 +4,7 @@
   "detectorVersions": {
     "dangerous-command": "1.5.0",
     "secret-leak": "1.0.0",
-    "premature-done": "1.4.0"
+    "premature-done": "1.5.0"
   },
   "secretLeak": [
     {
@@ -655,6 +655,47 @@
       "expected": {
         "triggered": true,
         "severity": "warn"
+      }
+    }
+  ],
+  "verificationResults": [
+    {
+      "id": "tests-passed-with-zero-failed-allow",
+      "command": "npm test",
+      "exitCode": 0,
+      "output": "Tests: 12 passed, 0 failed",
+      "expected": {
+        "triggered": false
+      }
+    },
+    {
+      "id": "tests-failed-count-block",
+      "command": "npm test",
+      "exitCode": 0,
+      "output": "Tests: 10 passed, 2 failed",
+      "expected": {
+        "triggered": true,
+        "reason": "测试失败"
+      }
+    },
+    {
+      "id": "empty-test-suite-block",
+      "command": "npm test",
+      "exitCode": 0,
+      "output": "Tests: 0",
+      "expected": {
+        "triggered": true,
+        "reason": "测试为空"
+      }
+    },
+    {
+      "id": "uppercase-failing-test-marker-block",
+      "command": "npm test",
+      "exitCode": 0,
+      "output": "FAIL src/example.test.ts",
+      "expected": {
+        "triggered": true,
+        "reason": "测试失败"
       }
     }
   ]
