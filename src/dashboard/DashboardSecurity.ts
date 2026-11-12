@@ -10,7 +10,7 @@ export interface DashboardAuditEvent {
   method: string
   path: string
   origin: string | null
-  actor: 'loopback' | 'bearer-token'
+  actor: 'loopback' | 'bearer-token' | 'scoped-token'
   status?: number
 }
 
@@ -102,6 +102,121 @@ export function hasValidDashboardBearerToken(authorization: string | undefined, 
   const actual = Buffer.from(match[1]!, 'utf8')
   const expected = Buffer.from(expectedToken, 'utf8')
   return actual.length === expected.length && timingSafeEqual(actual, expected)
+}
+
+export const DASHBOARD_SCOPES = [
+  'dashboard:read',
+  'dashboard:write',
+  'dashboard:admin',
+  'agent-control:read',
+  'agent-control:write',
+  'integrations:read',
+  'integrations:write',
+  'integrations:admin',
+  'bridge:read',
+  'bridge:write',
+  'bridge:admin',
+  'tasks:read',
+  'tasks:write',
+  'governance:read',
+  'governance:write',
+] as const
+
+export type DashboardScope = typeof DASHBOARD_SCOPES[number]
+
+export interface DashboardScopedToken {
+  id: string
+  token: string
+  scopes: DashboardScope[]
+}
+
+export interface DashboardAuthorization {
+  principal: string
+  kind: 'admin' | 'scoped'
+  scopes: DashboardScope[] | ['*']
+}
+
+export function parseDashboardScopedTokens(value: string | undefined): DashboardScopedToken[] {
+  if (!value?.trim()) return []
+  let parsed: unknown
+  try { parsed = JSON.parse(value) } catch {
+    throw new Error('SCALE_DASHBOARD_SCOPED_TOKENS must be a JSON array.')
+  }
+  if (!Array.isArray(parsed)) throw new Error('SCALE_DASHBOARD_SCOPED_TOKENS must be a JSON array.')
+  const ids = new Set<string>()
+  const tokens = new Set<string>()
+  return parsed.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`Dashboard scoped token ${index + 1} must be an object.`)
+    }
+    const record = item as Record<string, unknown>
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    const token = typeof record.token === 'string' ? record.token.trim() : ''
+    const scopes = Array.isArray(record.scopes) ? record.scopes : []
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(id)) throw new Error(`Dashboard scoped token ${index + 1} has an invalid id.`)
+    if (token.length < 32) throw new Error(`Dashboard scoped token "${id}" must contain at least 32 characters.`)
+    if (ids.has(id) || tokens.has(token)) throw new Error('Dashboard scoped token ids and values must be unique.')
+    if (scopes.length === 0 || scopes.some(scope => typeof scope !== 'string' || !DASHBOARD_SCOPES.includes(scope as DashboardScope))) {
+      throw new Error(`Dashboard scoped token "${id}" has invalid or empty scopes.`)
+    }
+    ids.add(id)
+    tokens.add(token)
+    return { id, token, scopes: [...new Set(scopes as DashboardScope[])] }
+  })
+}
+
+export function assertDashboardScopedTokens(adminToken: string | undefined, scopedTokens: DashboardScopedToken[]): void {
+  const normalizedAdmin = adminToken?.trim()
+  if (normalizedAdmin && scopedTokens.some(entry => entry.token === normalizedAdmin)) {
+    throw new Error('Dashboard scoped tokens must not reuse SCALE_DASHBOARD_TOKEN.')
+  }
+}
+
+export function resolveDashboardAuthorization(
+  authorization: string | undefined,
+  adminToken: string | undefined,
+  scopedTokens: DashboardScopedToken[] = [],
+): DashboardAuthorization | null {
+  if (hasValidDashboardBearerToken(authorization, adminToken)) {
+    return { principal: 'admin', kind: 'admin', scopes: ['*'] }
+  }
+  for (const entry of scopedTokens) {
+    if (hasValidDashboardBearerToken(authorization, entry.token)) {
+      return { principal: entry.id, kind: 'scoped', scopes: entry.scopes }
+    }
+  }
+  return null
+}
+
+export function requiredDashboardScope(method: string, path: string): DashboardScope {
+  const verb = method.toUpperCase()
+  const write = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(verb)
+  const scope = (read: DashboardScope, mutation: DashboardScope): DashboardScope => write ? mutation : read
+
+  if (path === '/api/v1/restart' || path.startsWith('/api/dashboard/service/actions/')) return 'dashboard:admin'
+  if (path.startsWith('/api/agent-control') || path.startsWith('/api/v1/projects/')) {
+    return scope('agent-control:read', 'agent-control:write')
+  }
+  if (path.startsWith('/api/integrations')) {
+    if (/\/(auth|config|setup|bootstrap-local|acceptance|bridge\/start|bridge\/stop)(\/|$)/i.test(path)
+      || path === '/api/integrations/agent-connect'
+      || path === '/api/integrations/feishu/route'
+      || path === '/api/integrations/knowledge/tencent-ima') {
+      return write ? 'integrations:admin' : 'integrations:read'
+    }
+    return scope('integrations:read', 'integrations:write')
+  }
+  if (path.startsWith('/api/v1/bridges') || path.startsWith('/bridge/') || path.startsWith('/agent-connect/')) {
+    if (path === '/api/v1/bridges/register' || verb === 'DELETE') return 'bridge:admin'
+    return scope('bridge:read', 'bridge:write')
+  }
+  if (path.startsWith('/api/v1/tasks')) return scope('tasks:read', 'tasks:write')
+  if (path.startsWith('/api/v1/governance')) return scope('governance:read', 'governance:write')
+  return scope('dashboard:read', 'dashboard:write')
+}
+
+export function dashboardAuthorizationAllows(authorization: DashboardAuthorization, scope: DashboardScope): boolean {
+  return authorization.scopes.includes('*') || authorization.scopes.includes('dashboard:admin') || authorization.scopes.includes(scope)
 }
 
 export function appendDashboardAuditEvent(path: string, event: DashboardAuditEvent): void {
