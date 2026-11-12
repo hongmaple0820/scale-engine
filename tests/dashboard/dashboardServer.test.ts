@@ -1882,9 +1882,18 @@ describe('DashboardServer API', () => {
     }
 
     const server = new DashboardServer({ projectDir, scaleDir })
-    const response = await server.getApp().request('/api/knowledge/local/MEM-REVIEW/review', {
+    const app = server.getApp()
+    const reviewPath = '/api/knowledge/local/MEM-REVIEW/review'
+    const challengeResponse = await app.request('/api/security/confirmations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'POST', path: reviewPath }),
+    })
+    expect(challengeResponse.status).toBe(200)
+    const challenge = await challengeResponse.json() as { confirmationToken: string }
+    const response = await app.request(reviewPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken },
       body: JSON.stringify({ action: 'approve', reason: 'test approval' }),
     })
     const result = await json<{
@@ -1952,9 +1961,18 @@ describe('DashboardServer API', () => {
     }
 
     const server = new DashboardServer({ projectDir, scaleDir })
-    const response = await server.getApp().request('/api/knowledge/local/MEM-ACTIVE/review', {
+    const app = server.getApp()
+    const reviewPath = '/api/knowledge/local/MEM-ACTIVE/review'
+    const challengeResponse = await app.request('/api/security/confirmations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'POST', path: reviewPath }),
+    })
+    expect(challengeResponse.status).toBe(200)
+    const challenge = await challengeResponse.json() as { confirmationToken: string }
+    const response = await app.request(reviewPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken },
       body: JSON.stringify({ action: 'reject' }),
     })
     expect(response.status).toBe(422)
