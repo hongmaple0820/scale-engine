@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
-import { hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from '../../src/dashboard/DashboardSecurity.js'
+import { DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from '../../src/dashboard/DashboardSecurity.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -45,6 +45,14 @@ describe('Dashboard security primitives', () => {
     expect(() => normalizeDashboardAllowedOrigins('https://console.example/path')).toThrow('exact HTTP(S) origins')
   })
 
+  it('enforces fixed-window request limits and resets expired buckets', () => {
+    const limiter = new DashboardRateLimiter(2)
+    expect(limiter.consume('principal:read', 2, 1000, 0)).toEqual({ allowed: true, retryAfterSeconds: 0 })
+    expect(limiter.consume('principal:read', 2, 1000, 100)).toEqual({ allowed: true, retryAfterSeconds: 0 })
+    expect(limiter.consume('principal:read', 2, 1000, 200)).toEqual({ allowed: false, retryAfterSeconds: 1 })
+    expect(limiter.consume('principal:read', 2, 1000, 1000)).toEqual({ allowed: true, retryAfterSeconds: 0 })
+  })
+
   it('compares bearer tokens without accepting missing or malformed values', () => {
     expect(hasValidDashboardBearerToken('Bearer abc', 'abc')).toBe(true)
     expect(hasValidDashboardBearerToken('Bearer ab', 'abc')).toBe(false)
@@ -77,7 +85,13 @@ describe('DashboardServer security middleware', () => {
     expect(audit).toContain('request.started')
     expect(audit).toContain('request.completed')
     expect(audit).toContain('/api/knowledge-base/documents/import')
-    expect(audit).not.toContain('sensitive payload')
+    await app.request('/api/integrations/agent-connect')
+    await app.request('/bridge/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const expandedAudit = readFileSync(auditPath, 'utf8')
+    expect(expandedAudit).toContain('GET')
+    expect(expandedAudit).toContain('/api/integrations/agent-connect')
+    expect(expandedAudit).toContain('/bridge/events')
+    expect(expandedAudit).not.toContain('sensitive payload')
   })
 
   it('fails closed when the mutation audit cannot be written', async () => {
@@ -103,6 +117,20 @@ describe('DashboardServer security middleware', () => {
     expect(preflight.status).toBe(204)
     const unauthorized = await app.request('/api/health', { headers: { Origin: 'https://console.example' } })
     expect(unauthorized.status).toBe(401)
+  })
+
+  it('rate limits repeated remote authentication failures and returns Retry-After', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-auth-rate-limit-'))
+    roots.push(projectDir)
+    const token = '0123456789abcdef0123456789abcdef'
+    const app = new DashboardServer({ host: '0.0.0.0', authToken: token, allowedHosts: ['localhost'], allowedOrigins: ['https://console.example'] }).getApp()
+    const headers = { Origin: 'https://console.example' }
+    for (let index = 0; index < 10; index += 1) {
+      expect((await app.request('/api/health', { headers })).status).toBe(401)
+    }
+    const limited = await app.request('/api/health', { headers })
+    expect(limited.status).toBe(429)
+    expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(0)
   })
 
   it('requires a valid bearer token for non-loopback bindings', async () => {

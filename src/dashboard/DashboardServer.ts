@@ -8,7 +8,7 @@ import { streamSSE } from 'hono/streaming'
 import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, mkdirSync, type Dirent } from 'node:fs'
 import { basename, join, dirname, extname, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import yaml from 'js-yaml'
 import Database from 'better-sqlite3'
@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -941,6 +941,7 @@ export class DashboardServer {
   private allowedOrigins: string[]
   private allowedHosts: string[]
   private auditPath: string
+  private rateLimiter = new DashboardRateLimiter()
   private projectDir: string
   private scaleDir: string
   private currentProject: DashboardProjectSummary
@@ -998,17 +999,46 @@ export class DashboardServer {
         return c.json({ error: 'Dashboard request origin is not allowed.' }, 403)
       }
 
+      const method = c.req.method.toUpperCase()
+      const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
       const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
-      if (requiresAuth && c.req.method.toUpperCase() !== 'OPTIONS' && !hasValidDashboardBearerToken(c.req.header('Authorization'), this.authToken)) {
+      const authorization = c.req.header('Authorization')
+      const tokenValid = hasValidDashboardBearerToken(authorization, this.authToken)
+      const principal = tokenValid
+        ? createHash('sha256').update(authorization ?? '').digest('hex')
+        : `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
+
+      if (method !== 'OPTIONS') {
+        const authFailure = requiresAuth && !tokenValid
+        const limit = authFailure ? 10 : isMutation ? 60 : 300
+        const rateWindowMs = 60_000
+        const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${c.req.path}`, limit, rateWindowMs)
+        if (!rateLimit.allowed) {
+          return c.json(
+            { error: 'Dashboard request rate limit exceeded.', retryAfterSeconds: rateLimit.retryAfterSeconds },
+            429,
+            { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+          )
+        }
+      }
+
+      if (requiresAuth && method !== 'OPTIONS' && !tokenValid) {
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
       }
 
-      const method = c.req.method.toUpperCase()
-      const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-      const isApiMutation = isMutation && c.req.path.startsWith('/api/')
+      const isSensitiveRead = method === 'GET' && [
+        '/api/agent-control',
+        '/api/integrations',
+        '/api/v1/tasks',
+        '/api/v1/bridges',
+        '/api/v1/events',
+        '/api/v1/governance',
+        '/bridge/',
+      ].some(prefix => c.req.path.startsWith(prefix))
+      const isAuditedRequest = isMutation || isSensitiveRead
       const requestId = randomBytes(8).toString('hex')
       const actor = requiresAuth ? 'bearer-token' as const : 'loopback' as const
-      if (isApiMutation) {
+      if (isAuditedRequest) {
         try {
           appendDashboardAuditEvent(this.auditPath, {
             event: 'request.started', requestId, timestamp: Date.now(), method,
@@ -1016,14 +1046,14 @@ export class DashboardServer {
           })
         } catch (error) {
           logger.error({ error, path: c.req.path }, 'Dashboard security audit write failed')
-          return c.json({ error: 'Dashboard audit is unavailable; mutation was not executed.' }, 503)
+          return c.json({ error: 'Dashboard audit is unavailable; request was not executed.' }, 503)
         }
       }
 
       try {
         await next()
       } finally {
-        if (isApiMutation) {
+        if (isAuditedRequest) {
           try {
             appendDashboardAuditEvent(this.auditPath, {
               event: 'request.completed', requestId, timestamp: Date.now(), method,
