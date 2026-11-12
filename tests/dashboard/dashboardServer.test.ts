@@ -897,7 +897,7 @@ describe('DashboardServer API', () => {
       }
       secrets: { path: string; rawStored: boolean; tokens: { managementApi: string; bridge: string; webhook: string } }
       actions: string[]
-    }>(await app.request('/api/integrations/agent-os/bootstrap-local', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/agent-os/bootstrap-local', { method: 'POST' }))
     expect(bootstrappedAgentOs).toEqual(expect.objectContaining({
       ok: true,
       saved: true,
@@ -961,7 +961,7 @@ describe('DashboardServer API', () => {
       verificationUrl?: string
       setupCommand?: string
       error?: string
-    }>(await app.request('/api/integrations/feishu/auth/start', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/feishu/auth/start', { method: 'POST' }))
     expect(feishuAuth).toEqual(expect.objectContaining({
       provider: 'feishu',
       command: 'lark-cli',
