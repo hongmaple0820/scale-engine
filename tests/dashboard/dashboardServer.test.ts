@@ -1331,7 +1331,7 @@ describe('DashboardServer API', () => {
       ok: boolean
       result: string
       loop: { id: string }
-    }>(await app.request('/api/v1/cron/heartbeat/exec', { method: 'POST' }))
+    }>(await confirmedRequest('/api/v1/cron/heartbeat/exec', { method: 'POST' }))
     expect(heartbeatExec).toEqual(expect.objectContaining({
       ok: true,
       result: 'trigger-recorded',
@@ -1778,7 +1778,7 @@ describe('DashboardServer API', () => {
       error: expect.stringContaining('Unsupported model'),
     }))
 
-    const invalidRouteResponse = await app.request('/api/integrations/feishu/route', {
+    const invalidRouteResponse = await confirmedRequest('/api/integrations/feishu/route', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agentPlatformId: 'unknown-agent' }),
@@ -1795,7 +1795,7 @@ describe('DashboardServer API', () => {
       ok: boolean
       status: string
       error: string
-    }>(await app.request('/api/integrations/feishu/actions/live-send', { method: 'POST' }))
+    }>(await confirmedRequest('/api/integrations/feishu/actions/live-send', { method: 'POST' }))
     expect(blockedAction).toEqual(expect.objectContaining({
       ok: false,
       status: 'blocked',
