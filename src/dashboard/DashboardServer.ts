@@ -1016,7 +1016,7 @@ export class DashboardServer {
         const authFailure = requiresAuth && !tokenValid
         const limit = authFailure ? 10 : isMutation ? 60 : 300
         const rateWindowMs = 60_000
-        const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${c.req.path}`, limit, rateWindowMs)
+        const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${authFailure ? '*' : c.req.path}`, limit, rateWindowMs)
         if (!rateLimit.allowed) {
           return c.json(
             { error: 'Dashboard request rate limit exceeded.', retryAfterSeconds: rateLimit.retryAfterSeconds },
