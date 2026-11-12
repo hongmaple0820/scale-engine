@@ -107,7 +107,7 @@ describe('verification command catalog (#36)', () => {
     const catalog = loadVerificationCommandCatalog()
     expect(isVerificationCommand('echo "powershell -File tools/validate-patterns.ps1"', catalog)).toBe(false)
     expect(isVerificationCommand('printf \'%s\\n\' "powershell -File tools/validate-patterns.ps1"', catalog)).toBe(false)
-    expect(isVerificationCommand('node -e "console.log(\\'scripts/workflow/lint.mjs\\')"', catalog)).toBe(false)
+    expect(isVerificationCommand(`node -e "console.log('scripts/workflow/lint.mjs')"`, catalog)).toBe(false)
     expect(isVerificationCommand('powershell -File tools/validate-patterns.ps1', catalog)).toBe(true)
     expect(isVerificationCommand('powershell -File tools/validate-patterns.ps1 --report out.json', catalog)).toBe(true)
   })
