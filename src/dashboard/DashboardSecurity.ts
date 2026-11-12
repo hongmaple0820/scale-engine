@@ -230,7 +230,9 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
 }
 
 export function dashboardAuthorizationAllows(authorization: DashboardAuthorization, scope: DashboardScope): boolean {
-  return authorization.scopes.includes('*') || authorization.scopes.includes('dashboard:admin') || authorization.scopes.includes(scope)
+  const domainAdmin = `${scope.split(':')[0]}:admin` as DashboardScope
+  return authorization.scopes.includes('*') || authorization.scopes.includes('dashboard:admin')
+    || authorization.scopes.includes(scope) || authorization.scopes.includes(domainAdmin)
 }
 
 export function appendDashboardAuditEvent(path: string, event: DashboardAuditEvent): void {
