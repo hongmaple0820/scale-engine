@@ -237,6 +237,8 @@ describe('DashboardServer security middleware', () => {
     expect(audit).toContain('scoped-token')
     expect(audit).not.toContain(challenge.confirmationToken)
     expect(audit).not.toContain(token)
+    expect(audit).toContain('"event":"request.denied"')
+    expect(audit).toContain('"reason":"confirmation"')
   })
 
   it('allows scoped remote tokens only the configured read permissions', async () => {
@@ -262,6 +264,9 @@ describe('DashboardServer security middleware', () => {
     })
     expect(denied.status).toBe(403)
     expect(await denied.text()).toContain('required scope')
+    const audit = readFileSync(join(projectDir, '.scale', 'audit', 'dashboard-security.jsonl'), 'utf8')
+    expect(audit).toContain('"reason":"scope"')
+    expect(audit).not.toContain(viewerToken)
   })
 
   it('supports scoped-only authentication on non-loopback bindings', async () => {
