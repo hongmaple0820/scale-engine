@@ -299,6 +299,8 @@ function commandFromVerificationEvent(payload: unknown): string | undefined {
     command?: unknown
     cmd?: unknown
     script?: unknown
+    command_line?: unknown
+    commandLine?: unknown
   }
   return firstString(
     extractShellCommand(event.args),
