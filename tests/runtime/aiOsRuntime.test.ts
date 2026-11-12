@@ -170,7 +170,7 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({ id: 'runtime-plan', status: 'passed' }),
       expect.objectContaining({ id: 'context-compiler', status: 'passed' }),
       expect.objectContaining({ id: 'memory-provider-recall', status: 'passed' }),
-      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
+      expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'plan', status: 'passed' }),
       expect.objectContaining({ id: 'agent:security-agent', kind: 'agent', status: 'planned', required: true }),
       expect.objectContaining({ id: 'agent-review:security-review', kind: 'agent', status: 'planned', required: true }),
       expect.objectContaining({ id: 'skill-evidence', status: 'planned' }),
@@ -191,6 +191,7 @@ describe('AI OS runtime planner', () => {
     ]))
     expect(report.agentExecution).toEqual(expect.objectContaining({
       strategy: 'agent-execution-settlement-v1',
+      executorStatus: 'not-configured',
       status: 'planned',
       summary: expect.objectContaining({
         totalRoles: expect.any(Number),
@@ -250,7 +251,8 @@ describe('AI OS runtime planner', () => {
       expect.objectContaining({ id: 'agent-collaboration-plan', kind: 'agent', status: 'passed' }),
     ]))
     expect(report.evidence.produced).toContain('runtime-evidence')
-    expect(report.evidence.produced).toContain('agent-collaboration')
+    expect(report.evidence.produced).toContain('agent-collaboration-plan')
+    expect(report.evidence.produced).not.toContain('agent-collaboration')
     expect(report.verification.commands).toEqual([
       expect.objectContaining({ command: 'node -e "process.stdout.write(\'ok\')"', status: 'passed', exitCode: 0 }),
     ])
