@@ -198,10 +198,9 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
 
   if (path === '/api/v1/restart' || path === '/api/v1/reload'
     || path.startsWith('/api/dashboard/service/actions/')
-    || path === '/api/v1/capabilities/map'
     || path === '/api/v1/capabilities/map') return 'dashboard:admin'
-  if (/^\\/api\\/v1\\/cron\\/[^/]+\\/exec$/.test(path)) return 'tasks:admin'
-  if (/^\\/api\\/v1\\/projects\\/[^/]+\\/model$/.test(path)) return 'agent-control:admin'
+  if (/^\/api\/v1\/cron\/[^/]+\/exec$/.test(path)) return 'tasks:admin'
+  if (/^\/api\/v1\/projects\/[^/]+\/model$/.test(path)) return 'agent-control:admin'
   if (path.startsWith('/api/agent-control') || path.startsWith('/api/v1/projects/')) {
     if (path.includes('/enable-local-executor')) return 'agent-control:admin'
     return scope('agent-control:read', 'agent-control:write')
@@ -225,8 +224,8 @@ export function requiredDashboardScope(method: string, path: string): DashboardS
     if (path.startsWith('/api/v1/governance/config/')) return 'governance:admin'
     return scope('governance:read', 'governance:write')
   }
-  if (/^\\/api\\/lessons\\/[^/]+\\/(approve|reject)$/.test(path)
-    || /^\\/api\\/knowledge\\/local\\/[^/]+\\/review$/.test(path)) return 'governance:admin'
+  if (/^\/api\/lessons\/[^/]+\/(approve|reject)$/.test(path)
+    || /^\/api\/knowledge\/local\/[^/]+\/review$/.test(path)) return 'governance:admin'
   return scope('dashboard:read', 'dashboard:write')
 }
 
