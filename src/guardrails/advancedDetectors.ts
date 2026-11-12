@@ -28,7 +28,7 @@ export class DangerousCommandDetector implements IDetector {
     { pattern: /chmod\s+777/, description: 'chmod 777' },
     { pattern: />\s*\/dev\/sda/, description: 'write to device' },
     { pattern: /mkfs\./, description: 'format filesystem' },
-    { pattern: /:(){ :\|:& };:/, description: 'fork bomb' },
+    { pattern: /:\(\)\{\s*:\|\s*:&\s*\};:/, description: 'fork bomb' },
     { pattern: /dd\s+if=.*of=\/dev\//, description: 'dd to device' },
   ]
 
