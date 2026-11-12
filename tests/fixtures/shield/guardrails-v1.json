@@ -529,6 +529,17 @@
         "triggered": true,
         "severity": "deny"
       }
+    },
+    {
+      "id": "terminal-tool-camel-case-command-line-root-delete-block",
+      "tool": "terminal_tool",
+      "args": {
+        "commandLine": "rm -rf /"
+      },
+      "expected": {
+        "triggered": true,
+        "severity": "deny"
+      }
     }
   ],
   "verificationOutcomes": [
