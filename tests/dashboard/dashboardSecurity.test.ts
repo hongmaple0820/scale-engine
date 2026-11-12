@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DashboardServer } from '../../src/dashboard/DashboardServer.js'
-import { DashboardRateLimiter, dashboardAuthorizationAllows, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization } from '../../src/dashboard/DashboardSecurity.js'
+import { assertDashboardSecurityConfig, DashboardRateLimiter, dashboardAuthorizationAllows, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization } from '../../src/dashboard/DashboardSecurity.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -43,6 +43,12 @@ describe('Dashboard security primitives', () => {
   it('requires exact HTTP(S) origins in the allowlist', () => {
     expect(normalizeDashboardAllowedOrigins('https://console.example,http://localhost:3210')).toEqual(['https://console.example', 'http://localhost:3210'])
     expect(() => normalizeDashboardAllowedOrigins('https://console.example/path')).toThrow('exact HTTP(S) origins')
+  })
+
+  it('allows scoped credentials to satisfy remote binding requirements without an admin token', () => {
+    expect(() => assertDashboardSecurityConfig('0.0.0.0', undefined, ['localhost'])).toThrow('SCOPED_TOKENS')
+    expect(() => assertDashboardSecurityConfig('0.0.0.0', undefined, ['localhost'], true)).not.toThrow()
+    expect(() => assertDashboardSecurityConfig('127.0.0.1', undefined, ['dashboard.example'], true)).not.toThrow()
   })
 
   it('parses scoped bearer tokens and rejects malformed or duplicate credentials', () => {
@@ -188,6 +194,26 @@ describe('DashboardServer security middleware', () => {
     expect(await denied.text()).toContain('required scope')
   })
 
+  it('supports scoped-only authentication on non-loopback bindings', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-scoped-only-'))
+    roots.push(projectDir)
+    const viewerToken = 'viewer'.padEnd(32, 'x')
+    const app = new DashboardServer({
+      projectDir,
+      host: '0.0.0.0',
+      scopedTokens: [{ id: 'viewer', token: viewerToken, scopes: ['dashboard:read'] }],
+      allowedHosts: ['localhost'],
+    }).getApp()
+    expect((await app.request('/api/health')).status).toBe(401)
+    expect((await app.request('/api/health', { headers: { Authorization: 'Bearer ' + viewerToken } })).status).toBe(200)
+    const denied = await app.request('/api/agent-control/sessions/s1/messages', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + viewerToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'not allowed' }),
+    })
+    expect(denied.status).toBe(403)
+  })
+
   it('requires a valid bearer token for non-loopback bindings', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-remote-'))
     roots.push(projectDir)
@@ -198,6 +224,6 @@ describe('DashboardServer security middleware', () => {
   })
 
   it('rejects non-loopback bindings without an operator token', () => {
-    expect(() => new DashboardServer({ host: '0.0.0.0' })).toThrow('Non-loopback Dashboard binding requires SCALE_DASHBOARD_TOKEN')
+    expect(() => new DashboardServer({ host: '0.0.0.0' })).toThrow('Non-loopback Dashboard binding requires SCALE_DASHBOARD_TOKEN or at least one SCALE_DASHBOARD_SCOPED_TOKENS entry')
   })
 })
