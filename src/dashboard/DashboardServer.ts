@@ -8,7 +8,7 @@ import { streamSSE } from 'hono/streaming'
 import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, mkdirSync, type Dirent } from 'node:fs'
 import { basename, join, dirname, extname, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import yaml from 'js-yaml'
 import Database from 'better-sqlite3'
@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardRateLimiter, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
