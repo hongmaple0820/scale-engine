@@ -205,7 +205,7 @@ export class PrematureDoneDetector implements IDetector {
     if (testCmd) {
       const output = (testCmd.payload as { output?: string }).output ?? ''
       // 检测测试 0/0 异常
-      if (/tests?\s*(0|no\s*tests?)/i.test(output) || /passed:\s*0/i.test(output)) {
+      if (/(?:\btests?\s*:?\s*(?:0|no\s*tests?)\b|\bno\s+tests?\b|passed:\s*0\b)/i.test(output)) {
         ctx.eventBus.emit('behavior.premature_done', { detector: this.name, detectorVersion: GUARDRAILS_DETECTOR_VERSIONS['premature-done'], policyVersion: GUARDRAILS_POLICY_VERSION, verificationMatrixVersion: catalog.version, reason: 'empty_tests' }, { sessionId: input.sessionId })
         return {
           triggered: true,
