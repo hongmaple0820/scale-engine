@@ -76,8 +76,10 @@ function collectCommands(source: Record<string, unknown> | undefined, sink: stri
 }
 
 const SHELL_TOOL_ALIASES = new Set([
-  'bash', 'shell', 'terminal', 'powershell', 'powershell_core', 'pwsh',
-  'cmd', 'command', 'run_command', 'execute_command', 'run_terminal_command',
+  'bash', 'bash_tool', 'shell', 'shell_command', 'run_shell_command', 'local_shell',
+  'terminal', 'terminal_tool', 'powershell', 'powershell.exe', 'powershell_core',
+  'pwsh', 'pwsh.exe', 'cmd', 'cmd.exe', 'command', 'run_command',
+  'execute_command', 'exec_command', 'run_terminal_command',
 ])
 
 /** Canonical shell adapter name; unknown MCP tools intentionally return null. */
