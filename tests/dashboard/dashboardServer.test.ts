@@ -636,16 +636,18 @@ describe('DashboardServer API', () => {
     const app = server.getApp()
     const confirmedRequest = async (path: string, init: RequestInit = {}) => {
       const method = (init.method ?? 'GET').toUpperCase()
+      const actorHeaders = new Headers(init.headers)
+      actorHeaders.set('Host', 'localhost')
+      actorHeaders.set('Origin', 'http://localhost')
       const challengeResponse = await app.request('/api/security/confirmations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Host: 'localhost', Origin: 'http://localhost' },
         body: JSON.stringify({ method, path }),
       })
       expect(challengeResponse.status).toBe(200)
       const challenge = await challengeResponse.json() as { confirmationToken: string }
-      const headers = new Headers(init.headers)
-      headers.set('X-SCALE-DASHBOARD-CONFIRMATION', challenge.confirmationToken)
-      return app.request(path, { ...init, headers })
+      actorHeaders.set('X-SCALE-DASHBOARD-CONFIRMATION', challenge.confirmationToken)
+      return app.request(path, { ...init, headers: actorHeaders })
     }
     const report = await json<{
       summary: { total: number; ready: number; partial: number; missing: number }
