@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardRateLimiter, hasValidDashboardBearerToken, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -920,6 +920,7 @@ export interface DashboardOptions {
   currentProjectId?: string
   projects?: DashboardProjectSummary[]
   authToken?: string
+  scopedTokens?: DashboardScopedToken[]
   allowedOrigins?: string[]
   allowedHosts?: string[]
   auditPath?: string
@@ -938,6 +939,7 @@ export class DashboardServer {
   private port: number
   private host: string
   private authToken: string | undefined
+  private scopedTokens: DashboardScopedToken[]
   private allowedOrigins: string[]
   private allowedHosts: string[]
   private auditPath: string
@@ -962,6 +964,8 @@ export class DashboardServer {
     this.port = options.port ?? 3210
     this.host = options.host ?? '127.0.0.1'
     this.authToken = (options.authToken ?? process.env.SCALE_DASHBOARD_TOKEN)?.trim() || undefined
+    this.scopedTokens = options.scopedTokens ?? parseDashboardScopedTokens(process.env.SCALE_DASHBOARD_SCOPED_TOKENS)
+    assertDashboardScopedTokens(this.authToken, this.scopedTokens)
     this.allowedHosts = normalizeDashboardAllowedHosts(options.allowedHosts ?? process.env.SCALE_DASHBOARD_ALLOWED_HOSTS)
     assertDashboardSecurityConfig(this.host, this.authToken, this.allowedHosts)
     this.allowedOrigins = normalizeDashboardAllowedOrigins(options.allowedOrigins ?? process.env.SCALE_DASHBOARD_ALLOWED_ORIGINS)
@@ -1001,12 +1005,12 @@ export class DashboardServer {
 
       const method = c.req.method.toUpperCase()
       const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-      const requiresAuth = Boolean(this.authToken) || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
+      const requiresAuth = Boolean(this.authToken) || this.scopedTokens.length > 0 || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
       const authorization = c.req.header('Authorization')
-      const tokenValid = hasValidDashboardBearerToken(authorization, this.authToken)
-      const principal = tokenValid
-        ? createHash('sha256').update(authorization ?? '').digest('hex')
-        : `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
+      const dashboardAuthorization = resolveDashboardAuthorization(authorization, this.authToken, this.scopedTokens)
+      const tokenValid = dashboardAuthorization !== null
+      const principal = dashboardAuthorization?.principal
+        ?? `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
 
       if (method !== 'OPTIONS') {
         const authFailure = requiresAuth && !tokenValid
@@ -1025,6 +1029,10 @@ export class DashboardServer {
       if (requiresAuth && method !== 'OPTIONS' && !tokenValid) {
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
       }
+      if (requiresAuth && method !== 'OPTIONS' && dashboardAuthorization
+        && !dashboardAuthorizationAllows(dashboardAuthorization, requiredDashboardScope(method, c.req.path))) {
+        return c.json({ error: 'Dashboard token does not have the required scope.' }, 403)
+      }
 
       const isSensitiveRead = method === 'GET' && [
         '/api/agent-control',
@@ -1037,7 +1045,8 @@ export class DashboardServer {
       ].some(prefix => c.req.path.startsWith(prefix))
       const isAuditedRequest = isMutation || isSensitiveRead
       const requestId = randomBytes(8).toString('hex')
-      const actor = requiresAuth ? 'bearer-token' as const : 'loopback' as const
+      const actor = dashboardAuthorization?.kind === 'scoped' ? 'scoped-token' as const
+        : dashboardAuthorization ? 'bearer-token' as const : 'loopback' as const
       if (isAuditedRequest) {
         try {
           appendDashboardAuditEvent(this.auditPath, {
