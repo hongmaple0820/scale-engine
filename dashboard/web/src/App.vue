@@ -4176,6 +4176,26 @@ interface DashboardHttpResponse {
   text: () => Promise<string>
 }
 
+function summarizeConfirmationBody(rawBody: string): string {
+  if (!rawBody.trim()) return 'No request body'
+  try {
+    const parsed = JSON.parse(rawBody) as unknown
+    const redact = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(redact)
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+          key,
+          /token|secret|password|api.?key|credential|authorization/i.test(key) ? '[REDACTED]' : redact(item),
+        ]))
+      }
+      return value
+    }
+    return JSON.stringify(redact(parsed)).slice(0, 280)
+  } catch {
+    return 'Non-JSON request payload (content hidden)'
+  }
+}
+
 async function dashboardFetch(url: string, init?: RequestInit): Promise<DashboardHttpResponse> {
   if (typeof globalThis.fetch === 'function') {
     const response = await globalThis.fetch(url, init)
@@ -4189,11 +4209,19 @@ async function dashboardFetch(url: string, init?: RequestInit): Promise<Dashboar
     if (!required.confirmationRequired || !required.confirmationEndpoint || !required.method || !required.path) return response
 
     const headers = new Headers(init?.headers)
+    const requestBody = typeof init?.body === 'string' ? init.body : ''
+    if (init?.body !== undefined && typeof init.body !== 'string') {
+      return new Response(JSON.stringify({ ok: false, error: t('security.confirmBodyUnsupported') }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    const requestContentType = headers.get('Content-Type') ?? ''
     headers.set('Content-Type', 'application/json')
     const challengeResponse = await globalThis.fetch(required.confirmationEndpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ method: required.method, path: required.path }),
+      body: JSON.stringify({ method: required.method, path: required.path, requestBody, requestContentType }),
     })
     const challenge = await challengeResponse.json().catch(() => ({})) as {
       ok?: boolean
@@ -4211,6 +4239,7 @@ async function dashboardFetch(url: string, init?: RequestInit): Promise<Dashboar
     const prompt = t('security.confirmAction', {
       method: required.method,
       path: required.path,
+      summary: summarizeConfirmationBody(requestBody),
       seconds: challenge.expiresInSeconds ?? 60,
     })
     if (typeof globalThis.confirm !== 'function' || !globalThis.confirm(prompt)) {
@@ -5267,7 +5296,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'service.copyLogPath': '复制日志路径',
     'service.ensureStarted': 'Dashboard 常驻守护已启动',
     'service.restartStarted': 'Dashboard 常驻守护已开始重启',
-    'security.confirmAction': '即将执行高影响操作：{method} {path}。确认凭据将在 {seconds} 秒后失效且只能使用一次。是否继续？',
+    'security.confirmAction': '即将执行高影响操作：{method} {path}。操作摘要：{summary}。确认凭据将在 {seconds} 秒后失效且只能使用一次。是否继续？',
+    'security.confirmBodyUnsupported': '当前操作的请求体格式无法安全确认，请使用 JSON 请求后重试。',
     'security.confirmUnavailable': '无法获取操作确认凭据，请检查权限后重试。',
     'security.confirmCancelled': '已取消高影响操作。',
     'documents.name': '名称',
@@ -5937,7 +5967,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'service.copyLogPath': 'Copy log path',
     'service.ensureStarted': 'Dashboard watchdog started',
     'service.restartStarted': 'Dashboard watchdog restart started',
-    'security.confirmAction': 'You are about to perform a high-impact action: {method} {path}. The confirmation expires in {seconds} seconds and can only be used once. Continue?',
+    'security.confirmAction': 'You are about to perform a high-impact action: {method} {path}. Intent summary: {summary}. The confirmation expires in {seconds} seconds and can only be used once. Continue?',
+    'security.confirmBodyUnsupported': 'This request body format cannot be safely confirmed. Retry with a JSON request.',
     'security.confirmUnavailable': 'Could not obtain an action confirmation. Check permissions and try again.',
     'security.confirmCancelled': 'High-impact action cancelled.',
     'integrations.routeConfig': 'Project message route',
