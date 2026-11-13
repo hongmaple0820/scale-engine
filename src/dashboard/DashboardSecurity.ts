@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
 
 export interface DashboardAuditEvent {
@@ -251,16 +251,44 @@ interface StoredDashboardConfirmation {
   principal: string
   method: string
   path: string
+  intentDigest: string
   expiresAt: number
 }
 
-/** Short-lived, single-use confirmation tokens bound to one principal and exact HTTP action. */
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJsonValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, stableJsonValue(item)]))
+  }
+  return value
+}
+
+/** Hashes the exact route and request intent; JSON object key order is canonicalized. */
+export function dashboardConfirmationIntentDigest(
+  method: string,
+  path: string,
+  contentType: string,
+  body: string,
+): string {
+  let canonicalBody = body
+  const mediaType = contentType.split(';', 1)[0]?.trim().toLowerCase() ?? ''
+  if (mediaType === 'application/json' || mediaType.endsWith('+json')) {
+    try { canonicalBody = JSON.stringify(stableJsonValue(JSON.parse(body))) } catch { /* retain exact malformed payload */ }
+  }
+  return createHash('sha256')
+    .update(JSON.stringify([method.toUpperCase(), path, mediaType, canonicalBody]))
+    .digest('hex')
+}
+
+/** Short-lived, single-use confirmation tokens bound to one principal and exact HTTP intent. */
 export class DashboardConfirmationStore {
   private readonly challenges = new Map<string, StoredDashboardConfirmation>()
 
   constructor(private readonly ttlMs = 60_000, private readonly maxEntries = 512) {}
 
-  issue(principal: string, method: string, path: string, now = Date.now()): DashboardConfirmationChallenge {
+  issue(principal: string, method: string, path: string, intentDigest: string, now = Date.now()): DashboardConfirmationChallenge {
     this.prune(now)
     while (this.challenges.size >= this.maxEntries) {
       const oldest = this.challenges.keys().next().value
@@ -269,11 +297,11 @@ export class DashboardConfirmationStore {
     }
     const token = randomBytes(32).toString('hex')
     const expiresAt = now + Math.max(1_000, this.ttlMs)
-    this.challenges.set(token, { principal, method: method.toUpperCase(), path, expiresAt })
+    this.challenges.set(token, { principal, method: method.toUpperCase(), path, intentDigest, expiresAt })
     return { token, expiresAt }
   }
 
-  consume(token: string | undefined, principal: string, method: string, path: string, now = Date.now()): boolean {
+  consume(token: string | undefined, principal: string, method: string, path: string, intentDigest: string, now = Date.now()): boolean {
     if (!token) return false
     const challenge = this.challenges.get(token)
     if (!challenge) return false
@@ -282,6 +310,7 @@ export class DashboardConfirmationStore {
       && challenge.principal === principal
       && challenge.method === method.toUpperCase()
       && challenge.path === path
+      && challenge.intentDigest === intentDigest
   }
 
   private prune(now: number): void {
@@ -310,6 +339,7 @@ export function requiresDashboardConfirmation(method: string, path: string): boo
       || path === '/api/integrations/feishu/route'
       || path === '/api/integrations/knowledge/tencent-ima'
     ))
+    || (verb === 'POST' && (path === '/api/v1/bridges/register' || path === '/api/v1/capabilities/map'))
     || (verb === 'DELETE' && (path.startsWith('/api/v1/bridges/') || path.startsWith('/bridge/sessions/')))
 }
 
