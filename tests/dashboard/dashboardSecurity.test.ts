@@ -47,22 +47,34 @@ describe('Dashboard security primitives', () => {
 
   it('binds confirmation tokens to one actor, method, path, and expiry', () => {
     const store = new DashboardConfirmationStore(1000)
-    const issued = store.issue('operator-1', 'post', '/api/v1/restart', 100)
+    const digest = dashboardConfirmationIntentDigest('POST', '/api/v1/restart', 'application/json', '{"mode":"safe"}')
+    const issued = store.issue('operator-1', 'post', '/api/v1/restart', digest, 100)
     expect(issued.expiresAt).toBe(1100)
-    expect(store.consume(issued.token, 'operator-2', 'POST', '/api/v1/restart', 200)).toBe(false)
-    expect(store.consume(issued.token, 'operator-1', 'POST', '/api/v1/restart', 200)).toBe(false)
-    const second = store.issue('operator-1', 'POST', '/api/v1/restart', 100)
-    expect(store.consume(second.token, 'operator-1', 'POST', '/api/v1/restart', 1100)).toBe(false)
-    const third = store.issue('operator-1', 'POST', '/api/v1/restart', 100)
-    expect(store.consume(third.token, 'operator-1', 'POST', '/api/v1/restart', 200)).toBe(true)
-    expect(store.consume(third.token, 'operator-1', 'POST', '/api/v1/restart', 201)).toBe(false)
+    expect(store.consume(issued.token, 'operator-2', 'POST', '/api/v1/restart', digest, 200)).toBe(false)
+    expect(store.consume(issued.token, 'operator-1', 'POST', '/api/v1/restart', digest, 200)).toBe(false)
+    const second = store.issue('operator-1', 'POST', '/api/v1/restart', digest, 100)
+    expect(store.consume(second.token, 'operator-1', 'POST', '/api/v1/restart', digest, 1100)).toBe(false)
+    const third = store.issue('operator-1', 'POST', '/api/v1/restart', digest, 100)
+    expect(store.consume(third.token, 'operator-1', 'POST', '/api/v1/restart', digest, 200)).toBe(true)
+    expect(store.consume(third.token, 'operator-1', 'POST', '/api/v1/restart', digest, 201)).toBe(false)
   })
 
   it('requires confirmation only for configured high-impact actions', () => {
     expect(requiresDashboardConfirmation('POST', '/api/v1/restart')).toBe(true)
     expect(requiresDashboardConfirmation('POST', '/api/v1/projects/demo/model')).toBe(true)
+    expect(requiresDashboardConfirmation('POST', '/api/v1/bridges/register')).toBe(true)
+    expect(requiresDashboardConfirmation('POST', '/api/v1/capabilities/map')).toBe(true)
+    expect(requiresDashboardConfirmation('DELETE', '/api/v1/bridges/demo')).toBe(true)
     expect(requiresDashboardConfirmation('POST', '/api/agent-control/sessions/s1/messages')).toBe(false)
     expect(requiresDashboardConfirmation('GET', '/api/v1/restart')).toBe(false)
+  })
+
+  it('canonicalizes JSON object key order but changes digest when operation data changes', () => {
+    const first = dashboardConfirmationIntentDigest('POST', '/api/v1/capabilities/map', 'application/json', '{"task":"audit","phase":"plan"}')
+    const reordered = dashboardConfirmationIntentDigest('POST', '/api/v1/capabilities/map', 'application/json', '{"phase":"plan","task":"audit"}')
+    const changed = dashboardConfirmationIntentDigest('POST', '/api/v1/capabilities/map', 'application/json', '{"phase":"execute","task":"audit"}')
+    expect(first).toBe(reordered)
+    expect(first).not.toBe(changed)
   })
 
   it('allows scoped credentials to satisfy remote binding requirements without an admin token', () => {
@@ -241,6 +253,64 @@ describe('DashboardServer security middleware', () => {
     expect(audit).not.toContain(token)
     expect(audit).toContain('"event":"request.denied"')
     expect(audit).toContain('"reason":"confirmation"')
+  })
+
+  it('binds confirmation to request content and accepts canonical-equivalent JSON', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-confirmation-body-'))
+    roots.push(projectDir)
+    const app = new DashboardServer({ projectDir }).getApp()
+    const path = '/api/v1/capabilities/map'
+    const headers = { 'Content-Type': 'application/json', Host: 'localhost', Origin: 'http://localhost' }
+    const issue = async (requestBody: string) => {
+      const response = await app.request('/api/security/confirmations', {
+        method: 'POST', headers,
+        body: JSON.stringify({ method: 'POST', path, requestBody, requestContentType: 'application/json' }),
+      })
+      expect(response.status).toBe(200)
+      return (await response.json() as { confirmationToken: string }).confirmationToken
+    }
+    const original = '{"task":"audit","phase":"plan"}'
+    const changedToken = await issue(original)
+    const changed = await app.request(path, {
+      method: 'POST',
+      headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': changedToken },
+      body: '{"task":"audit","phase":"execute"}',
+    })
+    expect(changed.status).toBe(428)
+
+    const equivalentToken = await issue(original)
+    const equivalent = await app.request(path, {
+      method: 'POST',
+      headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': equivalentToken },
+      body: '{"phase":"plan","task":"audit"}',
+    })
+    expect(equivalent.status).toBe(200)
+  })
+
+  it.each([
+    ['/api/v1/bridges/register', '{"name":"security-test-bridge"}'],
+    ['/api/v1/capabilities/map', '{"task":"map capabilities"}'],
+  ])('requires a confirmation challenge for high-impact route %s', async (path, body) => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-dashboard-high-impact-route-'))
+    roots.push(projectDir)
+    const app = new DashboardServer({ projectDir }).getApp()
+    const headers = { 'Content-Type': 'application/json', Host: 'localhost', Origin: 'http://localhost' }
+    const missing = await app.request(path, { method: 'POST', headers, body })
+    expect(missing.status).toBe(428)
+
+    const challengeResponse = await app.request('/api/security/confirmations', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ method: 'POST', path, requestBody: body, requestContentType: 'application/json' }),
+    })
+    expect(challengeResponse.status).toBe(200)
+    const challenge = await challengeResponse.json() as { confirmationToken: string }
+    const confirmed = await app.request(path, {
+      method: 'POST',
+      headers: { ...headers, 'X-SCALE-DASHBOARD-CONFIRMATION': challenge.confirmationToken },
+      body,
+    })
+    expect([200, 201]).toContain(confirmed.status)
   })
 
   it('allows scoped remote tokens only the configured read permissions', async () => {
