@@ -75,7 +75,9 @@ including preflight requests. Only add origins controlled by the same operator.
 ## High-impact action confirmation
 
 High-impact mutations require a short-lived, single-use confirmation bound to
-the authenticated principal, exact HTTP method, and exact route. The Dashboard
+the authenticated principal, exact HTTP method, exact route, and a SHA-256
+digest of the request intent. JSON object keys are canonicalized so equivalent
+JSON payloads remain equivalent; changing a value or route invalidates the token. The Dashboard
 Vue client handles this automatically: when a protected action receives HTTP
 428, it requests a confirmation challenge, displays a confirmation dialog in
 the selected UI language, and retries once only after the operator accepts.
@@ -83,7 +85,9 @@ the selected UI language, and retries once only after the operator accepts.
 Non-browser clients must use the same two-step protocol:
 
 1. Send `POST /api/security/confirmations` with the same bearer credential
-   used for the action and JSON body `{"method":"POST","path":"/api/v1/restart"}`.
+   used for the action and JSON body containing `method`, `path`,
+   `requestBody` (the exact serialized action body), and `requestContentType`.
+   For example: `{"method":"POST","path":"/api/v1/restart","requestBody":"","requestContentType":""}`.
 2. Read the returned `confirmationToken` and send the intended request with
    `X-SCALE-DASHBOARD-CONFIRMATION: <confirmationToken>`.
 3. Use the token within 60 seconds. It is invalid after one use and cannot be
@@ -92,7 +96,8 @@ Non-browser clients must use the same two-step protocol:
 
 The protected set includes Dashboard restart/reload, Agent model routing and
 local-executor enablement, cron execution, governance policy/configuration,
-lesson approval, integration authorization/configuration/setup, bridge deletion. The route matcher is explicit;
+lesson approval, integration authorization/configuration/setup, bridge
+registration/deletion, and capability mapping. The route matcher is explicit;
 ordinary message sending and read-only operations do not trigger confirmation.
 
 This is an explicit intent-confirmation step, not second-person approval or
