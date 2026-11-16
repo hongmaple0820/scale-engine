@@ -78,7 +78,7 @@ describe('release manifest generator contract', () => {
 
   it('rejects a dirty release checkout even when GITHUB_SHA is present', () => {
     const root = createFixture()
-    writeFileSync(join(root, 'README.md'), 'modified after commit')
+    writeFileSync(join(root, 'dirty-after-commit.txt'), 'modified after commit')
     const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
     const result = runGenerator(root, { GITHUB_SHA: sha })
     expect(result.status).not.toBe(0)
