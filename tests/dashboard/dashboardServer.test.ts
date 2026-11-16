@@ -642,7 +642,11 @@ describe('DashboardServer API', () => {
       const challengeResponse = await app.request('/api/security/confirmations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Host: 'localhost', Origin: 'http://localhost' },
-        body: JSON.stringify({ method, path }),
+        body: JSON.stringify({
+          method, path,
+          requestBody: typeof init.body === 'string' ? init.body : '',
+          requestContentType: actorHeaders.get('Content-Type') ?? '',
+        }),
       })
       expect(challengeResponse.status).toBe(200)
       const challenge = await challengeResponse.json() as { confirmationToken: string }
@@ -1902,7 +1906,11 @@ describe('DashboardServer API', () => {
     const challengeResponse = await app.request('/api/security/confirmations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method: 'POST', path: reviewPath }),
+      body: JSON.stringify({
+        method: 'POST', path: reviewPath,
+        requestBody: JSON.stringify({ action: 'approve', reason: 'test approval' }),
+        requestContentType: 'application/json',
+      }),
     })
     expect(challengeResponse.status).toBe(200)
     const challenge = await challengeResponse.json() as { confirmationToken: string }
@@ -1981,7 +1989,11 @@ describe('DashboardServer API', () => {
     const challengeResponse = await app.request('/api/security/confirmations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method: 'POST', path: reviewPath }),
+      body: JSON.stringify({
+        method: 'POST', path: reviewPath,
+        requestBody: JSON.stringify({ action: 'reject' }),
+        requestContentType: 'application/json',
+      }),
     })
     expect(challengeResponse.status).toBe(200)
     const challenge = await challengeResponse.json() as { confirmationToken: string }
