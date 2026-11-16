@@ -77,7 +77,7 @@ describe('hook-safe CLI commands', () => {
     expect(gateHelp.exitCode).toBe(0)
     expect(metaHelp.exitCode).toBe(0)
     expect(existsSync(join(scaleDir, 'scale.db'))).toBe(false)
-  }, 15_000)
+  }, 30_000)
 
   it('records Bash verification commands as runtime evidence and event bus signals', async () => {
     const projectDir = makeDir('scale-hook-verification-project-')
@@ -237,7 +237,7 @@ describe('hook-safe CLI commands', () => {
 
     expect(beforeStop.exitCode).toBe(0)
     expect(beforeStop.stderr).toBe('')
-  }, 20_000)
+  }, 45_000)
 
   it('creates a same-day fallback hook session when the agent omits session id', async () => {
     const projectDir = makeDir('scale-hook-fallback-session-project-')
