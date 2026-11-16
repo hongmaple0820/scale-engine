@@ -11,6 +11,7 @@ const smokeRoot = mkdtempSync(join(tmpdir(), 'scale-package-smoke-'))
 const scaleDir = join(smokeRoot, '.scale')
 
 const requiredPackFiles = [
+  'dist/release-manifest.json',
   'dist/api/cli.js',
   'dist/cli/gateInlineCommands.js',
   'dist/cli/metaGovernanceCommands.js',
