@@ -233,7 +233,7 @@ describe('DashboardServer security middleware', () => {
     const missing = await app.request(actionPath, { method: 'POST', headers, body: '{}' })
     expect(missing.status).toBe(428)
     const issued = await app.request('/api/security/confirmations', {
-      method: 'POST', headers, body: JSON.stringify({ method: 'POST', path: actionPath }),
+      method: 'POST', headers, body: JSON.stringify({ method: 'POST', path: actionPath, requestBody: '{}', requestContentType: 'application/json' }),
     })
     expect(issued.status).toBe(200)
     const challenge = await issued.json() as { confirmationToken: string }
