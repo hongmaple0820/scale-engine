@@ -70,8 +70,8 @@ jobs:
       - name: Upload prebuilt plugin tarball
         uses: actions/upload-artifact@v4
         with:
-          name: scale-release-plugin-\${{ github.ref_name }}
-          path: \${{ runner.temp }}/scale-release-packages/*.tgz
+          name: scale-release-plugin-${{ github.ref_name }}
+          path: ${{ runner.temp }}/scale-release-packages/*.tgz
           if-no-files-found: error
           retention-days: 90
 
@@ -161,8 +161,8 @@ jobs:
       - name: Download prebuilt plugin tarball
         uses: actions/download-artifact@v4
         with:
-          name: scale-release-plugin-\${{ github.ref_name }}
-          path: \${{ runner.temp }}/scale-release-packages
+          name: scale-release-plugin-${{ github.ref_name }}
+          path: ${{ runner.temp }}/scale-release-packages
 
       - name: Publish plugin
         working-directory: packages/dsh-scale
