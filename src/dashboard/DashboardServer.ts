@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardConfirmationStore, DashboardRateLimiter, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, requiresDashboardConfirmation, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardConfirmationStore, DashboardRateLimiter, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, dashboardConfirmationIntentDigest, requiredDashboardScope, requiresDashboardConfirmation, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -1052,8 +1052,12 @@ export class DashboardServer {
       }
 
       if (requiresDashboardConfirmation(method, c.req.path)) {
+        const requestBody = await c.req.raw.clone().text().catch(() => '')
+        const intentDigest = dashboardConfirmationIntentDigest(
+          method, c.req.path, c.req.header('Content-Type') ?? '', requestBody,
+        )
         const confirmationToken = c.req.header('X-SCALE-DASHBOARD-CONFIRMATION')
-        if (!this.confirmationStore.consume(confirmationToken, principal, method, c.req.path)) {
+        if (!this.confirmationStore.consume(confirmationToken, principal, method, c.req.path, intentDigest)) {
           recordDenied('confirmation', 428)
           return c.json({
             error: 'This high-impact action requires an explicit, short-lived confirmation token.',
@@ -1358,7 +1362,13 @@ export class DashboardServer {
         && !dashboardAuthorizationAllows(authorization, requiredDashboardScope(method, path))) {
         return c.json({ ok: false, error: 'Dashboard token does not have the required scope for this action.' }, 403)
       }
-      const challenge = this.confirmationStore.issue(principal, method, path)
+      const requestBody = typeof body.requestBody === 'string' ? body.requestBody : ''
+      const requestContentType = typeof body.requestContentType === 'string' ? body.requestContentType : ''
+      if (requestBody.length > 1_048_576) {
+        return c.json({ ok: false, error: 'Confirmation request body exceeds the 1 MiB limit.' }, 413)
+      }
+      const intentDigest = dashboardConfirmationIntentDigest(method, path, requestContentType, requestBody)
+      const challenge = this.confirmationStore.issue(principal, method, path, intentDigest)
       return c.json({
         ok: true,
         confirmationToken: challenge.token,
