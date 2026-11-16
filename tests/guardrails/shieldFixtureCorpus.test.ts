@@ -173,6 +173,119 @@ describe('Shield / Guardrails versioned regression corpus', () => {
     }
   })
 
+  it('accepts a successful configured PowerShell verification after the final edit (#36)', async () => {
+    const previousProjectDir = process.env.SCALE_PROJECT_DIR
+    const previousScaleDir = process.env.SCALE_DIR
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-powershell-verification-'))
+    try {
+      process.env.SCALE_PROJECT_DIR = projectDir
+      process.env.SCALE_DIR = '.scale'
+      mkdirSync(join(projectDir, '.scale'), { recursive: true })
+      writeFileSync(join(projectDir, '.scale', 'verification.json'), JSON.stringify({
+        version: 1,
+        defaultProfile: 'default',
+        profiles: { default: { commands: { verify: 'powershell -File tools/validate-patterns.ps1' } } },
+      }))
+      const bus = new EventBus({ eventsDir: join(projectDir, 'events') })
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'src/example.ts' } }, { sessionId: 'powershell-success' })
+      await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+      bus.emit('tool.completed', {
+        tool: 'PowerShell',
+        args: { command: 'powershell -File tools/validate-patterns.ps1' },
+        exitCode: 0,
+        output: 'Validation passed: 3 checks',
+      }, { sessionId: 'powershell-success' })
+
+      const result = await new PrematureDoneDetector().check(
+        { sessionId: 'powershell-success' },
+        { eventBus: bus, cache: new Map() },
+      )
+      expect(result.triggered).toBe(false)
+    } finally {
+      if (previousProjectDir === undefined) delete process.env.SCALE_PROJECT_DIR
+      else process.env.SCALE_PROJECT_DIR = previousProjectDir
+      if (previousScaleDir === undefined) delete process.env.SCALE_DIR
+      else process.env.SCALE_DIR = previousScaleDir
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks a failed configured PowerShell verification after the final edit (#36)', async () => {
+    const previousProjectDir = process.env.SCALE_PROJECT_DIR
+    const previousScaleDir = process.env.SCALE_DIR
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-powershell-failed-verification-'))
+    try {
+      process.env.SCALE_PROJECT_DIR = projectDir
+      process.env.SCALE_DIR = '.scale'
+      mkdirSync(join(projectDir, '.scale'), { recursive: true })
+      writeFileSync(join(projectDir, '.scale', 'verification.json'), JSON.stringify({
+        version: 1,
+        defaultProfile: 'default',
+        profiles: { default: { commands: { verify: 'powershell -File tools/validate-patterns.ps1' } } },
+      }))
+      const bus = new EventBus({ eventsDir: join(projectDir, 'events') })
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'src/example.ts' } }, { sessionId: 'powershell-failed' })
+      await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+      bus.emit('tool.completed', {
+        tool: 'PowerShell',
+        args: { command: 'powershell -File tools/validate-patterns.ps1' },
+        exitCode: 1,
+        output: 'Validation failed',
+      }, { sessionId: 'powershell-failed' })
+
+      const result = await new PrematureDoneDetector().check(
+        { sessionId: 'powershell-failed' },
+        { eventBus: bus, cache: new Map() },
+      )
+      expect(result.triggered).toBe(true)
+      expect(result.reason).toContain('验证失败')
+    } finally {
+      if (previousProjectDir === undefined) delete process.env.SCALE_PROJECT_DIR
+      else process.env.SCALE_PROJECT_DIR = previousProjectDir
+      if (previousScaleDir === undefined) delete process.env.SCALE_DIR
+      else process.env.SCALE_DIR = previousScaleDir
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects stale PowerShell verification evidence when an edit happens afterward (#36)', async () => {
+    const previousProjectDir = process.env.SCALE_PROJECT_DIR
+    const previousScaleDir = process.env.SCALE_DIR
+    const projectDir = mkdtempSync(join(tmpdir(), 'scale-powershell-stale-verification-'))
+    try {
+      process.env.SCALE_PROJECT_DIR = projectDir
+      process.env.SCALE_DIR = '.scale'
+      mkdirSync(join(projectDir, '.scale'), { recursive: true })
+      writeFileSync(join(projectDir, '.scale', 'verification.json'), JSON.stringify({
+        version: 1,
+        defaultProfile: 'default',
+        profiles: { default: { commands: { verify: 'powershell -File tools/validate-patterns.ps1' } } },
+      }))
+      const bus = new EventBus({ eventsDir: join(projectDir, 'events') })
+      bus.emit('tool.completed', {
+        tool: 'PowerShell',
+        args: { command: 'powershell -File tools/validate-patterns.ps1' },
+        exitCode: 0,
+        output: 'Validation passed',
+      }, { sessionId: 'powershell-stale' })
+      await new Promise(resolveDelay => setTimeout(resolveDelay, 3))
+      bus.emit('tool.completed', { tool: 'Edit', args: { file_path: 'src/example.ts' } }, { sessionId: 'powershell-stale' })
+
+      const result = await new PrematureDoneDetector().check(
+        { sessionId: 'powershell-stale' },
+        { eventBus: bus, cache: new Map() },
+      )
+      expect(result.triggered).toBe(true)
+      expect(result.reason).toContain('验证是修改之前')
+    } finally {
+      if (previousProjectDir === undefined) delete process.env.SCALE_PROJECT_DIR
+      else process.env.SCALE_PROJECT_DIR = previousProjectDir
+      if (previousScaleDir === undefined) delete process.env.SCALE_DIR
+      else process.env.SCALE_DIR = previousScaleDir
+      rmSync(projectDir, { recursive: true, force: true })
+    }
+  })
+
   it.each(fixtures.verificationOutcomes)('verification outcome fixture: $id', fixture => {
     expect(isFailedVerificationEvent({ type: fixture.type, payload: fixture.payload })).toBe(fixture.expected)
   })
