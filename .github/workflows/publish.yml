@@ -72,6 +72,46 @@ jobs:
             npm publish --access public --provenance
           fi
 
+      - name: Verify published package from npm registry
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          SMOKE_ROOT="$RUNNER_TEMP/scale-registry-smoke"
+          PROJECT_DIR="$SMOKE_ROOT/project"
+          EVIDENCE_DIR="$RUNNER_TEMP/scale-release-evidence"
+          mkdir -p "$PROJECT_DIR" "$EVIDENCE_DIR"
+          npm install --prefix "$SMOKE_ROOT" --no-audit --no-fund "@hongmaple0820/scale-engine@$VERSION"
+          SCALE_BIN="$SMOKE_ROOT/node_modules/.bin/scale"
+          "$SCALE_BIN" version --json > "$EVIDENCE_DIR/registry-version.json"
+          "$SCALE_BIN" install --dir "$PROJECT_DIR"
+          "$SCALE_BIN" doctor --dir "$PROJECT_DIR" --json > "$EVIDENCE_DIR/registry-doctor.json"
+          cp dist/release-manifest.json "$EVIDENCE_DIR/release-manifest.json"
+          npm pack --dry-run --json > "$EVIDENCE_DIR/npm-pack-files.json"
+          node --input-type=module - "$EVIDENCE_DIR" "$VERSION" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          const [dir, version] = process.argv.slice(2)
+          const manifest = JSON.parse(readFileSync(join(dir, 'registry-version.json'), 'utf8'))
+          const doctor = JSON.parse(readFileSync(join(dir, 'registry-doctor.json'), 'utf8'))
+          const pack = JSON.parse(readFileSync(join(dir, 'npm-pack-files.json'), 'utf8'))
+          if (manifest.package?.version !== version) throw new Error('Registry CLI version does not match the release tag')
+          if (!/^[a-f0-9]{40}$/i.test(manifest.source?.commit ?? '')) throw new Error('Registry release manifest does not contain a full Git SHA')
+          if (doctor.overall === 'broken') throw new Error('Registry-installed package doctor reports broken')
+          const files = new Set((pack[0]?.files ?? []).map(file => file.path))
+          if (!files.has('dist/release-manifest.json')) throw new Error('Release tarball omits dist/release-manifest.json')
+          NODE
+          printf 'tag=%s\ncommit=%s\nrun_id=%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_RUN_ID" > "$EVIDENCE_DIR/provenance.txt"
+
+      - name: Upload release evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale-release-evidence-${{ github.ref_name }}
+          path: ${{ runner.temp }}/scale-release-evidence/
+          if-no-files-found: warn
+          retention-days: 90
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
