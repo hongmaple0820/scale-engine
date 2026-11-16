@@ -60,6 +60,21 @@ jobs:
         # build, golden eval, audit, package smoke, npm pack, and DSH plugin checks.
         run: npm run release:check
 
+      - name: Pack DSH plugin before publishing the main package
+        working-directory: packages/dsh-scale
+        run: |
+          mkdir -p "$RUNNER_TEMP/scale-release-packages"
+          npm pack --pack-destination "$RUNNER_TEMP/scale-release-packages"
+          test "$(find "$RUNNER_TEMP/scale-release-packages" -maxdepth 1 -name '*.tgz' | wc -l)" -eq 1
+
+      - name: Upload prebuilt plugin tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale-release-plugin-${{ github.ref_name }}
+          path: ${{ runner.temp }}/scale-release-packages/*.tgz
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -143,17 +158,11 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
-      - name: Build main package (plugin typecheck resolves dist types)
-        run: |
-          npm ci
-          npm run build
-
-      - name: Build plugin
-        working-directory: packages/dsh-scale
-        run: |
-          npm install
-          npm run build
-          npm pack --dry-run
+      - name: Download prebuilt plugin tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: scale-release-plugin-${{ github.ref_name }}
+          path: ${{ runner.temp }}/scale-release-packages
 
       - name: Publish plugin
         working-directory: packages/dsh-scale
@@ -161,9 +170,19 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           LOCAL=$(node -p "require('./package.json').version")
+          TARBALL=$(find "$RUNNER_TEMP/scale-release-packages" -maxdepth 1 -name '*.tgz' -print -quit)
+          if [ -z "$TARBALL" ]; then
+            echo "::error::Prebuilt dsh-scale tarball artifact is missing."
+            exit 1
+          fi
           PUBLISHED=$(npm view "@hongmaple0820/dsh-scale@$LOCAL" version 2>/dev/null || echo "")
           if [ "$PUBLISHED" = "$LOCAL" ]; then
             echo "dsh-scale@$LOCAL already published — skipping."
           else
-            npm publish --access public
+            npm publish "$TARBALL" --access public
+          fi
+          REGISTRY_VERSION=$(npm view "@hongmaple0820/dsh-scale@$LOCAL" version)
+          if [ "$REGISTRY_VERSION" != "$LOCAL" ]; then
+            echo "::error::Registry plugin version $REGISTRY_VERSION does not match expected $LOCAL."
+            exit 1
           fi
