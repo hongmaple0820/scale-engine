@@ -4178,7 +4178,50 @@ interface DashboardHttpResponse {
 
 async function dashboardFetch(url: string, init?: RequestInit): Promise<DashboardHttpResponse> {
   if (typeof globalThis.fetch === 'function') {
-    return globalThis.fetch(url, init)
+    const response = await globalThis.fetch(url, init)
+    if (response.status !== 428) return response
+    const required = await response.clone().json().catch(() => ({})) as {
+      confirmationRequired?: boolean
+      confirmationEndpoint?: string
+      method?: string
+      path?: string
+    }
+    if (!required.confirmationRequired || !required.confirmationEndpoint || !required.method || !required.path) return response
+
+    const headers = new Headers(init?.headers)
+    headers.set('Content-Type', 'application/json')
+    const challengeResponse = await globalThis.fetch(required.confirmationEndpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ method: required.method, path: required.path }),
+    })
+    const challenge = await challengeResponse.json().catch(() => ({})) as {
+      ok?: boolean
+      confirmationToken?: string
+      expiresInSeconds?: number
+      error?: string
+    }
+    if (!challengeResponse.ok || !challenge.ok || !challenge.confirmationToken) {
+      return new Response(JSON.stringify({ ok: false, error: challenge.error || t('security.confirmUnavailable') }), {
+        status: challengeResponse.status || 403,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const prompt = t('security.confirmAction', {
+      method: required.method,
+      path: required.path,
+      seconds: challenge.expiresInSeconds ?? 60,
+    })
+    if (typeof globalThis.confirm !== 'function' || !globalThis.confirm(prompt)) {
+      return new Response(JSON.stringify({ ok: false, error: t('security.confirmCancelled') }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    headers.set('X-SCALE-DASHBOARD-CONFIRMATION', challenge.confirmationToken)
+    return globalThis.fetch(url, { ...init, headers })
   }
   if (typeof globalThis.XMLHttpRequest === 'function') {
     return xhrFetch(url, init)
@@ -5224,6 +5267,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'service.copyLogPath': '复制日志路径',
     'service.ensureStarted': 'Dashboard 常驻守护已启动',
     'service.restartStarted': 'Dashboard 常驻守护已开始重启',
+    'security.confirmAction': '即将执行高影响操作：{method} {path}。确认凭据将在 {seconds} 秒后失效且只能使用一次。是否继续？',
+    'security.confirmUnavailable': '无法获取操作确认凭据，请检查权限后重试。',
+    'security.confirmCancelled': '已取消高影响操作。',
     'documents.name': '名称',
     'documents.type': '类型',
     'documents.size': '大小',
@@ -5891,6 +5937,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'service.copyLogPath': 'Copy log path',
     'service.ensureStarted': 'Dashboard watchdog started',
     'service.restartStarted': 'Dashboard watchdog restart started',
+    'security.confirmAction': 'You are about to perform a high-impact action: {method} {path}. The confirmation expires in {seconds} seconds and can only be used once. Continue?',
+    'security.confirmUnavailable': 'Could not obtain an action confirmation. Check permissions and try again.',
+    'security.confirmCancelled': 'High-impact action cancelled.',
     'integrations.routeConfig': 'Project message route',
     'integrations.routeConfigPath': 'Config file',
     'integrations.routeTarget': 'Current target',
