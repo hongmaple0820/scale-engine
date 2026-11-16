@@ -13,16 +13,12 @@ const versionMatch = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version)
 // Release tags publish to the default npm dist-tag. Keep this generator stable-only;
 // prerelease builds need a separate workflow that explicitly chooses an npm tag.
 if (!versionMatch) {
-  throw new Error(\`Release manifest requires a stable x.y.z package version; received: \${version}\`)
+  throw new Error('Release manifest requires a stable x.y.z package version; received: ' + version)
 }
 const semver = versionMatch.slice(1, 4).map(Number)
 
 function isFullGitSha(value) {
   return value.length === 40 && Array.from(value).every(char => '0123456789abcdefABCDEF'.includes(char))
-}
-
-if (semver.length !== 3 || semver.some(part => !isNumericPart(part))) {
-  throw new Error(`Invalid package version: ${version}`)
 }
 
 function git(args) {
@@ -44,7 +40,7 @@ function compareVersion(left, right) {
 const peerRange = pluginPackage.peerDependencies?.[packageJson.name]
 const minimumPeerMatch = /^>=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(String(peerRange ?? ''))
 if (!minimumPeerMatch) {
-  throw new Error(\`dsh-scale peer dependency must use a stable >=x.y.z range; received: \${peerRange ?? 'missing'}\`)
+  throw new Error('dsh-scale peer dependency must use a stable >=x.y.z range; received: ' + (peerRange ?? 'missing'))
 }
 const minimumPeer = minimumPeerMatch.slice(1, 4).map(Number)
 if (compareVersion(semver, minimumPeer) < 0) {
