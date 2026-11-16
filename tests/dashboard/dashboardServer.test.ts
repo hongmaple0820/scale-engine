@@ -487,14 +487,27 @@ describe('DashboardServer API', () => {
       policyEnabled: false,
     }))
 
+    const mappedBody = JSON.stringify({ task: 'Use CUA to inspect a WPS desktop workflow' })
+    const mappedChallengeResponse = await app.request('/api/security/confirmations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: 'POST',
+        path: '/api/v1/capabilities/map',
+        requestBody: mappedBody,
+        requestContentType: 'application/json',
+      }),
+    })
+    expect(mappedChallengeResponse.status).toBe(200)
+    const mappedChallenge = await mappedChallengeResponse.json() as { confirmationToken: string }
     const mapped = await json<{
       ok: boolean
       recommendations: Array<{ id: string }>
       capabilities: { descriptors: Array<{ id: string; kind: string; status: string }> }
     }>(await app.request('/api/v1/capabilities/map', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: 'Use CUA to inspect a WPS desktop workflow' }),
+      headers: { 'Content-Type': 'application/json', 'X-SCALE-DASHBOARD-CONFIRMATION': mappedChallenge.confirmationToken },
+      body: mappedBody,
     }))
     expect(mapped.ok).toBe(false)
     expect(mapped.recommendations.map(item => item.id)).toContain('cua')
@@ -521,29 +534,62 @@ describe('DashboardServer API', () => {
 
     try {
       process.env.SCALE_AGENT_OS_API_TOKEN = 'local-api-token'
-      const unauthorized = await app.request('/api/v1/bridges/register', {
+      const registrationBody = JSON.stringify({
+        bridgeId: 'BRIDGE-HTTP-IM',
+        name: 'IM Bridge',
+        kind: 'im',
+        endpoint: 'https://example.test/bridge',
+        token: 'bridge-secret',
+        scopes: ['tasks:read', 'events:read', 'tasks:write'],
+        capabilityIds: ['im-bridge'],
+        metadata: { projectRef: 'cc-connect' },
+      })
+      const registrationPath = '/api/v1/bridges/register'
+      const missingConfirmation = await app.request(registrationPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bridgeId: 'BRIDGE-HTTP-IM', name: 'IM Bridge', kind: 'im' }),
+        body: registrationBody,
+      })
+      expect(missingConfirmation.status).toBe(428)
+
+      const unauthorizedChallengeResponse = await app.request('/api/security/confirmations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'POST', path: registrationPath,
+          requestBody: registrationBody, requestContentType: 'application/json',
+        }),
+      })
+      expect(unauthorizedChallengeResponse.status).toBe(200)
+      const unauthorizedChallenge = await unauthorizedChallengeResponse.json() as { confirmationToken: string }
+      const unauthorized = await app.request(registrationPath, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-SCALE-DASHBOARD-CONFIRMATION': unauthorizedChallenge.confirmationToken,
+        },
+        body: registrationBody,
       })
       expect(unauthorized.status).toBe(401)
 
-      const registeredResponse = await app.request('/api/v1/bridges/register', {
+      const registrationChallengeResponse = await app.request('/api/security/confirmations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'POST', path: registrationPath,
+          requestBody: registrationBody, requestContentType: 'application/json',
+        }),
+      })
+      expect(registrationChallengeResponse.status).toBe(200)
+      const registrationChallenge = await registrationChallengeResponse.json() as { confirmationToken: string }
+      const registeredResponse = await app.request(registrationPath, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-scale-token': 'local-api-token',
+          'X-SCALE-DASHBOARD-CONFIRMATION': registrationChallenge.confirmationToken,
         },
-        body: JSON.stringify({
-          bridgeId: 'BRIDGE-HTTP-IM',
-          name: 'IM Bridge',
-          kind: 'im',
-          endpoint: 'https://example.test/bridge',
-          token: 'bridge-secret',
-          scopes: ['tasks:read', 'events:read', 'tasks:write'],
-          capabilityIds: ['im-bridge'],
-          metadata: { projectRef: 'cc-connect' },
-        }),
+        body: registrationBody,
       })
       expect(registeredResponse.status).toBe(201)
       const registered = await registeredResponse.json() as {
