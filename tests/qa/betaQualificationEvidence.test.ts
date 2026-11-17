@@ -143,6 +143,7 @@ function fixtureRecordStages() {
   return required.map(id => ({
     id, command: 'scale --help', exitCode: 0,
     startedAt: '2026-11-17T10:00:00.000Z', finishedAt: '2026-11-17T10:00:01.000Z',
+    stdoutArtifact: 'logs/stdout.txt', stderrArtifact: null,
     reportArtifacts: [], status: 'passed', notes: [],
   }))
 }
