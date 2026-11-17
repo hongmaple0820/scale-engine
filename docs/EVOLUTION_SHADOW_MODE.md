@@ -69,6 +69,12 @@ Workflow Eval failure promotion creates an improvement candidate only. `scale ev
 
 Acceptance is not promotion to `candidate-hook` or `approved-blocking`. A separately implemented and evidenced Shadow replay remains required before any rule-maturity evaluation. No CLI path in this workflow writes production policies or hooks.
 
+## Failure Improvement Review / 失败改进审核
+
+Failure candidates now have a persistent, one-time review decision. Reviewer identity, rationale, and timestamp are stored with the candidate. Acceptance queues a pending Shadow validation marker only; it does not run replay or promote a rule. Rejection prevents the candidate from entering Shadow validation. Neither decision writes production policy or hook files.
+
+失败候选现在支持持久化的一次性审核。系统记录审核人、审核理由和时间。接受只将候选标记为等待 Shadow 验证，不代表 Replay 已运行，也不代表规则已升级；拒绝的候选不会进入 Shadow 验证。两种决定都不会写入生产策略或 Hook 文件。
+
 ## Current Scope
 
 The workflow-eval candidate review lifecycle is persistent and review-only. Persistent rule-maturity storage and an executable Shadow replay runner remain separate follow-up work; the current `shadowStatus: pending` is a queue marker, not proof that replay ran.
