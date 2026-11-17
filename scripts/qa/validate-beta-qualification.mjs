@@ -70,12 +70,25 @@ function validate(record) {
       seen.add(stage.id)
       if (!nonEmpty(stage.command)) fail(`${path}.command`, 'must contain the exact command')
       if (!Number.isInteger(stage.exitCode)) fail(`${path}.exitCode`, 'must be an integer')
+      const timestampPattern = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/
       for (const key of ['startedAt', 'finishedAt']) {
-        if (!nonEmpty(stage[key]) || Number.isNaN(Date.parse(stage[key]))) fail(`${path}.${key}`, 'must be a valid ISO-8601 timestamp')
+        if (!nonEmpty(stage[key]) || !timestampPattern.test(stage[key]) || Number.isNaN(Date.parse(stage[key]))) {
+          fail(`${path}.${key}`, 'must be a valid ISO-8601 timestamp with timezone')
+        }
+      }
+      if (timestampPattern.test(stage.startedAt ?? '') && timestampPattern.test(stage.finishedAt ?? '')
+        && Date.parse(stage.finishedAt) < Date.parse(stage.startedAt)) {
+        fail(`${path}.finishedAt`, 'must not be earlier than startedAt')
+      }
+      if (!nonEmpty(stage.stdoutArtifact)) fail(`${path}.stdoutArtifact`, 'must be a non-empty redacted artifact path')
+      if (!(stage.stderrArtifact === null || nonEmpty(stage.stderrArtifact))) {
+        fail(`${path}.stderrArtifact`, 'must be a non-empty artifact path or null')
       }
       if (!STAGE_STATUSES.has(stage.status)) fail(`${path}.status`, 'has an unsupported status')
       if (!Array.isArray(stage.reportArtifacts)) fail(`${path}.reportArtifacts`, 'must be an array')
+      else if (stage.reportArtifacts.some(item => !nonEmpty(item))) fail(`${path}.reportArtifacts`, 'must contain only non-empty artifact paths')
       if (!Array.isArray(stage.notes)) fail(`${path}.notes`, 'must be an array')
+      else if (stage.notes.some(item => typeof item !== 'string')) fail(`${path}.notes`, 'must contain only strings')
       if (stage.status === 'passed' && stage.exitCode !== 0) fail(`${path}.exitCode`, 'must be 0 for a passed stage')
       if (stage.status === 'failed' && stage.exitCode === 0) fail(`${path}.exitCode`, 'must be non-zero for a failed stage')
     }
