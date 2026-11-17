@@ -257,6 +257,57 @@ describe('workflow eval CLI', () => {
     expect(candidate.failureId).toBe(failuresReport.failures[0].id)
     expect(candidate.status).toBe('candidate')
     expect(existsSync(candidate.evidencePath)).toBe(true)
+
+    const policyFixture = join(projectDir, '.scale', 'policies', 'production.yaml')
+    mkdirSync(dirname(policyFixture), { recursive: true })
+    writeFileSync(policyFixture, 'rules:\n  deny-dangerous-shell: true\n', 'utf-8')
+    const policyBefore = readFileSync(policyFixture, 'utf-8')
+
+    const missingReviewer = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'accept', '--reviewer', ' ', '--rationale', 'must not accept without identity',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(missingReviewer.exitCode).toBe(1)
+    expect(`${missingReviewer.stdout}\n${missingReviewer.stderr}`).toContain('reviewer identity is required')
+
+    const reviewed = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'accept',
+      '--reviewer', 'qa-owner',
+      '--rationale', 'Failure evidence is reproducible; validate the proposal in shadow mode.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(reviewed.exitCode).toBe(0)
+    const accepted = parseJson<{
+      status: string
+      shadowStatus?: string
+      reviews: Array<{ decision: string; reviewer: string; rationale: string; reviewedAt: string }>
+    }>(reviewed.stdout, reviewed.stderr)
+    expect(accepted).toMatchObject({
+      status: 'accepted',
+      shadowStatus: 'pending',
+      reviews: [expect.objectContaining({
+        decision: 'accepted',
+        reviewer: 'qa-owner',
+        rationale: expect.stringContaining('shadow mode'),
+      })],
+    })
+    expect(Number.isNaN(Date.parse(accepted.reviews[0].reviewedAt))).toBe(false)
+
+    const duplicateReview = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'reject', '--reviewer', 'qa-owner', '--rationale', 'Duplicate decision',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(duplicateReview.exitCode).toBe(1)
+    expect(`${duplicateReview.stdout}\n${duplicateReview.stderr}`).toContain('review is immutable')
+
+    const listed = await runScale(['eval', 'improvements', '--json'], scaleDir, projectDir)
+    expect(listed.exitCode).toBe(0)
+    expect(parseJson<{ improvements: Array<{ id: string; status: string }> }>(listed.stdout, listed.stderr).improvements)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: candidate.id, status: 'accepted' })]))
+    expect(readFileSync(policyFixture, 'utf-8')).toBe(policyBefore)
   }, 120_000)
 
   it('closes open failure replay records after a passing rerun of the same case', async () => {

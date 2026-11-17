@@ -266,6 +266,63 @@ const evalPromoteFailure = defineCommand({
   },
 })
 
+const evalImprovements = defineCommand({
+  meta: { name: 'improvements', description: 'List workflow improvement candidates and review decisions' },
+  args: {
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const store = new WorkflowEvalStore({ projectDir, scaleDir: resolveScaleDirForProject(projectDir) })
+    const improvements = store.listImprovements()
+    if (args.json) {
+      console.log(JSON.stringify({ count: improvements.length, improvements }, null, 2))
+      return
+    }
+    console.log(`SCALE Workflow Improvements: ${improvements.length}`)
+    for (const item of improvements) {
+      console.log(`  [${item.status}]${item.shadowStatus ? ` [shadow:${item.shadowStatus}]` : ''} ${item.id} failure=${item.failureId}`)
+      if (item.reviews?.length) console.log(`    reviewed by ${item.reviews[item.reviews.length - 1].reviewer}: ${item.reviews[item.reviews.length - 1].rationale}`)
+    }
+  },
+})
+
+const evalReviewImprovement = defineCommand({
+  meta: { name: 'review-improvement', description: 'Accept or reject a workflow improvement candidate with an auditable rationale' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Improvement candidate id' },
+    decision: { type: 'string', required: true, description: 'accept or reject' },
+    reviewer: { type: 'string', required: true, description: 'Reviewer identity' },
+    rationale: { type: 'string', required: true, description: 'Reason for the decision' },
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const decision = String(args.decision).toLowerCase()
+    if (decision !== 'accept' && decision !== 'reject') {
+      throw new Error('Decision must be either accept or reject')
+    }
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const store = new WorkflowEvalStore({ projectDir, scaleDir: resolveScaleDirForProject(projectDir) })
+    const candidate = store.reviewImprovement({
+      id: String(args.id),
+      decision: decision === 'accept' ? 'accepted' : 'rejected',
+      reviewer: String(args.reviewer),
+      rationale: String(args.rationale),
+    })
+    if (args.json) {
+      console.log(JSON.stringify(candidate, null, 2))
+      return
+    }
+    console.log(`Workflow improvement ${candidate.status}: ${candidate.id}`)
+    console.log(`  Reviewer: ${candidate.reviews?.[candidate.reviews.length - 1]?.reviewer}`)
+    console.log(`  Rationale: ${candidate.reviews?.[candidate.reviews.length - 1]?.rationale}`)
+    if (candidate.shadowStatus) console.log('  Shadow replay: pending (not executed automatically)')
+    console.log('  Production policies and hooks were not modified.')
+  },
+})
+
 const evalGolden = defineCommand({
   meta: { name: 'golden', description: 'P1-D: run the deterministic golden artifact-contract suite (CI merge gate)' },
   args: {
@@ -307,6 +364,8 @@ export const evalCommand = defineCommand({
     failures: evalFailures,
     replay: evalReplay,
     'promote-failure': evalPromoteFailure,
+    improvements: evalImprovements,
+    'review-improvement': evalReviewImprovement,
     golden: evalGolden,
   },
 })
