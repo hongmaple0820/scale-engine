@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 
 const REQUIRED_STAGES = [
   'install',
@@ -24,6 +24,13 @@ function fail(path, message) {
 
 function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function safeArtifactPath(value) {
+  return nonEmpty(value)
+    && !isAbsolute(value)
+    && !/^(?:[a-zA-Z]:[\\/]|[\\/]{2})/.test(value)
+    && !value.split(/[\\/]/).includes('..')
 }
 
 function checkObject(value, path) {
@@ -80,13 +87,13 @@ function validate(record) {
         && Date.parse(stage.finishedAt) < Date.parse(stage.startedAt)) {
         fail(`${path}.finishedAt`, 'must not be earlier than startedAt')
       }
-      if (!nonEmpty(stage.stdoutArtifact)) fail(`${path}.stdoutArtifact`, 'must be a non-empty redacted artifact path')
+      if (!safeArtifactPath(stage.stdoutArtifact)) fail(`${path}.stdoutArtifact`, 'must be a non-empty relative artifact path without parent traversal')
       if (!(stage.stderrArtifact === null || nonEmpty(stage.stderrArtifact))) {
         fail(`${path}.stderrArtifact`, 'must be a non-empty artifact path or null')
       }
       if (!STAGE_STATUSES.has(stage.status)) fail(`${path}.status`, 'has an unsupported status')
       if (!Array.isArray(stage.reportArtifacts)) fail(`${path}.reportArtifacts`, 'must be an array')
-      else if (stage.reportArtifacts.some(item => !nonEmpty(item))) fail(`${path}.reportArtifacts`, 'must contain only non-empty artifact paths')
+      else if (stage.reportArtifacts.some(item => !safeArtifactPath(item))) fail(`${path}.reportArtifacts`, 'must contain only relative artifact paths without parent traversal')
       if (!Array.isArray(stage.notes)) fail(`${path}.notes`, 'must be an array')
       else if (stage.notes.some(item => typeof item !== 'string')) fail(`${path}.notes`, 'must contain only strings')
       if (stage.status === 'passed' && stage.exitCode !== 0) fail(`${path}.exitCode`, 'must be 0 for a passed stage')
