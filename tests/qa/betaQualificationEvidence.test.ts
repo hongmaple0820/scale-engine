@@ -102,6 +102,18 @@ describe('beta qualification evidence validator', () => {
     expect(result.stderr).toContain('stderrArtifact')
   })
 
+  it('rejects absolute stderr artifact paths', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, stderrArtifact: 'C:\\\\Users\\\\runner\\\\stderr.txt' }
+        : stage),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('stderrArtifact')
+    expect(result.stderr).toContain('relative artifact path')
+  })
+
   it('rejects absolute and parent-traversal artifact paths', () => {
     const file = fixture({
       stages: fixtureRecordStages().map((stage, index) => index === 0
