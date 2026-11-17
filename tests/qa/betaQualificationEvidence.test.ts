@@ -90,6 +90,29 @@ describe('beta qualification evidence validator', () => {
     expect(result.stderr).toContain('full 40-character Git SHA')
   })
 
+  it('rejects missing stdout and invalid stderr artifact paths', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, stdoutArtifact: '', stderrArtifact: 42 }
+        : { ...stage, stdoutArtifact: 'logs/stdout.txt', stderrArtifact: null }),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('stdoutArtifact')
+    expect(result.stderr).toContain('stderrArtifact')
+  })
+
+  it('rejects timestamps where a stage finishes before it starts', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, startedAt: '2026-11-17T10:00:02Z', finishedAt: '2026-11-17T10:00:01Z' }
+        : stage),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('must not be earlier than startedAt')
+  })
+
   it('rejects exit-code/status contradictions', () => {
     const stages = fixtureRecordStages()
     stages[0].status = 'passed'
