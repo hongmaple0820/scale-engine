@@ -88,8 +88,8 @@ function validate(record) {
         fail(`${path}.finishedAt`, 'must not be earlier than startedAt')
       }
       if (!safeArtifactPath(stage.stdoutArtifact)) fail(`${path}.stdoutArtifact`, 'must be a non-empty relative artifact path without parent traversal')
-      if (!(stage.stderrArtifact === null || nonEmpty(stage.stderrArtifact))) {
-        fail(`${path}.stderrArtifact`, 'must be a non-empty artifact path or null')
+      if (!(stage.stderrArtifact === null || safeArtifactPath(stage.stderrArtifact))) {
+        fail(`${path}.stderrArtifact`, 'must be a non-empty relative artifact path without parent traversal, or null')
       }
       if (!STAGE_STATUSES.has(stage.status)) fail(`${path}.status`, 'has an unsupported status')
       if (!Array.isArray(stage.reportArtifacts)) fail(`${path}.reportArtifacts`, 'must be an array')
