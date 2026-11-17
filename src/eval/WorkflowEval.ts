@@ -121,6 +121,13 @@ export interface FailureReplayRecord {
   redactionApplied: boolean
 }
 
+export interface FailureImprovementReview {
+  decision: 'accepted' | 'rejected'
+  reviewer: string
+  rationale: string
+  reviewedAt: string
+}
+
 export interface FailureImprovementCandidate {
   id: string
   failureId: string
@@ -129,7 +136,10 @@ export interface FailureImprovementCandidate {
   title: string
   recommendation: string
   evidencePath: string
-  status: 'candidate'
+  status: 'candidate' | 'accepted' | 'rejected'
+  /** Accepted candidates wait for a separately evidenced shadow replay; acceptance never changes production policy. */
+  shadowStatus?: 'pending'
+  reviews?: FailureImprovementReview[]
 }
 
 export interface WorkflowEvalComparison {
@@ -599,10 +609,55 @@ export class WorkflowEvalStore {
       recommendation: failure.prevention,
       evidencePath: join(this.failuresDir, `${safeSegment(failure.id)}.json`),
       status: 'candidate',
+      reviews: [],
     }
     writeFileSync(join(this.improvementsDir, `${safeSegment(candidate.id)}.json`), JSON.stringify(candidate, null, 2), 'utf-8')
     this.saveFailure({ ...failure, status: 'promoted' })
     return candidate
+  }
+
+  listImprovements(): FailureImprovementCandidate[] {
+    if (!existsSync(this.improvementsDir)) return []
+    return readdirSync(this.improvementsDir)
+      .filter(file => file.endsWith('.json'))
+      .map(file => readJson<FailureImprovementCandidate>(join(this.improvementsDir, file)))
+      .filter((candidate): candidate is FailureImprovementCandidate => Boolean(candidate))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  }
+
+  getImprovement(id: string): FailureImprovementCandidate | null {
+    return readJson<FailureImprovementCandidate>(join(this.improvementsDir, `${safeSegment(id)}.json`))
+  }
+
+  reviewImprovement(input: {
+    id: string
+    decision: 'accepted' | 'rejected'
+    reviewer: string
+    rationale: string
+    now?: string
+  }): FailureImprovementCandidate {
+    const candidate = this.getImprovement(input.id)
+    if (!candidate) throw new Error(`Workflow improvement candidate not found: ${input.id}`)
+    if (candidate.status !== 'candidate') {
+      throw new Error(`Workflow improvement candidate ${input.id} is already ${candidate.status}; review is immutable`)
+    }
+    const reviewer = input.reviewer.trim()
+    const rationale = input.rationale.trim()
+    if (!reviewer) throw new Error('A reviewer identity is required')
+    if (!rationale) throw new Error('A review rationale is required')
+    const reviewed: FailureImprovementCandidate = {
+      ...candidate,
+      status: input.decision,
+      ...(input.decision === 'accepted' ? { shadowStatus: 'pending' as const } : {}),
+      reviews: [...(candidate.reviews ?? []), {
+        decision: input.decision,
+        reviewer,
+        rationale,
+        reviewedAt: input.now ?? new Date().toISOString(),
+      }],
+    }
+    writeFileSync(join(this.improvementsDir, `${safeSegment(candidate.id)}.json`), JSON.stringify(reviewed, null, 2), 'utf-8')
+    return reviewed
   }
 
   suitePath(suiteId: string): string {
