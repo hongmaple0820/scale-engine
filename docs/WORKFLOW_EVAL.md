@@ -51,6 +51,21 @@ scale eval review-improvement <candidate-id> --decision accept --reviewer <ident
 scale eval review-improvement <candidate-id> --decision reject --reviewer <identity> --rationale "<reason>"
 ```
 
+## Failure Improvement Review / 失败改进审核
+
+Create a candidate from a failure, then inspect and decide explicitly:
+
+```bash
+scale eval promote-failure <failure-id>
+scale eval improvements --json
+scale eval review-improvement <candidate-id> --decision accept --reviewer <identity> --rationale "<reason>"
+scale eval review-improvement <candidate-id> --decision reject --reviewer <identity> --rationale "<reason>"
+```
+
+审核记录持久化保存审核人、决定、理由和时间。候选只能从 `candidate` 转为 `accepted` 或 `rejected`，不允许二次改判。接受只设置 `shadowStatus: pending`，代表等待后续独立的 Shadow Replay；当前命令不会执行 Replay，不会自动修改生产策略、项目规范或 Hook。拒绝的候选不会进入 Shadow 验证。
+
+The review decision is immutable and requires both reviewer identity and rationale. Acceptance is review-only: it queues a pending Shadow validation marker, not an executed replay, a production rule change, or a blocking hook.
+
 ## Failure Replay To Memory
 
 Failure Replay is local eval evidence first. When a failure pattern is useful for future work, ingest it into Memory Brain as an `incident` candidate:
