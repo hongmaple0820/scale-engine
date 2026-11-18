@@ -30,11 +30,11 @@ describe('PersistentRuleMaturityStore', () => {
 
     const updated = store.recordHit({
       ruleId: 'IMPROVE-100',
-      evidenceId: 'SHADOW-EVIDENCE-1',
+      evidenceId: `sha256:${'1'.repeat(64)}`,
     })
     expect(updated.shadowHits).toBe(1)
     expect(new PersistentRuleMaturityStore({ projectDir: store.projectDir }).get('IMPROVE-100'))
-      .toMatchObject({ stage: 'shadow', shadowHits: 1, evidenceIds: ['SHADOW-EVIDENCE-1'] })
+      .toMatchObject({ stage: 'shadow', shadowHits: 1, evidenceIds: [`sha256:${'1'.repeat(64)}`] })
   })
 
   it('requires unique evidence ids and prevents duplicate observations from inflating hit counts', () => {
@@ -44,11 +44,11 @@ describe('PersistentRuleMaturityStore', () => {
       rollback: 'Delete the shadow record.',
       defectEvidenceIds: ['FAILURE-101'],
     })
-    store.recordHit({ ruleId: 'IMPROVE-101', evidenceId: 'SHADOW-EVIDENCE-1' })
+    store.recordHit({ ruleId: 'IMPROVE-101', evidenceId: `sha256:${'1'.repeat(64)}` })
 
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-101',
-      evidenceId: 'SHADOW-EVIDENCE-1',
+      evidenceId: `sha256:${'1'.repeat(64)}`,
     })).toThrow('already recorded')
     expect(store.get('IMPROVE-101')?.shadowHits).toBe(1)
   })
@@ -63,7 +63,7 @@ describe('PersistentRuleMaturityStore', () => {
     for (let index = 0; index < 10; index++) {
       store.recordHit({
         ruleId: 'IMPROVE-102',
-        evidenceId: `SHADOW-EVIDENCE-${index}`,
+        evidenceId: `sha256:${String(index).padStart(64, '0')}`,
         falsePositive: index < 2,
       })
     }
@@ -86,6 +86,21 @@ describe('PersistentRuleMaturityStore', () => {
       rollback: 'Remove the shadow record.',
       defectEvidenceIds: ['FAILURE-105'],
     })).toThrow('being updated by another process')
+  })
+
+  it('rejects caller-supplied evidence ids that are not SHA-256 content digests', () => {
+    const store = createStore()
+    store.create({
+      ruleId: 'IMPROVE-106',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-106'],
+    })
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-106',
+      evidenceId: 'made-up-evidence-id',
+    })).toThrow('must be a SHA-256 digest')
+    expect(store.get('IMPROVE-106')?.shadowHits).toBe(0)
   })
 
   it('rejects records without rollback and defect evidence', () => {
