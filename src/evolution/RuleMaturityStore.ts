@@ -87,7 +87,9 @@ export class PersistentRuleMaturityStore {
       const current = this.get(input.ruleId)
       if (!current) throw new Error(`Shadow maturity record not found: ${input.ruleId}`)
       const evidenceId = input.evidenceId.trim()
-      if (!evidenceId) throw new Error('A unique shadow evidence id is required')
+      if (!/^sha256:[a-f0-9]{64}$/.test(evidenceId)) {
+        throw new Error('Shadow evidence id must be a SHA-256 digest in the form sha256:<64 lowercase hex characters>')
+      }
       if (current.evidenceIds.includes(evidenceId)) {
         throw new Error(`Shadow evidence already recorded: ${evidenceId}`)
       }
