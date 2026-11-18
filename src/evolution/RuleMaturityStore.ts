@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync }
 import { join, resolve } from 'node:path'
 import {
   createShadowRuleMaturity,
@@ -68,39 +68,63 @@ export class PersistentRuleMaturityStore {
     if (!input.defectEvidenceIds.length || input.defectEvidenceIds.some(id => !id.trim())) {
       throw new Error('At least one defect evidence id is required')
     }
-    mkdirSync(this.recordsDir, { recursive: true })
-    const path = this.recordPath(ruleId)
-    if (existsSync(path)) throw new Error(`Shadow maturity record already exists: ${ruleId}`)
-    const record = createShadowRuleMaturity({
-      ruleId,
-      rollback: input.rollback.trim(),
-      defectEvidenceIds: input.defectEvidenceIds,
+    return this.withLock(ruleId, () => {
+      mkdirSync(this.recordsDir, { recursive: true })
+      const path = this.recordPath(ruleId)
+      if (existsSync(path)) throw new Error(`Shadow maturity record already exists: ${ruleId}`)
+      const record = createShadowRuleMaturity({
+        ruleId,
+        rollback: input.rollback.trim(),
+        defectEvidenceIds: input.defectEvidenceIds,
+      })
+      this.write(record)
+      return record
     })
-    this.write(record)
-    return record
   }
 
   recordHit(input: { ruleId: string; evidenceId: string; falsePositive?: boolean; now?: number }): RuleMaturityRecord {
-    const current = this.get(input.ruleId)
-    if (!current) throw new Error(`Shadow maturity record not found: ${input.ruleId}`)
-    const evidenceId = input.evidenceId.trim()
-    if (!evidenceId) throw new Error('A unique shadow evidence id is required')
-    if (current.evidenceIds.includes(evidenceId)) {
-      throw new Error(`Shadow evidence already recorded: ${evidenceId}`)
-    }
-    const updated = recordShadowHit(current, {
-      evidenceId,
-      falsePositive: input.falsePositive,
-      now: input.now,
+    return this.withLock(input.ruleId, () => {
+      const current = this.get(input.ruleId)
+      if (!current) throw new Error(`Shadow maturity record not found: ${input.ruleId}`)
+      const evidenceId = input.evidenceId.trim()
+      if (!evidenceId) throw new Error('A unique shadow evidence id is required')
+      if (current.evidenceIds.includes(evidenceId)) {
+        throw new Error(`Shadow evidence already recorded: ${evidenceId}`)
+      }
+      const updated = recordShadowHit(current, {
+        evidenceId,
+        falsePositive: input.falsePositive,
+        now: input.now,
+      })
+      this.write(updated)
+      return updated
     })
-    this.write(updated)
-    return updated
   }
 
   evaluate(ruleId: string, thresholds: RulePromotionThresholds = {}): RulePromotionDecision {
     const record = this.get(ruleId)
     if (!record) throw new Error(`Shadow maturity record not found: ${ruleId}`)
     return evaluateRulePromotion(record, thresholds)
+  }
+
+  private withLock<T>(ruleId: string, operation: () => T): T {
+    mkdirSync(this.recordsDir, { recursive: true })
+    const lockPath = `${this.recordPath(ruleId)}.lock`
+    let lockFd: number
+    try {
+      lockFd = openSync(lockPath, 'wx')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`Shadow maturity record is being updated by another process: ${ruleId}`)
+      }
+      throw error
+    }
+    try {
+      return operation()
+    } finally {
+      closeSync(lockFd)
+      unlinkSync(lockPath)
+    }
   }
 
   private write(record: RuleMaturityRecord): void {
