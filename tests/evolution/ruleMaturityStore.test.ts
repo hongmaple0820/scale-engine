@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -74,6 +74,18 @@ describe('PersistentRuleMaturityStore', () => {
       blockers: [],
     })
     expect(store.get('IMPROVE-102')?.stage).toBe('shadow')
+  })
+
+  it('fails closed when another process holds the maturity record lock', () => {
+    const store = createStore()
+    mkdirSync(store.recordsDir, { recursive: true })
+    writeFileSync(join(store.recordsDir, 'IMPROVE-105.json.lock'), 'locked', 'utf-8')
+
+    expect(() => store.create({
+      ruleId: 'IMPROVE-105',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-105'],
+    })).toThrow('being updated by another process')
   })
 
   it('rejects records without rollback and defect evidence', () => {
