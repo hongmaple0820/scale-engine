@@ -307,6 +307,45 @@ describe('workflow eval CLI', () => {
     expect(listed.exitCode).toBe(0)
     expect(parseJson<{ improvements: Array<{ id: string; status: string }> }>(listed.stdout, listed.stderr).improvements)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: candidate.id, status: 'accepted' })]))
+    const shadowInit = await runScale([
+      'eval', 'shadow-init', candidate.id,
+      '--rollback', 'Remove the shadow maturity record; no hook is installed.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(shadowInit.exitCode).toBe(0)
+    expect(parseJson<{ record: { stage: string; ruleId: string } }>(shadowInit.stdout, shadowInit.stderr).record)
+      .toMatchObject({ stage: 'shadow', ruleId: candidate.id })
+
+    const shadowHit = await runScale([
+      'eval', 'shadow-hit', candidate.id,
+      '--evidence-id', 'shadow-observation-001',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(shadowHit.exitCode).toBe(0)
+    expect(parseJson<{ shadowHits: number; evidenceIds: string[] }>(shadowHit.stdout, shadowHit.stderr))
+      .toMatchObject({ shadowHits: 1, evidenceIds: ['shadow-observation-001'] })
+
+    const duplicateShadowHit = await runScale([
+      'eval', 'shadow-hit', candidate.id,
+      '--evidence-id', 'shadow-observation-001',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(duplicateShadowHit.exitCode).toBe(1)
+    expect(`${duplicateShadowHit.stdout}\n${duplicateShadowHit.stderr}`).toContain('already recorded')
+
+    const shadowEvaluation = await runScale([
+      'eval', 'shadow-evaluate', candidate.id, '--json',
+    ], scaleDir, projectDir)
+    expect(shadowEvaluation.exitCode).toBe(0)
+    expect(parseJson<{ eligible: boolean; nextStage: string }>(shadowEvaluation.stdout, shadowEvaluation.stderr))
+      .toMatchObject({ eligible: false, nextStage: 'shadow' })
+
+    const shadowStatus = await runScale([
+      'eval', 'shadow-status', candidate.id, '--json',
+    ], scaleDir, projectDir)
+    expect(shadowStatus.exitCode).toBe(0)
+    expect(parseJson<{ stage: string; shadowHits: number }>(shadowStatus.stdout, shadowStatus.stderr))
+      .toMatchObject({ stage: 'shadow', shadowHits: 1 })
     expect(readFileSync(policyFixture, 'utf-8')).toBe(policyBefore)
   }, 120_000)
 
