@@ -11,6 +11,7 @@ import {
   runWorkflowEvalSuite,
 } from '../eval/WorkflowEval.js'
 import { createBenchmarkFromWorkflowEval, publishBenchmark } from '../eval/BenchmarkPublisher.js'
+import { PersistentRuleMaturityStore } from '../evolution/RuleMaturityStore.js'
 import { runGoldenSuite, type GoldenSuite } from '../eval/GoldenEval.js'
 import { PROJECT_DIR, isTruthyFlag, resolveScaleDirForProject } from './engineBootstrap.js'
 import { SCALE_ENGINE_VERSION } from '../version.js'
@@ -323,6 +324,115 @@ const evalReviewImprovement = defineCommand({
   },
 })
 
+const evalShadowInit = defineCommand({
+  meta: { name: 'shadow-init', description: 'Create a persistent non-blocking Shadow maturity record from an accepted improvement' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Accepted improvement candidate id' },
+    rollback: { type: 'string', required: true, description: 'Documented rollback procedure' },
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const scaleDir = resolveScaleDirForProject(projectDir)
+    const evalStore = new WorkflowEvalStore({ projectDir, scaleDir })
+    const candidate = evalStore.getImprovement(String(args.id))
+    if (!candidate) throw new Error(`Workflow improvement candidate not found: ${String(args.id)}`)
+    if (candidate.status !== 'accepted') {
+      throw new Error('Only an accepted improvement candidate can enter Shadow maturity tracking')
+    }
+    const store = new PersistentRuleMaturityStore({ projectDir, scaleDir })
+    const record = store.create({
+      ruleId: candidate.id,
+      rollback: String(args.rollback),
+      defectEvidenceIds: [candidate.failureId],
+    })
+    if (args.json) {
+      console.log(JSON.stringify({ record, note: 'Evidence tracking only; no replay executed and no production policy or hook changed.' }, null, 2))
+      return
+    }
+    console.log(`Shadow maturity record created: ${record.ruleId}`)
+    console.log('  Stage: shadow (non-blocking)')
+    console.log('  Replay: not executed; submit observed evidence with shadow-hit')
+    console.log('  Production policies and hooks were not modified.')
+  },
+})
+
+const evalShadowHit = defineCommand({
+  meta: { name: 'shadow-hit', description: 'Record one externally observed Shadow evaluation with unique evidence' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Shadow rule id (improvement candidate id)' },
+    'evidence-id': { type: 'string', required: true, description: 'Unique evidence artifact id' },
+    'false-positive': { type: 'boolean', default: false, description: 'Mark this observation as a false positive' },
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const scaleDir = resolveScaleDirForProject(projectDir)
+    const store = new PersistentRuleMaturityStore({ projectDir, scaleDir })
+    const record = store.recordHit({
+      ruleId: String(args.id),
+      evidenceId: String(args['evidence-id']),
+      falsePositive: Boolean(args['false-positive']),
+    })
+    if (args.json) {
+      console.log(JSON.stringify(record, null, 2))
+      return
+    }
+    console.log(`Shadow evidence recorded: ${record.ruleId}`)
+    console.log(`  Hits: ${record.shadowHits}`)
+    console.log(`  False positives: ${record.falsePositiveCount}`)
+  },
+})
+
+const evalShadowStatus = defineCommand({
+  meta: { name: 'shadow-status', description: 'Show persistent Shadow maturity evidence' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Shadow rule id' },
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const store = new PersistentRuleMaturityStore({ projectDir, scaleDir: resolveScaleDirForProject(projectDir) })
+    const record = store.get(String(args.id))
+    if (!record) throw new Error(`Shadow maturity record not found: ${String(args.id)}`)
+    if (args.json) {
+      console.log(JSON.stringify(record, null, 2))
+      return
+    }
+    console.log(`Shadow maturity: ${record.ruleId}`)
+    console.log(`  Stage: ${record.stage}`)
+    console.log(`  Hits: ${record.shadowHits}`)
+    console.log(`  False positives: ${record.falsePositiveCount}`)
+    console.log(`  Evidence ids: ${record.evidenceIds.join(', ') || '(none)'}`)
+    console.log(`  Rollback: ${record.rollback}`)
+  },
+})
+
+const evalShadowEvaluate = defineCommand({
+  meta: { name: 'shadow-evaluate', description: 'Evaluate Shadow evidence against rule maturity thresholds without promoting a rule' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Shadow rule id' },
+    dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
+    json: { type: 'boolean', default: false },
+  },
+  run({ args }) {
+    const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
+    const store = new PersistentRuleMaturityStore({ projectDir, scaleDir: resolveScaleDirForProject(projectDir) })
+    const decision = store.evaluate(String(args.id))
+    if (args.json) {
+      console.log(JSON.stringify({ ...decision, note: 'Eligibility only; no stage promotion, hook generation, or production policy change.' }, null, 2))
+      return
+    }
+    console.log(`Shadow maturity eligible: ${decision.eligible ? 'yes' : 'no'}`)
+    console.log(`  Next review stage: ${decision.nextStage}`)
+    for (const blocker of decision.blockers) console.log(`  Blocker: ${blocker}`)
+    console.log('  No stage promotion or production policy change was performed.')
+  },
+})
+
 const evalGolden = defineCommand({
   meta: { name: 'golden', description: 'P1-D: run the deterministic golden artifact-contract suite (CI merge gate)' },
   args: {
@@ -366,6 +476,10 @@ export const evalCommand = defineCommand({
     'promote-failure': evalPromoteFailure,
     improvements: evalImprovements,
     'review-improvement': evalReviewImprovement,
+    'shadow-init': evalShadowInit,
+    'shadow-hit': evalShadowHit,
+    'shadow-status': evalShadowStatus,
+    'shadow-evaluate': evalShadowEvaluate,
     golden: evalGolden,
   },
 })
