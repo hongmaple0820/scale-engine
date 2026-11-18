@@ -315,7 +315,7 @@ describe('workflow eval CLI', () => {
       '--json',
     ], scaleDir, projectDir)
     expect(missingSourceEvidenceInit.exitCode).toBe(1)
-    expect(`${missingSourceEvidenceInit.stdout}\\n${missingSourceEvidenceInit.stderr}`)
+    expect(`${missingSourceEvidenceInit.stdout}\n${missingSourceEvidenceInit.stderr}`)
       .toContain('Source failure evidence is missing or invalid')
     writeFileSync(candidate.evidencePath, sourceFailureEvidence, 'utf-8')
 
