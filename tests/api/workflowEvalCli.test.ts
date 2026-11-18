@@ -328,18 +328,41 @@ describe('workflow eval CLI', () => {
     expect(parseJson<{ record: { stage: string; ruleId: string } }>(shadowInit.stdout, shadowInit.stderr).record)
       .toMatchObject({ stage: 'shadow', ruleId: candidate.id })
 
+    const shadowEvidencePath = join(projectDir, 'shadow-evidence', 'observation.json')
+    mkdirSync(dirname(shadowEvidencePath), { recursive: true })
+    writeFileSync(shadowEvidencePath, JSON.stringify({ observation: 'independent-shadow-check', passed: true }), 'utf-8')
+
+    const escapedShadowEvidence = await runScale([
+      'eval', 'shadow-hit', candidate.id,
+      '--evidence-file', '../outside-evidence.json',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(escapedShadowEvidence.exitCode).toBe(1)
+    expect(`${escapedShadowEvidence.stdout}\n${escapedShadowEvidence.stderr}`)
+      .toContain('path escapes allowed directories')
+
     const shadowHit = await runScale([
       'eval', 'shadow-hit', candidate.id,
-      '--evidence-id', 'shadow-observation-001',
+      '--evidence-file', shadowEvidencePath,
       '--json',
     ], scaleDir, projectDir)
     expect(shadowHit.exitCode).toBe(0)
-    expect(parseJson<{ shadowHits: number; evidenceIds: string[] }>(shadowHit.stdout, shadowHit.stderr))
-      .toMatchObject({ shadowHits: 1, evidenceIds: ['shadow-observation-001'] })
+    const shadowHitResult = parseJson<{
+      record: { shadowHits: number; evidenceIds: string[] }
+      evidenceArtifact: { path: string; sha256: string }
+    }>(shadowHit.stdout, shadowHit.stderr)
+    expect(shadowHitResult.record).toMatchObject({
+      shadowHits: 1,
+      evidenceIds: [`sha256:${shadowHitResult.evidenceArtifact.sha256}`],
+    })
+    expect(shadowHitResult.evidenceArtifact).toMatchObject({
+      path: 'shadow-evidence/observation.json',
+    })
+    expect(shadowHitResult.evidenceArtifact.sha256).toMatch(/^[a-f0-9]{64}$/)
 
     const duplicateShadowHit = await runScale([
       'eval', 'shadow-hit', candidate.id,
-      '--evidence-id', 'shadow-observation-001',
+      '--evidence-file', shadowEvidencePath,
       '--json',
     ], scaleDir, projectDir)
     expect(duplicateShadowHit.exitCode).toBe(1)
