@@ -307,6 +307,18 @@ describe('workflow eval CLI', () => {
     expect(listed.exitCode).toBe(0)
     expect(parseJson<{ improvements: Array<{ id: string; status: string }> }>(listed.stdout, listed.stderr).improvements)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: candidate.id, status: 'accepted' })]))
+    const sourceFailureEvidence = readFileSync(candidate.evidencePath, 'utf-8')
+    rmSync(candidate.evidencePath)
+    const missingSourceEvidenceInit = await runScale([
+      'eval', 'shadow-init', candidate.id,
+      '--rollback', 'Remove the shadow maturity record; no hook is installed.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(missingSourceEvidenceInit.exitCode).toBe(1)
+    expect(`${missingSourceEvidenceInit.stdout}\\n${missingSourceEvidenceInit.stderr}`)
+      .toContain('Source failure evidence is missing or invalid')
+    writeFileSync(candidate.evidencePath, sourceFailureEvidence, 'utf-8')
+
     const shadowInit = await runScale([
       'eval', 'shadow-init', candidate.id,
       '--rollback', 'Remove the shadow maturity record; no hook is installed.',
