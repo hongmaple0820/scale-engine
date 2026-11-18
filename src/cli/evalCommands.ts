@@ -341,6 +341,10 @@ const evalShadowInit = defineCommand({
     if (candidate.status !== 'accepted') {
       throw new Error('Only an accepted improvement candidate can enter Shadow maturity tracking')
     }
+    const sourceFailure = evalStore.getFailure(candidate.failureId)
+    if (!sourceFailure || sourceFailure.id !== candidate.failureId) {
+      throw new Error(`Source failure evidence is missing or invalid for improvement candidate: ${candidate.id}`)
+    }
     const store = new PersistentRuleMaturityStore({ projectDir, scaleDir })
     const record = store.create({
       ruleId: candidate.id,
