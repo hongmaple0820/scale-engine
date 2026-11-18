@@ -66,6 +66,22 @@ scale eval review-improvement <candidate-id> --decision reject --reviewer <ident
 
 The review decision is immutable and requires both reviewer identity and rationale. Acceptance is review-only: it queues a pending Shadow validation marker, not an executed replay, a production rule change, or a blocking hook.
 
+## Persistent Shadow Evidence / 持久化 Shadow 证据
+
+After a candidate is explicitly accepted, initialize a non-blocking maturity record and append unique, externally observed evidence:
+
+```bash
+scale eval shadow-init <candidate-id> --rollback "Remove the shadow record; no hook is installed."
+scale eval shadow-hit <candidate-id> --evidence-id <unique-evidence-id>
+scale eval shadow-hit <candidate-id> --evidence-id <unique-evidence-id> --false-positive
+scale eval shadow-status <candidate-id> --json
+scale eval shadow-evaluate <candidate-id> --json
+```
+
+Records persist under `.scale/evals/rule-maturity/`. A shadow hit must reference a unique evidence artifact id; duplicate evidence is rejected rather than inflating hit counts. Evaluation reports threshold eligibility only. Even when eligible, the stored stage remains `shadow`: this workflow does not execute a replay, promote a rule, generate a hook, or modify production policy. Evidence must come from a separately run and reviewable observation; do not use the command itself as proof that replay occurred.
+
+候选必须先经人工接受，才能初始化非阻断成熟度记录。随后使用唯一证据 ID 记录外部观察结果。重复证据会被拒绝，不能重复累计命中数。记录保存在 `.scale/evals/rule-maturity/`。评估命令只报告是否满足晋级门槛；即使满足，持久化阶段仍保持 `shadow`。这些命令不会执行 Replay、晋级规则、生成 Hook 或修改生产策略。证据必须来自单独执行且可复核的观察，不能把记录命令本身当成 Replay 已运行的证明。
+
 ## Failure Replay To Memory
 
 Failure Replay is local eval evidence first. When a failure pattern is useful for future work, ingest it into Memory Brain as an `incident` candidate:
