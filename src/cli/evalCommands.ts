@@ -1,9 +1,10 @@
 // SCALE Engine — Eval CLI Commands
 // Extracted from api/cli.ts: workflow eval baseline, failure replay, and comparison commands.
 
+import { createHash } from 'node:crypto'
 import { defineCommand } from 'citty'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, relative, resolve } from 'node:path'
 import {
   WorkflowEvalStore,
   compareWorkflowEvalRuns,
@@ -12,6 +13,7 @@ import {
 } from '../eval/WorkflowEval.js'
 import { createBenchmarkFromWorkflowEval, publishBenchmark } from '../eval/BenchmarkPublisher.js'
 import { PersistentRuleMaturityStore } from '../evolution/RuleMaturityStore.js'
+import { resolvePathWithinRoots } from '../core/pathSafety.js'
 import { runGoldenSuite, type GoldenSuite } from '../eval/GoldenEval.js'
 import { PROJECT_DIR, isTruthyFlag, resolveScaleDirForProject } from './engineBootstrap.js'
 import { SCALE_ENGINE_VERSION } from '../version.js'
@@ -366,7 +368,7 @@ const evalShadowHit = defineCommand({
   meta: { name: 'shadow-hit', description: 'Record one externally observed Shadow evaluation with unique evidence' },
   args: {
     id: { type: 'positional', required: true, description: 'Shadow rule id (improvement candidate id)' },
-    'evidence-id': { type: 'string', required: true, description: 'Unique evidence artifact id' },
+    'evidence-file': { type: 'string', required: true, description: 'Reviewable evidence artifact path within the project directory' },
     'false-positive': { type: 'boolean', default: false, description: 'Mark this observation as a false positive' },
     dir: { type: 'string', default: PROJECT_DIR, description: 'Project directory' },
     json: { type: 'boolean', default: false },
@@ -374,17 +376,34 @@ const evalShadowHit = defineCommand({
   run({ args }) {
     const projectDir = resolve(String(args.dir ?? PROJECT_DIR))
     const scaleDir = resolveScaleDirForProject(projectDir)
+    const evidencePath = resolvePathWithinRoots(String(args['evidence-file']), {
+      baseDir: projectDir,
+      allowedRoots: [projectDir],
+      label: 'Shadow evidence',
+    })
+    if (!existsSync(evidencePath) || !statSync(evidencePath).isFile()) {
+      throw new Error('Shadow evidence must be an existing regular file')
+    }
+    const evidenceStat = statSync(evidencePath)
+    if (evidenceStat.size > 10 * 1024 * 1024) {
+      throw new Error('Shadow evidence file exceeds the 10 MiB limit')
+    }
+    const digest = createHash('sha256').update(readFileSync(evidencePath)).digest('hex')
+    const evidenceId = `sha256:${digest}`
     const store = new PersistentRuleMaturityStore({ projectDir, scaleDir })
     const record = store.recordHit({
       ruleId: String(args.id),
-      evidenceId: String(args['evidence-id']),
+      evidenceId,
       falsePositive: Boolean(args['false-positive']),
     })
+    const evidenceArtifact = { path: relative(projectDir, evidencePath), sha256: digest }
     if (args.json) {
-      console.log(JSON.stringify(record, null, 2))
+      console.log(JSON.stringify({ record, evidenceArtifact }, null, 2))
       return
     }
     console.log(`Shadow evidence recorded: ${record.ruleId}`)
+    console.log(`  Artifact: ${evidenceArtifact.path}`)
+    console.log(`  SHA-256: ${digest}`)
     console.log(`  Hits: ${record.shadowHits}`)
     console.log(`  False positives: ${record.falsePositiveCount}`)
   },
