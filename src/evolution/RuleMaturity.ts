@@ -1,5 +1,14 @@
 export type RuleMaturityStage = 'shadow' | 'candidate-hook' | 'approved-blocking'
 
+export interface ShadowEvidenceArtifact {
+  evidenceId: string
+  /** Normalized project-relative path using forward slashes. */
+  path: string
+  sizeBytes: number
+  recordedAt: number
+  falsePositive: boolean
+}
+
 export interface RuleMaturityRecord {
   ruleId: string
   stage: RuleMaturityStage
@@ -8,6 +17,8 @@ export interface RuleMaturityRecord {
   falsePositiveCount: number
   rollback: string
   evidenceIds: string[]
+  /** Absent on legacy records written before evidence provenance was persisted. */
+  evidenceArtifacts?: ShadowEvidenceArtifact[]
   approvedBy?: string
   approvedAt?: number
   createdAt: number
@@ -23,6 +34,7 @@ export interface CreateShadowRuleMaturityInput {
 
 export interface RecordShadowHitInput {
   evidenceId?: string
+  evidenceArtifact?: ShadowEvidenceArtifact
   falsePositive?: boolean
   now?: number
 }
@@ -69,6 +81,9 @@ export function recordShadowHit(record: RuleMaturityRecord, input: RecordShadowH
       ...record.evidenceIds,
       ...(input.evidenceId ? [input.evidenceId] : []),
     ]),
+    ...(input.evidenceArtifact ? {
+      evidenceArtifacts: [...(record.evidenceArtifacts ?? []), input.evidenceArtifact],
+    } : {}),
     updatedAt: input.now ?? Date.now(),
   }
 }
