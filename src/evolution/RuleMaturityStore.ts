@@ -1,10 +1,11 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, posix, resolve, sep } from 'node:path'
 import {
   createShadowRuleMaturity,
   evaluateRulePromotion,
   recordShadowHit,
   type RuleMaturityRecord,
+  type ShadowEvidenceArtifact,
   type RulePromotionDecision,
   type RulePromotionThresholds,
 } from './RuleMaturity.js'
@@ -22,10 +23,39 @@ function safeId(value: string): string {
   return id
 }
 
+function validateRecord(record: RuleMaturityRecord, path: string): RuleMaturityRecord {
+  if (!Array.isArray(record.evidenceIds) || !Number.isInteger(record.shadowHits) || record.shadowHits < 0) {
+    throw new Error(`Invalid rule maturity record: ${path}`)
+  }
+  const artifacts = record.evidenceArtifacts
+  // Legacy records intentionally remain readable without provenance metadata.
+  if (artifacts === undefined) return record
+  if (!Array.isArray(artifacts) || artifacts.length !== record.shadowHits) {
+    throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
+  }
+  const ids = new Set<string>()
+  for (const artifact of artifacts) {
+    if (!artifact || !/^sha256:[a-f0-9]{64}$/.test(artifact.evidenceId)
+      || !record.evidenceIds.includes(artifact.evidenceId) || ids.has(artifact.evidenceId)
+      || !Number.isSafeInteger(artifact.sizeBytes) || artifact.sizeBytes < 0
+      || !Number.isFinite(artifact.recordedAt) || typeof artifact.falsePositive !== 'boolean'
+      || typeof artifact.path !== 'string' || !artifact.path || isAbsolute(artifact.path)
+      || posix.normalize(artifact.path) !== artifact.path
+      || artifact.path === '..' || artifact.path.startsWith('../')) {
+      throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
+    }
+    ids.add(artifact.evidenceId)
+  }
+  if (ids.size !== record.evidenceIds.length) {
+    throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
+  }
+  return record
+}
+
 function readRecord(path: string): RuleMaturityRecord | null {
   if (!existsSync(path)) return null
   try {
-    return JSON.parse(readFileSync(path, 'utf-8')) as RuleMaturityRecord
+    return validateRecord(JSON.parse(readFileSync(path, 'utf-8')) as RuleMaturityRecord, path)
   } catch {
     throw new Error(`Invalid rule maturity record: ${path}`)
   }
@@ -82,7 +112,7 @@ export class PersistentRuleMaturityStore {
     })
   }
 
-  recordHit(input: { ruleId: string; evidenceId: string; falsePositive?: boolean; now?: number }): RuleMaturityRecord {
+  recordHit(input: { ruleId: string; evidenceId: string; evidenceArtifact?: Omit<ShadowEvidenceArtifact, 'evidenceId' | 'recordedAt' | 'falsePositive'>; falsePositive?: boolean; now?: number }): RuleMaturityRecord {
     return this.withLock(input.ruleId, () => {
       const current = this.get(input.ruleId)
       if (!current) throw new Error(`Shadow maturity record not found: ${input.ruleId}`)
@@ -93,10 +123,30 @@ export class PersistentRuleMaturityStore {
       if (current.evidenceIds.includes(evidenceId)) {
         throw new Error(`Shadow evidence already recorded: ${evidenceId}`)
       }
+      const now = input.now ?? Date.now()
+      let evidenceArtifact: ShadowEvidenceArtifact | undefined
+      if (input.evidenceArtifact) {
+        const artifactPath = input.evidenceArtifact.path.split(sep).join('/')
+        if (!artifactPath || isAbsolute(artifactPath) || posix.normalize(artifactPath) !== artifactPath
+          || artifactPath === '..' || artifactPath.startsWith('../')
+          || !Number.isSafeInteger(input.evidenceArtifact.sizeBytes) || input.evidenceArtifact.sizeBytes < 0) {
+          throw new Error('Shadow evidence artifact must have a safe project-relative path and valid byte size')
+        }
+        evidenceArtifact = {
+          ...input.evidenceArtifact,
+          path: artifactPath,
+          evidenceId,
+          recordedAt: now,
+          falsePositive: Boolean(input.falsePositive),
+        }
+      } else if (current.evidenceArtifacts !== undefined) {
+        throw new Error('Shadow evidence artifact metadata is required once provenance tracking is enabled')
+      }
       const updated = recordShadowHit(current, {
         evidenceId,
+        evidenceArtifact,
         falsePositive: input.falsePositive,
-        now: input.now,
+        now,
       })
       this.write(updated)
       return updated
