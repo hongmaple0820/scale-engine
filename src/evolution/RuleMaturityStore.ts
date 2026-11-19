@@ -124,6 +124,9 @@ export class PersistentRuleMaturityStore {
         throw new Error(`Shadow evidence already recorded: ${evidenceId}`)
       }
       const now = input.now ?? Date.now()
+      if (input.evidenceArtifact && current.shadowHits > 0 && current.evidenceArtifacts === undefined) {
+        throw new Error('Legacy Shadow record has observations without artifact provenance; start a new record to enable a complete evidence manifest')
+      }
       let evidenceArtifact: ShadowEvidenceArtifact | undefined
       if (input.evidenceArtifact) {
         const artifactPath = input.evidenceArtifact.path.split(sep).join('/')
