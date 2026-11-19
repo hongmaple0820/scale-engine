@@ -307,6 +307,80 @@ describe('workflow eval CLI', () => {
     expect(listed.exitCode).toBe(0)
     expect(parseJson<{ improvements: Array<{ id: string; status: string }> }>(listed.stdout, listed.stderr).improvements)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: candidate.id, status: 'accepted' })]))
+    const sourceFailureEvidence = readFileSync(candidate.evidencePath, 'utf-8')
+    rmSync(candidate.evidencePath)
+    const missingSourceEvidenceInit = await runScale([
+      'eval', 'shadow-init', candidate.id,
+      '--rollback', 'Remove the shadow maturity record; no hook is installed.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(missingSourceEvidenceInit.exitCode).toBe(1)
+    expect(`${missingSourceEvidenceInit.stdout}\n${missingSourceEvidenceInit.stderr}`)
+      .toContain('Source failure evidence is missing or invalid')
+    writeFileSync(candidate.evidencePath, sourceFailureEvidence, 'utf-8')
+
+    const shadowInit = await runScale([
+      'eval', 'shadow-init', candidate.id,
+      '--rollback', 'Remove the shadow maturity record; no hook is installed.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(shadowInit.exitCode).toBe(0)
+    expect(parseJson<{ record: { stage: string; ruleId: string } }>(shadowInit.stdout, shadowInit.stderr).record)
+      .toMatchObject({ stage: 'shadow', ruleId: candidate.id })
+
+    const shadowEvidencePath = join(projectDir, 'shadow-evidence', 'observation.json')
+    mkdirSync(dirname(shadowEvidencePath), { recursive: true })
+    writeFileSync(shadowEvidencePath, JSON.stringify({ observation: 'independent-shadow-check', passed: true }), 'utf-8')
+
+    const escapedShadowEvidence = await runScale([
+      'eval', 'shadow-hit', candidate.id,
+      '--evidence-file', '../outside-evidence.json',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(escapedShadowEvidence.exitCode).toBe(1)
+    expect(`${escapedShadowEvidence.stdout}\n${escapedShadowEvidence.stderr}`)
+      .toContain('path escapes allowed directories')
+
+    const shadowHit = await runScale([
+      'eval', 'shadow-hit', candidate.id,
+      '--evidence-file', shadowEvidencePath,
+      '--json',
+    ], scaleDir, projectDir)
+    expect(shadowHit.exitCode).toBe(0)
+    const shadowHitResult = parseJson<{
+      record: { shadowHits: number; evidenceIds: string[] }
+      evidenceArtifact: { path: string; sha256: string }
+    }>(shadowHit.stdout, shadowHit.stderr)
+    expect(shadowHitResult.record).toMatchObject({
+      shadowHits: 1,
+      evidenceIds: [`sha256:${shadowHitResult.evidenceArtifact.sha256}`],
+    })
+    expect(shadowHitResult.evidenceArtifact).toMatchObject({
+      path: 'shadow-evidence/observation.json',
+    })
+    expect(shadowHitResult.evidenceArtifact.sha256).toMatch(/^[a-f0-9]{64}$/)
+
+    const duplicateShadowHit = await runScale([
+      'eval', 'shadow-hit', candidate.id,
+      '--evidence-file', shadowEvidencePath,
+      '--json',
+    ], scaleDir, projectDir)
+    expect(duplicateShadowHit.exitCode).toBe(1)
+    expect(`${duplicateShadowHit.stdout}\n${duplicateShadowHit.stderr}`).toContain('already recorded')
+
+    const shadowEvaluation = await runScale([
+      'eval', 'shadow-evaluate', candidate.id, '--json',
+    ], scaleDir, projectDir)
+    expect(shadowEvaluation.exitCode).toBe(0)
+    expect(parseJson<{ eligible: boolean; nextStage: string }>(shadowEvaluation.stdout, shadowEvaluation.stderr))
+      .toMatchObject({ eligible: false, nextStage: 'shadow' })
+
+    const shadowStatus = await runScale([
+      'eval', 'shadow-status', candidate.id, '--json',
+    ], scaleDir, projectDir)
+    expect(shadowStatus.exitCode).toBe(0)
+    expect(parseJson<{ stage: string; shadowHits: number }>(shadowStatus.stdout, shadowStatus.stderr))
+      .toMatchObject({ stage: 'shadow', shadowHits: 1 })
     expect(readFileSync(policyFixture, 'utf-8')).toBe(policyBefore)
   }, 120_000)
 
