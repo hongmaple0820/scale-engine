@@ -1,5 +1,5 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join, posix, resolve, sep } from 'node:path'
+import { join, posix, resolve, sep } from 'node:path'
 import {
   createShadowRuleMaturity,
   evaluateRulePromotion,
@@ -30,7 +30,7 @@ function validateRecord(record: RuleMaturityRecord, path: string): RuleMaturityR
   const artifacts = record.evidenceArtifacts
   // Legacy records intentionally remain readable without provenance metadata.
   if (artifacts === undefined) return record
-  if (!Array.isArray(artifacts) || artifacts.length !== record.shadowHits) {
+  if (record.evidenceManifestVersion !== 1 || !Array.isArray(artifacts) || artifacts.length !== record.shadowHits) {
     throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
   }
   const ids = new Set<string>()
@@ -39,9 +39,9 @@ function validateRecord(record: RuleMaturityRecord, path: string): RuleMaturityR
       || !record.evidenceIds.includes(artifact.evidenceId) || ids.has(artifact.evidenceId)
       || !Number.isSafeInteger(artifact.sizeBytes) || artifact.sizeBytes < 0
       || !Number.isFinite(artifact.recordedAt) || typeof artifact.falsePositive !== 'boolean'
-      || typeof artifact.path !== 'string' || !artifact.path || isAbsolute(artifact.path)
+      || typeof artifact.path !== 'string' || !artifact.path || posix.isAbsolute(artifact.path) || artifact.path.includes('\\') || /^[a-zA-Z]:/.test(artifact.path)
       || posix.normalize(artifact.path) !== artifact.path
-      || artifact.path === '..' || artifact.path.startsWith('../')) {
+      || artifact.path === '.' || artifact.path === '..' || artifact.path.startsWith('../')) {
       throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
     }
     ids.add(artifact.evidenceId)
@@ -130,8 +130,8 @@ export class PersistentRuleMaturityStore {
       let evidenceArtifact: ShadowEvidenceArtifact | undefined
       if (input.evidenceArtifact) {
         const artifactPath = input.evidenceArtifact.path.split(sep).join('/')
-        if (!artifactPath || isAbsolute(artifactPath) || posix.normalize(artifactPath) !== artifactPath
-          || artifactPath === '..' || artifactPath.startsWith('../')
+        if (!artifactPath || posix.isAbsolute(artifactPath) || artifactPath.includes('\\') || /^[a-zA-Z]:/.test(artifactPath) || posix.normalize(artifactPath) !== artifactPath
+          || artifactPath === '.' || artifactPath === '..' || artifactPath.startsWith('../')
           || !Number.isSafeInteger(input.evidenceArtifact.sizeBytes) || input.evidenceArtifact.sizeBytes < 0) {
           throw new Error('Shadow evidence artifact must have a safe project-relative path and valid byte size')
         }
