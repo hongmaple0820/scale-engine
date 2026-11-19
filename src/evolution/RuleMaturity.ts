@@ -18,6 +18,7 @@ export interface RuleMaturityRecord {
   rollback: string
   evidenceIds: string[]
   /** Absent on legacy records written before evidence provenance was persisted. */
+  evidenceManifestVersion?: 1
   evidenceArtifacts?: ShadowEvidenceArtifact[]
   approvedBy?: string
   approvedAt?: number
@@ -82,6 +83,7 @@ export function recordShadowHit(record: RuleMaturityRecord, input: RecordShadowH
       ...(input.evidenceId ? [input.evidenceId] : []),
     ]),
     ...(input.evidenceArtifact ? {
+      evidenceManifestVersion: 1 as const,
       evidenceArtifacts: [...(record.evidenceArtifacts ?? []), input.evidenceArtifact],
     } : {}),
     updatedAt: input.now ?? Date.now(),
