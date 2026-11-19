@@ -3,7 +3,7 @@
 
 import { createHash } from 'node:crypto'
 import { defineCommand } from 'citty'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
 import {
   WorkflowEvalStore,
@@ -396,7 +396,7 @@ const evalShadowHit = defineCommand({
       evidenceId,
       falsePositive: Boolean(args['false-positive']),
     })
-    const evidenceArtifact = { path: relative(projectDir, evidencePath), sha256: digest }
+    const evidenceArtifact = { path: relative(realpathSync(projectDir), realpathSync(evidencePath)), sha256: digest }
     if (args.json) {
       console.log(JSON.stringify({ record, evidenceArtifact }, null, 2))
       return
