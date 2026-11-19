@@ -37,6 +37,61 @@ describe('PersistentRuleMaturityStore', () => {
       .toMatchObject({ stage: 'shadow', shadowHits: 1, evidenceIds: [`sha256:${'1'.repeat(64)}`] })
   })
 
+  it('persists evidence artifact provenance and rejects unsafe manifest paths', () => {
+    const store = createStore()
+    store.create({
+      ruleId: 'IMPROVE-PROVENANCE',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-PROVENANCE'],
+    })
+    const evidenceId = `sha256:${'a'.repeat(64)}`
+    const recorded = store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId,
+      evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: 128 },
+      now: 1_800_000_000_000,
+    })
+
+    expect(recorded.evidenceArtifacts).toEqual([{
+      evidenceId,
+      path: 'artifacts/shadow/run-1.json',
+      sizeBytes: 128,
+      recordedAt: 1_800_000_000_000,
+      falsePositive: false,
+    }])
+    expect(new PersistentRuleMaturityStore({ projectDir: store.projectDir }).get('IMPROVE-PROVENANCE'))
+      .toMatchObject({ shadowHits: 1, evidenceArtifacts: recorded.evidenceArtifacts })
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'b'.repeat(64)}`,
+      evidenceArtifact: { path: '../outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+  })
+
+  it('keeps legacy records readable but refuses to silently create an incomplete provenance manifest', () => {
+    const store = createStore()
+    const created = store.create({
+      ruleId: 'IMPROVE-LEGACY',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-LEGACY'],
+    })
+    const legacyEvidenceId = `sha256:${'c'.repeat(64)}`
+    const legacy = {
+      ...created,
+      shadowHits: 1,
+      evidenceIds: [legacyEvidenceId],
+    }
+    writeFileSync(join(store.recordsDir, 'IMPROVE-LEGACY.json'), JSON.stringify(legacy), 'utf-8')
+
+    expect(store.get('IMPROVE-LEGACY')).toMatchObject({ shadowHits: 1, evidenceIds: [legacyEvidenceId] })
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-LEGACY',
+      evidenceId: `sha256:${'d'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts/new.json', sizeBytes: 10 },
+    })).toThrow('Legacy Shadow record')
+  })
+
   it('requires unique evidence ids and prevents duplicate observations from inflating hit counts', () => {
     const store = createStore()
     store.create({
