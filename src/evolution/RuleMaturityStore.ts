@@ -29,7 +29,12 @@ function validateRecord(record: RuleMaturityRecord, path: string): RuleMaturityR
   }
   const artifacts = record.evidenceArtifacts
   // Legacy records intentionally remain readable without provenance metadata.
-  if (artifacts === undefined) return record
+  if (artifacts === undefined) {
+    if (record.evidenceManifestVersion !== undefined) {
+      throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
+    }
+    return record
+  }
   if (record.evidenceManifestVersion !== 1 || !Array.isArray(artifacts) || artifacts.length !== record.shadowHits) {
     throw new Error(`Invalid rule maturity evidence manifest: ${path}`)
   }
