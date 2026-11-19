@@ -52,6 +52,7 @@ describe('PersistentRuleMaturityStore', () => {
       now: 1_800_000_000_000,
     })
 
+    expect(recorded.evidenceManifestVersion).toBe(1)
     expect(recorded.evidenceArtifacts).toEqual([{
       evidenceId,
       path: 'artifacts/shadow/run-1.json',
@@ -66,6 +67,16 @@ describe('PersistentRuleMaturityStore', () => {
       ruleId: 'IMPROVE-PROVENANCE',
       evidenceId: `sha256:${'b'.repeat(64)}`,
       evidenceArtifact: { path: '../outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'e'.repeat(64)}`,
+      evidenceArtifact: { path: 'C:/outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'f'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts\\\\..\\\\outside.json', sizeBytes: 1 },
     })).toThrow('safe project-relative path')
   })
 
