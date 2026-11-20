@@ -27,10 +27,11 @@ function nonEmpty(value) {
 }
 
 function safeArtifactPath(value) {
-  return nonEmpty(value)
-    && !isAbsolute(value)
-    && !/^(?:[a-zA-Z]:[\\/]|[\\/]{2})/.test(value)
-    && !value.split(/[\\/]/).includes('..')
+  if (!nonEmpty(value) || isAbsolute(value) || /^[a-zA-Z]:/.test(value) || /^[\\/]/.test(value)) {
+    return false
+  }
+  const segments = value.split(/[\\/]/)
+  return segments.every(segment => segment.length > 0 && segment !== '.' && segment !== '..')
 }
 
 function checkObject(value, path) {
