@@ -125,6 +125,30 @@ describe('beta qualification evidence validator', () => {
     expect(result.stderr).toContain('relative artifact path')
   })
 
+  it('rejects Windows drive-relative artifact paths', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, stdoutArtifact: 'C:logs\\\\stdout.txt' }
+        : stage),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('stdoutArtifact')
+    expect(result.stderr).toContain('relative artifact path')
+  })
+
+  it('rejects dot segments and repeated separators in artifact paths', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, stdoutArtifact: 'logs/./stdout.txt', reportArtifacts: ['logs//report.json'] }
+        : stage),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('stdoutArtifact')
+    expect(result.stderr).toContain('reportArtifacts')
+  })
+
   it('rejects timestamps where a stage finishes before it starts', () => {
     const file = fixture({
       stages: fixtureRecordStages().map((stage, index) => index === 0
