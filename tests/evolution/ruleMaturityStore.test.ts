@@ -76,7 +76,13 @@ describe('PersistentRuleMaturityStore', () => {
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-PROVENANCE',
       evidenceId: `sha256:${'f'.repeat(64)}`,
-      evidenceArtifact: { path: 'artifacts\\\\..\\\\outside.json', sizeBytes: 1 },
+      evidenceArtifact: { path: 'artifacts\\..\\outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'9'.repeat(64)}`,
+      evidenceArtifact: { path: '/outside.json', sizeBytes: 1 },
     })).toThrow('safe project-relative path')
   })
 
