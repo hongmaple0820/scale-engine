@@ -26,6 +26,29 @@ function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+function parseIsoTimestamp(value) {
+  if (!nonEmpty(value)) return null
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?(Z|([+-])(\\d{2}):(\\d{2}))$/.exec(value)
+  if (!match) return null
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, zone, , offsetHourText, offsetMinuteText] = match
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  const second = Number(secondText)
+  const offsetHour = Number(offsetHourText ?? 0)
+  const offsetMinute = Number(offsetMinuteText ?? 0)
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth
+    || hour > 23 || minute > 59 || second > 59
+    || offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) {
+    return null
+  }
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
 function safeArtifactPath(value) {
   if (!nonEmpty(value) || isAbsolute(value) || /^[a-zA-Z]:/.test(value) || /^[\\/]/.test(value)) {
     return false
@@ -110,10 +133,22 @@ function validate(record) {
   }
 
   if (!Array.isArray(record.residualRisks)) fail('residualRisks', 'must be an array')
+  else if (record.residualRisks.some(item => !nonEmpty(item))) {
+    fail('residualRisks', 'must contain only non-empty strings')
+  }
   if (checkObject(record.review, 'review')) {
     if (!nonEmpty(record.review.reviewer)) fail('review.reviewer', 'is required')
-    if (!nonEmpty(record.review.reviewedAt) || Number.isNaN(Date.parse(record.review.reviewedAt))) {
-      fail('review.reviewedAt', 'must be a valid ISO-8601 timestamp')
+    const reviewedAt = parseIsoTimestamp(record.review.reviewedAt)
+    if (reviewedAt === null) {
+      fail('review.reviewedAt', 'must be a valid ISO-8601 timestamp with timezone')
+    } else if (Array.isArray(record.stages)) {
+      const finishedTimes = record.stages
+        .filter(stage => stage && typeof stage === 'object')
+        .map(stage => parseIsoTimestamp(stage.finishedAt))
+        .filter(timestamp => timestamp !== null)
+      if (finishedTimes.length > 0 && reviewedAt < Math.max(...finishedTimes)) {
+        fail('review.reviewedAt', 'must not be earlier than the latest stage finishedAt')
+      }
     }
     if (!REVIEW_DECISIONS.has(record.review.decision)) fail('review.decision', 'must be pending, approved, or rejected')
     if (record.status === 'passed' && record.review.decision !== 'approved') {
@@ -123,9 +158,12 @@ function validate(record) {
 }
 
 const args = process.argv.slice(2)
-const input = args.find(arg => !arg.startsWith('--'))
-const requirePassed = args.includes('--require-passed')
-if (!input || args.some(arg => arg !== '--require-passed' && arg.startsWith('--'))) {
+const positional = args.filter(arg => !arg.startsWith('--'))
+const requirePassedFlags = args.filter(arg => arg === '--require-passed')
+const input = positional[0]
+const requirePassed = requirePassedFlags.length === 1
+if (positional.length !== 1 || requirePassedFlags.length > 1
+  || args.some(arg => arg.startsWith('--') && arg !== '--require-passed')) {
   console.error('Usage: npm run qa:beta-evidence -- <record.json> [--require-passed]')
   process.exit(2)
 }
