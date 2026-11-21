@@ -30,7 +30,9 @@ function parseIsoTimestamp(value) {
   if (!nonEmpty(value)) return null
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value)
   if (!match) return null
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText, zone, , offsetHourText, offsetMinuteText] = match
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match
+  const offsetHourText = match[9]
+  const offsetMinuteText = match[10]
   const year = Number(yearText)
   const month = Number(monthText)
   const day = Number(dayText)
