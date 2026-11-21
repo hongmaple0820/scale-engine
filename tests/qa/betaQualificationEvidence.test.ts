@@ -181,6 +181,31 @@ describe('beta qualification evidence validator', () => {
     expect(result.stderr).toContain('valid ISO-8601 timestamp with timezone')
   })
 
+  it('rejects a passed record containing an additional failed stage', () => {
+    const file = fixture({
+      stages: [...fixtureRecordStages(), {
+        id: 'optional-agent-control', command: 'scale agent-control status', exitCode: 1,
+        startedAt: '2026-11-17T10:00:00Z', finishedAt: '2026-11-17T10:00:01Z',
+        stdoutArtifact: 'logs/agent-control.txt', stderrArtifact: null,
+        reportArtifacts: [], status: 'failed', notes: ['optional integration unavailable'],
+      }],
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('every recorded stage must be passed')
+  })
+
+  it('rejects out-of-range timezone offsets', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, startedAt: '2026-11-17T10:00:00+15:00' }
+        : stage),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('valid ISO-8601 timestamp with timezone')
+  })
+
   it('requires review to follow the recorded qualification stages', () => {
     const file = fixture({
       review: { reviewer: 'reviewer', reviewedAt: '2026-11-17T09:59:59Z', decision: 'approved' },
