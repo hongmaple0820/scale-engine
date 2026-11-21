@@ -103,14 +103,11 @@ function validate(record) {
       seen.add(stage.id)
       if (!nonEmpty(stage.command)) fail(`${path}.command`, 'must contain the exact command')
       if (!Number.isInteger(stage.exitCode)) fail(`${path}.exitCode`, 'must be an integer')
-      const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
-      for (const key of ['startedAt', 'finishedAt']) {
-        if (!nonEmpty(stage[key]) || !timestampPattern.test(stage[key]) || Number.isNaN(Date.parse(stage[key]))) {
-          fail(`${path}.${key}`, 'must be a valid ISO-8601 timestamp with timezone')
-        }
-      }
-      if (timestampPattern.test(stage.startedAt ?? '') && timestampPattern.test(stage.finishedAt ?? '')
-        && Date.parse(stage.finishedAt) < Date.parse(stage.startedAt)) {
+      const startedAt = parseIsoTimestamp(stage.startedAt)
+      const finishedAt = parseIsoTimestamp(stage.finishedAt)
+      if (startedAt === null) fail(`${path}.startedAt`, 'must be a valid ISO-8601 timestamp with timezone')
+      if (finishedAt === null) fail(`${path}.finishedAt`, 'must be a valid ISO-8601 timestamp with timezone')
+      if (startedAt !== null && finishedAt !== null && finishedAt < startedAt) {
         fail(`${path}.finishedAt`, 'must not be earlier than startedAt')
       }
       if (!safeArtifactPath(stage.stdoutArtifact)) fail(`${path}.stdoutArtifact`, 'must be a non-empty relative artifact path without parent traversal')
