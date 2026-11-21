@@ -128,6 +128,11 @@ function validate(record) {
         if (!stage) fail('stages', `passed record is missing required stage: ${id}`)
         else if (stage.status !== 'passed') fail(`stages.${id}`, 'must be passed for an overall passed record')
       }
+      for (const [index, stage] of record.stages.entries()) {
+        if (stage?.status !== 'passed') {
+          fail(`stages[${index}].status`, 'every recorded stage must be passed for an overall passed record')
+        }
+      }
     }
   }
 
