@@ -169,6 +169,44 @@ describe('beta qualification evidence validator', () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('must be 0 for a passed stage')
   })
+  it('rejects impossible calendar timestamps', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map((stage, index) => index === 0
+        ? { ...stage, startedAt: '2026-02-31T10:00:00Z' }
+        : stage),
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('startedAt')
+    expect(result.stderr).toContain('valid ISO-8601 timestamp with timezone')
+  })
+
+  it('requires review to follow the recorded qualification stages', () => {
+    const file = fixture({
+      review: { reviewer: 'reviewer', reviewedAt: '2026-11-17T09:59:59Z', decision: 'approved' },
+    })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('must not be earlier than the latest stage finishedAt')
+  })
+
+  it('rejects malformed residual risk entries', () => {
+    const file = fixture({ residualRisks: ['documented risk', 42] })
+    const result = run(file)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('residualRisks')
+  })
+
+  it('rejects extra positional arguments', () => {
+    const file = fixture()
+    const result = spawnSync(process.execPath, [
+      resolve(process.cwd(), 'scripts/qa/validate-beta-qualification.mjs'),
+      file, 'unexpected.json',
+    ], { encoding: 'utf8' })
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain('Usage:')
+  })
+
 })
 
 function fixtureRecordStages() {
