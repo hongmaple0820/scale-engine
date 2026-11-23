@@ -28,7 +28,7 @@ function nonEmpty(value) {
 
 function parseIsoTimestamp(value) {
   if (!nonEmpty(value)) return null
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?(Z|([+-])(\\d{2}):(\\d{2}))$/.exec(value)
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value)
   if (!match) return null
   const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match
   // Captures: 7=timezone, 8=sign, 9=offset hours, 10=offset minutes.
@@ -53,10 +53,10 @@ function parseIsoTimestamp(value) {
 }
 
 function safeArtifactPath(value) {
-  if (!nonEmpty(value) || isAbsolute(value) || /^[a-zA-Z]:/.test(value) || /^[\\\\/]/.test(value)) {
+  if (!nonEmpty(value) || isAbsolute(value) || /^[a-zA-Z]:/.test(value) || /^[\\/]/.test(value)) {
     return false
   }
-  const segments = value.split(/[\\\\/]/)
+  const segments = value.split(/[\\/]/)
   return segments.every(segment => segment.length > 0 && segment !== '.' && segment !== '..')
 }
 
