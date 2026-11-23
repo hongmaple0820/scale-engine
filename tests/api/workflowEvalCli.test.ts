@@ -258,6 +258,21 @@ describe('workflow eval CLI', () => {
     expect(candidate.status).toBe('candidate')
     expect(existsSync(candidate.evidencePath)).toBe(true)
 
+    const repeatedPromotion = await runScale(['eval', 'promote-failure', failuresReport.failures[0].id, '--json'], scaleDir, projectDir)
+    expect(repeatedPromotion.exitCode).toBe(0)
+    expect(parseJson<{ id: string }>(repeatedPromotion.stdout, repeatedPromotion.stderr).id).toBe(candidate.id)
+
+    const reviewLock = join(scaleDir, 'evals', 'improvements', `${candidate.id}.json.review.lock`)
+    writeFileSync(reviewLock, 'held by another reviewer', 'utf-8')
+    const lockedReview = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'accept', '--reviewer', 'qa-owner', '--rationale', 'Concurrent review attempt',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(lockedReview.exitCode).toBe(1)
+    expect(`${lockedReview.stdout}\\n${lockedReview.stderr}`).toContain('State transition is already in progress')
+    rmSync(reviewLock, { force: true })
+
     const policyFixture = join(projectDir, '.scale', 'policies', 'production.yaml')
     mkdirSync(dirname(policyFixture), { recursive: true })
     writeFileSync(policyFixture, 'rules:\n  deny-dangerous-shell: true\n', 'utf-8')
