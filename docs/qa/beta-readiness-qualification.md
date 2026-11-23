@@ -135,6 +135,21 @@ Use this record shape (all fields are required unless explicitly marked optional
 
 Allowed stage statuses: `passed`, `failed`, `blocked`, `not-applicable`. Allowed overall statuses: `passed`, `failed`, `blocked`, `pending-review`. A project is not `passed` while any required stage is missing, failed, blocked, or not reviewed.
 
+### Validator usage and trust boundary
+
+Run the record validator from the SCALE Engine checkout:
+
+```bash
+npm run qa:beta-evidence -- docs/qa/beta-readiness/<profile>/<run-id>.json
+npm run qa:beta-evidence -- docs/qa/beta-readiness/<profile>/<run-id>.json --require-passed
+```
+
+The validator checks the record's schema, required stages, full source SHAs, environment fields, exit-code/status consistency, timezone-qualified timestamps and chronology, review metadata, and relative artifact-path syntax. It does **not** open artifact paths, prove that referenced files exist, hash or authenticate their contents, verify that a command actually ran, or authenticate the named reviewer. A structurally valid record is not proof of execution.
+
+Before approving a record, the reviewer must independently inspect the retained stdout/stderr and generated reports, verify that they belong to the stated fixture and SCALE commits, and confirm the exact commands and exit codes against the execution environment. Keep the underlying redacted artifacts in the approved evidence store; the JSON record alone is insufficient. The `--require-passed` flag enforces record status and review decision only; it does not strengthen artifact authenticity.
+
+**校验器边界：**该命令只校验记录结构、阶段状态、提交 SHA、时间戳、审查字段和相对路径格式；不会打开或验证报告文件，不会证明命令真实执行，也不会验证审查者身份。审查者必须独立检查保留的 stdout/stderr 和生成报告，并确认它们对应记录中的项目与 SCALE Engine commit。JSON 记录本身不是执行证明。
+
 ## 5. Failure-learning safety proof
 
 For at least one deliberately selected failure in the qualification set:

@@ -67,6 +67,7 @@
     "smoke:workbuddy": "node scripts/workflow/workbuddy-install-smoke.mjs",
     "eval:golden": "node dist/api/cli.js eval golden --json",
     "verify:agent-dispatch": "node scripts/qa/verify-agent-dispatch.mjs",
+    "qa:beta-evidence": "node scripts/qa/validate-beta-qualification.mjs",
     "smoke:package": "node scripts/workflow/package-smoke.mjs",
     "smoke:providers": "node scripts/workflow/provider-rehearsal.mjs",
     "smoke:gbrain": "node scripts/workflow/provider-rehearsal.mjs --skip-graphify --require-gbrain",
