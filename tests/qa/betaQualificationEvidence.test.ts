@@ -206,6 +206,33 @@ describe('beta qualification evidence validator', () => {
     expect(result.stderr).toContain('valid ISO-8601 timestamp with timezone')
   })
 
+  it('accepts the maximum valid ISO-8601 timezone offset', () => {
+    const file = fixture({
+      stages: fixtureRecordStages().map(stage => ({
+        ...stage,
+        startedAt: '2026-11-17T10:00:00+14:00',
+        finishedAt: '2026-11-17T10:00:01+14:00',
+      })),
+    })
+    const result = run(file, ['--require-passed'])
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout).ok).toBe(true)
+  })
+
+  it.each(['2026-11-17T10:00:00+14:01', '2026-11-17T10:00:00+12:60'])(
+    'rejects invalid timezone offset %s',
+    startedAt => {
+      const file = fixture({
+        stages: fixtureRecordStages().map((stage, index) => index === 0
+          ? { ...stage, startedAt }
+          : stage),
+      })
+      const result = run(file)
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('valid ISO-8601 timestamp with timezone')
+    },
+  )
+
   it('requires review to follow the recorded qualification stages', () => {
     const file = fixture({
       review: { reviewer: 'reviewer', reviewedAt: '2026-11-17T09:59:59Z', decision: 'approved' },
