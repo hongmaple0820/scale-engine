@@ -257,6 +257,72 @@ describe('workflow eval CLI', () => {
     expect(candidate.failureId).toBe(failuresReport.failures[0].id)
     expect(candidate.status).toBe('candidate')
     expect(existsSync(candidate.evidencePath)).toBe(true)
+
+    const repeatedPromotion = await runScale(['eval', 'promote-failure', failuresReport.failures[0].id, '--json'], scaleDir, projectDir)
+    expect(repeatedPromotion.exitCode).toBe(0)
+    expect(parseJson<{ id: string }>(repeatedPromotion.stdout, repeatedPromotion.stderr).id).toBe(candidate.id)
+
+    const reviewLock = join(scaleDir, 'evals', 'improvements', `${candidate.id}.json.review.lock`)
+    writeFileSync(reviewLock, 'held by another reviewer', 'utf-8')
+    const lockedReview = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'accept', '--reviewer', 'qa-owner', '--rationale', 'Concurrent review attempt',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(lockedReview.exitCode).toBe(1)
+    expect(`${lockedReview.stdout}\\n${lockedReview.stderr}`).toContain('State transition is already in progress')
+    rmSync(reviewLock, { force: true })
+
+    const policyFixture = join(projectDir, '.scale', 'policies', 'production.yaml')
+    mkdirSync(dirname(policyFixture), { recursive: true })
+    writeFileSync(policyFixture, 'rules:\n  deny-dangerous-shell: true\n', 'utf-8')
+    const policyBefore = readFileSync(policyFixture, 'utf-8')
+
+    const missingReviewer = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'accept', '--reviewer', ' ', '--rationale', 'must not accept without identity',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(missingReviewer.exitCode).toBe(1)
+    expect(`${missingReviewer.stdout}\n${missingReviewer.stderr}`).toContain('reviewer identity is required')
+
+    const reviewed = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'accept',
+      '--reviewer', 'qa-owner',
+      '--rationale', 'Failure evidence is reproducible; validate the proposal in shadow mode.',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(reviewed.exitCode).toBe(0)
+    const accepted = parseJson<{
+      status: string
+      shadowStatus?: string
+      reviews: Array<{ decision: string; reviewer: string; rationale: string; reviewedAt: string }>
+    }>(reviewed.stdout, reviewed.stderr)
+    expect(accepted).toMatchObject({
+      status: 'accepted',
+      shadowStatus: 'pending',
+      reviews: [expect.objectContaining({
+        decision: 'accepted',
+        reviewer: 'qa-owner',
+        rationale: expect.stringContaining('shadow mode'),
+      })],
+    })
+    expect(Number.isNaN(Date.parse(accepted.reviews[0].reviewedAt))).toBe(false)
+
+    const duplicateReview = await runScale([
+      'eval', 'review-improvement', candidate.id,
+      '--decision', 'reject', '--reviewer', 'qa-owner', '--rationale', 'Duplicate decision',
+      '--json',
+    ], scaleDir, projectDir)
+    expect(duplicateReview.exitCode).toBe(1)
+    expect(`${duplicateReview.stdout}\n${duplicateReview.stderr}`).toContain('review is immutable')
+
+    const listed = await runScale(['eval', 'improvements', '--json'], scaleDir, projectDir)
+    expect(listed.exitCode).toBe(0)
+    expect(parseJson<{ improvements: Array<{ id: string; status: string }> }>(listed.stdout, listed.stderr).improvements)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: candidate.id, status: 'accepted' })]))
+    expect(readFileSync(policyFixture, 'utf-8')).toBe(policyBefore)
   }, 120_000)
 
   it('closes open failure replay records after a passing rerun of the same case', async () => {
@@ -293,6 +359,32 @@ describe('workflow eval CLI', () => {
       status: 'closed',
       closedByEvalRunId: passedReport.run.id,
     })
+  }, 120_000)
+
+  it('serializes failure closure with promotion using the shared state lock', async () => {
+    const scaleDir = makeDir('scale-eval-cli-scale-')
+    const projectDir = makeDir('scale-eval-cli-project-')
+    writeFailingSuite(scaleDir)
+
+    const failed = await runScale(['eval', 'run', '--suite', 'failing', '--json'], scaleDir, projectDir)
+    expect(failed.exitCode).toBe(1)
+    const failedReport = parseJson<{ failurePaths: string[] }>(failed.stdout, failed.stderr)
+    const failurePath = failedReport.failurePaths[0]
+    const failure = JSON.parse(readFileSync(failurePath, 'utf-8')) as { status: string }
+    expect(failure.status).toBe('open')
+
+    writePassingSuite(scaleDir)
+    const stateLock = `${failurePath}.state.lock`
+    writeFileSync(stateLock, 'held by another state transition', 'utf-8')
+    const blockedClose = await runScale(['eval', 'run', '--suite', 'failing', '--json'], scaleDir, projectDir)
+    expect(blockedClose.exitCode).toBe(1)
+    expect(`${blockedClose.stdout}\\n${blockedClose.stderr}`).toContain('State transition is already in progress')
+    expect((JSON.parse(readFileSync(failurePath, 'utf-8')) as { status: string }).status).toBe('open')
+
+    rmSync(stateLock, { force: true })
+    const closed = await runScale(['eval', 'run', '--suite', 'failing', '--json'], scaleDir, projectDir)
+    expect(closed.exitCode).toBe(0)
+    expect((JSON.parse(readFileSync(failurePath, 'utf-8')) as { status: string }).status).toBe('closed')
   }, 120_000)
 
   it('accepts UTF-8 BOM suite files generated by Windows tooling', async () => {

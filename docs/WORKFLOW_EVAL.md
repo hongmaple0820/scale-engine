@@ -46,7 +46,25 @@ scale eval failures --since 30d
 scale eval replay <failure-id>
 scale eval replay --task-id <task-id>
 scale eval promote-failure <failure-id>
+scale eval improvements --json
+scale eval review-improvement <candidate-id> --decision accept --reviewer <identity> --rationale "<reason>"
+scale eval review-improvement <candidate-id> --decision reject --reviewer <identity> --rationale "<reason>"
 ```
+
+## Failure Improvement Review / 失败改进审核
+
+Create a candidate from a failure, then inspect and decide explicitly:
+
+```bash
+scale eval promote-failure <failure-id>
+scale eval improvements --json
+scale eval review-improvement <candidate-id> --decision accept --reviewer <identity> --rationale "<reason>"
+scale eval review-improvement <candidate-id> --decision reject --reviewer <identity> --rationale "<reason>"
+```
+
+审核记录持久化保存审核人、决定、理由和时间。候选只能从 `candidate` 转为 `accepted` 或 `rejected`，不允许二次改判。接受只设置 `shadowStatus: pending`，代表等待后续独立的 Shadow Replay；当前命令不会执行 Replay，不会自动修改生产策略、项目规范或 Hook。拒绝的候选不会进入 Shadow 验证。
+
+The review decision is immutable and requires both reviewer identity and rationale. Acceptance is review-only: it queues a pending Shadow validation marker, not an executed replay, a production rule change, or a blocking hook.
 
 ## Failure Replay To Memory
 
@@ -67,7 +85,7 @@ This does not auto-change standards or hooks. It only makes the failure queryabl
 ├── suites/
 ├── runs/
 ├── failures/
-└── improvements/
+└── improvements/  # candidates + immutable review decision metadata
 ```
 
 These files are local runtime evidence by default. Commit only curated summaries or intentional benchmark fixtures.
@@ -138,7 +156,7 @@ Failure category 当前包括：
 - `command-failure`
 - `unknown`
 
-`scale eval promote-failure` 会把失败重放提升为 improvement candidate，但不会自动修改项目规范。是否进入长期标准仍需要人工或后续 review 确认。
+`scale eval promote-failure` 只创建 `candidate`。使用 `scale eval improvements` 查看候选，再用 `scale eval review-improvement` 记录 reviewer、decision、rationale 和时间。审核是不可变的一次性决定：`candidate -> accepted` 或 `candidate -> rejected`。接受后只标记 `shadowStatus: pending`，表示等待独立的 Shadow replay；该命令不会执行 replay，也不会修改生产策略、项目规范或 hooks。拒绝的候选不会进入 Shadow 队列。
 
 ## Governance Use
 

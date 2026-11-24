@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { estimateTokens } from '../context/ContextBudget.js'
 import { resolvePathWithinRoots } from '../core/pathSafety.js'
@@ -121,6 +121,13 @@ export interface FailureReplayRecord {
   redactionApplied: boolean
 }
 
+export interface FailureImprovementReview {
+  decision: 'accepted' | 'rejected'
+  reviewer: string
+  rationale: string
+  reviewedAt: string
+}
+
 export interface FailureImprovementCandidate {
   id: string
   failureId: string
@@ -129,7 +136,10 @@ export interface FailureImprovementCandidate {
   title: string
   recommendation: string
   evidencePath: string
-  status: 'candidate'
+  status: 'candidate' | 'accepted' | 'rejected'
+  /** Accepted candidates wait for a separately evidenced shadow replay; acceptance never changes production policy. */
+  shadowStatus?: 'pending'
+  reviews?: FailureImprovementReview[]
 }
 
 export interface WorkflowEvalComparison {
@@ -539,7 +549,7 @@ export class WorkflowEvalStore {
   saveFailure(record: FailureReplayRecord): string {
     mkdirSync(this.failuresDir, { recursive: true })
     const path = join(this.failuresDir, `${safeSegment(record.id)}.json`)
-    writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
+    writeJsonAtomically(path, record)
     return path
   }
 
@@ -550,15 +560,25 @@ export class WorkflowEvalStore {
   }): string[] {
     const closedAt = new Date().toISOString()
     const closed: string[] = []
-    for (const failure of this.listFailures({ taskId: options.caseId })) {
-      if (failure.suiteId !== options.suiteId || failure.caseId !== options.caseId || failure.status !== 'open') continue
-      this.saveFailure({
-        ...failure,
-        status: 'closed',
-        closedAt,
-        closedByEvalRunId: options.closedByEvalRunId,
+    // The list is only a discovery snapshot. Every transition must re-read
+    // the record while holding the same lock used by promotion.
+    for (const listed of this.listFailures({ taskId: options.caseId })) {
+      if (listed.suiteId !== options.suiteId || listed.caseId !== options.caseId) continue
+      const failurePath = join(this.failuresDir, `${safeSegment(listed.id)}.json`)
+      const transitioned = withExclusiveFileLock(`${failurePath}.state.lock`, () => {
+        const current = this.getFailure(listed.id)
+        if (!current || current.suiteId !== options.suiteId || current.caseId !== options.caseId || current.status !== 'open') {
+          return false
+        }
+        this.saveFailure({
+          ...current,
+          status: 'closed',
+          closedAt,
+          closedByEvalRunId: options.closedByEvalRunId,
+        })
+        return true
       })
-      closed.push(failure.id)
+      if (transitioned) closed.push(listed.id)
     }
     return closed
   }
@@ -587,22 +607,88 @@ export class WorkflowEvalStore {
   }
 
   promoteFailure(id: string): FailureImprovementCandidate {
-    const failure = this.getFailure(id)
-    if (!failure) throw new Error(`Failure replay not found: ${id}`)
+    const failurePath = join(this.failuresDir, `${safeSegment(id)}.json`)
     mkdirSync(this.improvementsDir, { recursive: true })
-    const candidate: FailureImprovementCandidate = {
-      id: `IMPROVE-${Date.now()}-${randomUUID().slice(0, 8)}`,
-      failureId: failure.id,
-      createdAt: new Date().toISOString(),
-      category: failure.category,
-      title: `Prevent ${failure.category} in ${failure.caseId}`,
-      recommendation: failure.prevention,
-      evidencePath: join(this.failuresDir, `${safeSegment(failure.id)}.json`),
-      status: 'candidate',
+    return withExclusiveFileLock(`${failurePath}.state.lock`, () => {
+      const failure = this.getFailure(id)
+      if (!failure) throw new Error(`Failure replay not found: ${id}`)
+      // Recover safely if a prior process wrote the candidate but exited before
+      // marking the source failure as promoted.
+      const existing = this.listImprovements().find(candidate => candidate.failureId === failure.id)
+      if (existing) {
+        if (failure.status !== 'promoted') this.saveFailure({ ...failure, status: 'promoted' })
+        return existing
+      }
+      if (failure.status !== 'open') {
+        throw new Error(`Failure replay ${id} is already ${failure.status} and has no linked improvement candidate`)
+      }
+      const candidate: FailureImprovementCandidate = {
+        id: `IMPROVE-${Date.now()}-${randomUUID().slice(0, 8)}`,
+        failureId: failure.id,
+        createdAt: new Date().toISOString(),
+        category: failure.category,
+        title: `Prevent ${failure.category} in ${failure.caseId}`,
+        recommendation: failure.prevention,
+        evidencePath: join(this.failuresDir, `${safeSegment(failure.id)}.json`),
+        status: 'candidate',
+        reviews: [],
+      }
+      writeJsonAtomically(join(this.improvementsDir, `${safeSegment(candidate.id)}.json`), candidate)
+      this.saveFailure({ ...failure, status: 'promoted' })
+      return candidate
+    })
+  }
+
+  listImprovements(): FailureImprovementCandidate[] {
+    if (!existsSync(this.improvementsDir)) return []
+    return readdirSync(this.improvementsDir)
+      .filter(file => file.endsWith('.json'))
+      .map(file => readJson<FailureImprovementCandidate>(join(this.improvementsDir, file)))
+      .filter((candidate): candidate is FailureImprovementCandidate => Boolean(candidate))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  }
+
+  getImprovement(id: string): FailureImprovementCandidate | null {
+    return readJson<FailureImprovementCandidate>(join(this.improvementsDir, `${safeSegment(id)}.json`))
+  }
+
+  reviewImprovement(input: {
+    id: string
+    decision: 'accepted' | 'rejected'
+    reviewer: string
+    rationale: string
+    now?: string
+  }): FailureImprovementCandidate {
+    if (input.decision !== 'accepted' && input.decision !== 'rejected') {
+      throw new Error('Review decision must be accepted or rejected')
     }
-    writeFileSync(join(this.improvementsDir, `${safeSegment(candidate.id)}.json`), JSON.stringify(candidate, null, 2), 'utf-8')
-    this.saveFailure({ ...failure, status: 'promoted' })
-    return candidate
+    const candidatePath = join(this.improvementsDir, `${safeSegment(input.id)}.json`)
+    return withExclusiveFileLock(`${candidatePath}.review.lock`, () => {
+      // Re-read after acquiring the lock so concurrent reviewers cannot both
+      // approve/reject the same candidate from a stale snapshot.
+      const candidate = this.getImprovement(input.id)
+      if (!candidate) throw new Error(`Workflow improvement candidate not found: ${input.id}`)
+      if (candidate.status !== 'candidate') {
+        throw new Error(`Workflow improvement candidate ${input.id} is already ${candidate.status}; review is immutable`)
+      }
+      const reviewer = input.reviewer.trim()
+      const rationale = input.rationale.trim()
+      if (!reviewer) throw new Error('A reviewer identity is required')
+      if (!rationale) throw new Error('A review rationale is required')
+      const reviewed: FailureImprovementCandidate = {
+        ...candidate,
+        status: input.decision,
+        ...(input.decision === 'accepted' ? { shadowStatus: 'pending' as const } : {}),
+        reviews: [...(candidate.reviews ?? []), {
+          decision: input.decision,
+          reviewer,
+          rationale,
+          reviewedAt: input.now ?? new Date().toISOString(),
+        }],
+      }
+      writeJsonAtomically(candidatePath, reviewed)
+      return reviewed
+    })
   }
 
   suitePath(suiteId: string): string {
@@ -911,6 +997,35 @@ function normalizeEvalOutput(output: string): string {
 
 function ratio(part: number, total: number): number {
   return total === 0 ? 0 : Math.round((part / total) * 1000) / 1000
+}
+
+function withExclusiveFileLock<T>(lockPath: string, operation: () => T): T {
+  let lockFd: number
+  try {
+    lockFd = openSync(lockPath, 'wx')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`State transition is already in progress: ${lockPath}`)
+    }
+    throw error
+  }
+  try {
+    return operation()
+  } finally {
+    closeSync(lockFd)
+    unlinkSync(lockPath)
+  }
+}
+
+function writeJsonAtomically(path: string, value: unknown): void {
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temporary, JSON.stringify(value, null, 2), { encoding: 'utf-8', flag: 'wx' })
+    renameSync(temporary, path)
+  } catch (error) {
+    try { unlinkSync(temporary) } catch { /* Preserve the original write error. */ }
+    throw error
+  }
 }
 
 function safeSegment(value: string): string {
