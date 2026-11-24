@@ -1,5 +1,6 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join, posix, resolve, sep } from 'node:path'
+import { createHash } from 'node:crypto'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import {
   createShadowRuleMaturity,
   evaluateRulePromotion,
@@ -57,11 +58,37 @@ function validateRecord(record: RuleMaturityRecord, path: string): RuleMaturityR
   return record
 }
 
-function readRecord(path: string): RuleMaturityRecord | null {
+function verifyEvidenceArtifacts(record: RuleMaturityRecord, projectDir: string, recordPath: string): void {
+  if (!record.evidenceArtifacts?.length) return
+  const realProjectDir = realpathSync(projectDir)
+  for (const artifact of record.evidenceArtifacts) {
+    try {
+      const artifactPath = resolve(projectDir, ...artifact.path.split('/'))
+      const realArtifactPath = realpathSync(artifactPath)
+      const fromProject = relative(realProjectDir, realArtifactPath)
+      if (!fromProject || fromProject === '.' || fromProject === '..' || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject)) {
+        throw new Error('Evidence artifact resolves outside the project directory')
+      }
+      const stats = statSync(realArtifactPath)
+      if (!stats.isFile()) throw new Error('Evidence artifact is not a regular file')
+      if (stats.size !== artifact.sizeBytes) throw new Error('Evidence artifact size does not match its manifest')
+      const digest = createHash('sha256').update(readFileSync(realArtifactPath)).digest('hex')
+      if (`sha256:${digest}` !== artifact.evidenceId) throw new Error('Evidence artifact digest does not match its manifest')
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`Unverified rule maturity evidence artifact (${artifact.path}): ${detail}; record: ${recordPath}`)
+    }
+  }
+}
+
+function readRecord(path: string, projectDir: string): RuleMaturityRecord | null {
   if (!existsSync(path)) return null
   try {
-    return validateRecord(JSON.parse(readFileSync(path, 'utf-8')) as RuleMaturityRecord, path)
-  } catch {
+    const record = validateRecord(JSON.parse(readFileSync(path, 'utf-8')) as RuleMaturityRecord, path)
+    verifyEvidenceArtifacts(record, projectDir, path)
+    return record
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Unverified rule maturity evidence artifact')) throw error
     throw new Error(`Invalid rule maturity record: ${path}`)
   }
 }
@@ -85,14 +112,14 @@ export class PersistentRuleMaturityStore {
   }
 
   get(ruleId: string): RuleMaturityRecord | null {
-    return readRecord(this.recordPath(ruleId))
+    return readRecord(this.recordPath(ruleId), this.projectDir)
   }
 
   list(): RuleMaturityRecord[] {
     if (!existsSync(this.recordsDir)) return []
     return readdirSync(this.recordsDir)
       .filter(file => file.endsWith('.json'))
-      .map(file => readRecord(join(this.recordsDir, file)))
+      .map(file => readRecord(join(this.recordsDir, file), this.projectDir))
       .filter((record): record is RuleMaturityRecord => Boolean(record))
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }
