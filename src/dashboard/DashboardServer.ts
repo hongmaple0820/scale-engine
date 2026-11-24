@@ -63,7 +63,7 @@ import {
   type AgentControlConversationSummary,
 } from './AgentControlPlane.js'
 import { registerMediaApi } from './MediaControlPlane.js'
-import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardRateLimiter, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
+import { appendDashboardAuditEvent, assertDashboardSecurityConfig, assertDashboardScopedTokens, dashboardAuthorizationAllows, DashboardConfirmationStore, DashboardRateLimiter, isDashboardLoopbackHost, isDashboardOriginAllowed, isDashboardHostAllowed, normalizeDashboardAllowedHosts, normalizeDashboardAllowedOrigins, parseDashboardScopedTokens, requiredDashboardScope, requiresDashboardConfirmation, resolveDashboardAuthorization, type DashboardScopedToken } from './DashboardSecurity.js'
 import {
   ensureDashboardService,
   readDashboardServiceStatus,
@@ -944,6 +944,7 @@ export class DashboardServer {
   private allowedHosts: string[]
   private auditPath: string
   private rateLimiter = new DashboardRateLimiter()
+  private confirmationStore = new DashboardConfirmationStore()
   private projectDir: string
   private scaleDir: string
   private currentProject: DashboardProjectSummary
@@ -1011,6 +1012,19 @@ export class DashboardServer {
       const tokenValid = dashboardAuthorization !== null
       const principal = dashboardAuthorization?.principal
         ?? `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
+      const requestId = randomBytes(8).toString('hex')
+      const actor = dashboardAuthorization?.kind === 'scoped' ? 'scoped-token' as const
+        : dashboardAuthorization ? 'bearer-token' as const : requiresAuth ? 'unauthenticated' as const : 'loopback' as const
+      const recordDenied = (reason: 'rate-limit' | 'authentication' | 'scope' | 'confirmation', status: number) => {
+        try {
+          appendDashboardAuditEvent(this.auditPath, {
+            event: 'request.denied', requestId, timestamp: Date.now(), method,
+            path: c.req.path, origin: origin ?? null, actor, reason, status,
+          })
+        } catch (error) {
+          logger.error({ error, path: c.req.path, requestId, reason }, 'Dashboard security denial audit write failed')
+        }
+      }
 
       if (method !== 'OPTIONS') {
         const authFailure = requiresAuth && !tokenValid
@@ -1018,6 +1032,7 @@ export class DashboardServer {
         const rateWindowMs = 60_000
         const rateLimit = this.rateLimiter.consume(`${authFailure ? 'auth-failure' : isMutation ? 'mutation' : 'read'}:${principal}:${authFailure ? '*' : c.req.path}`, limit, rateWindowMs)
         if (!rateLimit.allowed) {
+          recordDenied('rate-limit', 429)
           return c.json(
             { error: 'Dashboard request rate limit exceeded.', retryAfterSeconds: rateLimit.retryAfterSeconds },
             429,
@@ -1027,11 +1042,27 @@ export class DashboardServer {
       }
 
       if (requiresAuth && method !== 'OPTIONS' && !tokenValid) {
+        recordDenied('authentication', 401)
         return c.json({ error: 'Dashboard authentication is required.' }, 401)
       }
-      if (requiresAuth && method !== 'OPTIONS' && dashboardAuthorization
+      if (requiresAuth && method !== 'OPTIONS' && c.req.path !== '/api/security/confirmations' && dashboardAuthorization
         && !dashboardAuthorizationAllows(dashboardAuthorization, requiredDashboardScope(method, c.req.path))) {
+        recordDenied('scope', 403)
         return c.json({ error: 'Dashboard token does not have the required scope.' }, 403)
+      }
+
+      if (requiresDashboardConfirmation(method, c.req.path)) {
+        const confirmationToken = c.req.header('X-SCALE-DASHBOARD-CONFIRMATION')
+        if (!this.confirmationStore.consume(confirmationToken, principal, method, c.req.path)) {
+          recordDenied('confirmation', 428)
+          return c.json({
+            error: 'This high-impact action requires an explicit, short-lived confirmation token.',
+            confirmationRequired: true,
+            confirmationEndpoint: '/api/security/confirmations',
+            method,
+            path: c.req.path,
+          }, 428)
+        }
       }
 
       const isSensitiveRead = method === 'GET' && [
@@ -1044,9 +1075,6 @@ export class DashboardServer {
         '/bridge/',
       ].some(prefix => c.req.path.startsWith(prefix))
       const isAuditedRequest = isMutation || isSensitiveRead
-      const requestId = randomBytes(8).toString('hex')
-      const actor = dashboardAuthorization?.kind === 'scoped' ? 'scoped-token' as const
-        : dashboardAuthorization ? 'bearer-token' as const : 'loopback' as const
       if (isAuditedRequest) {
         try {
           appendDashboardAuditEvent(this.auditPath, {
@@ -1078,7 +1106,7 @@ export class DashboardServer {
     this.app.use('*', cors({
       origin: (origin, c) => isDashboardOriginAllowed(origin, c.req.url, this.allowedOrigins) ? origin : '',
       allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization'],
+      allowHeaders: ['Content-Type', 'Authorization', 'X-SCALE-DASHBOARD-CONFIRMATION'],
       maxAge: 600,
     }))
   }
@@ -1309,6 +1337,37 @@ export class DashboardServer {
   }
 
   private setupAPI(): void {
+    this.app.post('/api/security/confirmations', async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}))
+      const method = typeof body.method === 'string' ? body.method.toUpperCase() : ''
+      const path = typeof body.path === 'string' ? body.path : ''
+      if (!requiresDashboardConfirmation(method, path)) {
+        return c.json({ ok: false, error: 'The requested method/path does not require or support Dashboard confirmation.' }, 400)
+      }
+      const authorization = resolveDashboardAuthorization(c.req.header('Authorization'), this.authToken, this.scopedTokens)
+      const hostHeader = c.req.header('Host') ?? new URL(c.req.url).host
+      const origin = c.req.header('Origin')
+      const principal = authorization?.principal
+        ?? `local-or-unauthenticated:${hostHeader.toLowerCase()}:${origin ?? 'no-origin'}`
+      const requiresAuth = Boolean(this.authToken) || this.scopedTokens.length > 0
+        || !isDashboardLoopbackHost(this.host) || this.allowedHosts.some(host => !isDashboardLoopbackHost(host))
+      if (requiresAuth && !authorization) {
+        return c.json({ ok: false, error: 'Dashboard authentication is required.' }, 401)
+      }
+      if (requiresAuth && authorization
+        && !dashboardAuthorizationAllows(authorization, requiredDashboardScope(method, path))) {
+        return c.json({ ok: false, error: 'Dashboard token does not have the required scope for this action.' }, 403)
+      }
+      const challenge = this.confirmationStore.issue(principal, method, path)
+      return c.json({
+        ok: true,
+        confirmationToken: challenge.token,
+        method,
+        path,
+        expiresAt: challenge.expiresAt,
+        expiresInSeconds: Math.max(1, Math.ceil((challenge.expiresAt - Date.now()) / 1000)),
+      })
+    })
     this.app.get('/api/health', (c) => c.json({
       status: 'ok',
       timestamp: Date.now(),
