@@ -19,13 +19,17 @@ export default defineConfig({
     // heavier suites spawn (adapter init / dashboard / CLI e2e).
     // Vitest 4 removed `poolOptions.forks.minForks` (no replacement) and
     // flattened `maxForks` to the pool-agnostic `maxWorkers`.
-    maxWorkers: 8,
+    // macOS GitHub runners are smaller than the primary development workstation;
+    // cap fork concurrency there to avoid starving CLI child processes and cleanup hooks.
+    maxWorkers: process.env.RUNNER_OS === 'macOS' ? 4 : 8,
     // Vitest 5 enforces timeouts even while the event loop is blocked, unlike
     // v2 where several dashboard/CLI suites ran past the 5s default unnoticed.
     // `npm test` already passed 180000 via the CLI; setting it here gives the
     // direct entrypoints (`npx vitest`, `test:serial`, validation scripts) the
     // same ceiling.
     testTimeout: 180000,
+    // Recursive temp-project cleanup can exceed Vitest's 10s default on macOS.
+    hookTimeout: 30000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],
