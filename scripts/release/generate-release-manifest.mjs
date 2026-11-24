@@ -8,18 +8,17 @@ const readText = path => readFileSync(resolve(root, path), 'utf8')
 const packageJson = readJson('package.json')
 const pluginPackage = readJson('packages/dsh-scale/package.json')
 const version = String(packageJson.version ?? '')
-const semver = version.split(/[+-]/, 1)[0].split('.')
+const versionMatch = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version)
 
-function isNumericPart(value) {
-  return value.length > 0 && Number.isInteger(Number(value))
+// Release tags publish to the default npm dist-tag. Keep this generator stable-only;
+// prerelease builds need a separate workflow that explicitly chooses an npm tag.
+if (!versionMatch) {
+  throw new Error('Release manifest requires a stable x.y.z package version; received: ' + version)
 }
+const semver = versionMatch.slice(1, 4).map(Number)
 
 function isFullGitSha(value) {
   return value.length === 40 && Array.from(value).every(char => '0123456789abcdefABCDEF'.includes(char))
-}
-
-if (semver.length !== 3 || semver.some(part => !isNumericPart(part))) {
-  throw new Error(`Invalid package version: ${version}`)
 }
 
 function git(args) {
@@ -39,13 +38,12 @@ function compareVersion(left, right) {
 }
 
 const peerRange = pluginPackage.peerDependencies?.[packageJson.name]
-const minimumPeer = String(peerRange ?? '').startsWith('>=')
-  ? String(peerRange).slice(2).trim().split('.')
-  : null
-if (!minimumPeer || minimumPeer.length < 3 || minimumPeer.slice(0, 3).some(part => !isNumericPart(part))) {
-  throw new Error(`dsh-scale peer dependency must use a supported >=x.y.z range; received: ${peerRange ?? 'missing'}`)
+const minimumPeerMatch = /^>=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(String(peerRange ?? ''))
+if (!minimumPeerMatch) {
+  throw new Error('dsh-scale peer dependency must use a stable >=x.y.z range; received: ' + (peerRange ?? 'missing'))
 }
-if (compareVersion(semver, minimumPeer.slice(0, 3)) < 0) {
+const minimumPeer = minimumPeerMatch.slice(1, 4).map(Number)
+if (compareVersion(semver, minimumPeer) < 0) {
   throw new Error(`dsh-scale requires SCALE Engine ${peerRange}, but package version is ${version}`)
 }
 
