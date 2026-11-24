@@ -549,7 +549,7 @@ export class WorkflowEvalStore {
   saveFailure(record: FailureReplayRecord): string {
     mkdirSync(this.failuresDir, { recursive: true })
     const path = join(this.failuresDir, `${safeSegment(record.id)}.json`)
-    writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
+    writeJsonAtomically(path, record)
     return path
   }
 
@@ -560,15 +560,25 @@ export class WorkflowEvalStore {
   }): string[] {
     const closedAt = new Date().toISOString()
     const closed: string[] = []
-    for (const failure of this.listFailures({ taskId: options.caseId })) {
-      if (failure.suiteId !== options.suiteId || failure.caseId !== options.caseId || failure.status !== 'open') continue
-      this.saveFailure({
-        ...failure,
-        status: 'closed',
-        closedAt,
-        closedByEvalRunId: options.closedByEvalRunId,
+    // The list is only a discovery snapshot. Every transition must re-read
+    // the record while holding the same lock used by promotion.
+    for (const listed of this.listFailures({ taskId: options.caseId })) {
+      if (listed.suiteId !== options.suiteId || listed.caseId !== options.caseId) continue
+      const failurePath = join(this.failuresDir, `${safeSegment(listed.id)}.json`)
+      const transitioned = withExclusiveFileLock(`${failurePath}.state.lock`, () => {
+        const current = this.getFailure(listed.id)
+        if (!current || current.suiteId !== options.suiteId || current.caseId !== options.caseId || current.status !== 'open') {
+          return false
+        }
+        this.saveFailure({
+          ...current,
+          status: 'closed',
+          closedAt,
+          closedByEvalRunId: options.closedByEvalRunId,
+        })
+        return true
       })
-      closed.push(failure.id)
+      if (transitioned) closed.push(listed.id)
     }
     return closed
   }
@@ -599,7 +609,7 @@ export class WorkflowEvalStore {
   promoteFailure(id: string): FailureImprovementCandidate {
     const failurePath = join(this.failuresDir, `${safeSegment(id)}.json`)
     mkdirSync(this.improvementsDir, { recursive: true })
-    return withExclusiveFileLock(`${failurePath}.promote.lock`, () => {
+    return withExclusiveFileLock(`${failurePath}.state.lock`, () => {
       const failure = this.getFailure(id)
       if (!failure) throw new Error(`Failure replay not found: ${id}`)
       // Recover safely if a prior process wrote the candidate but exited before
