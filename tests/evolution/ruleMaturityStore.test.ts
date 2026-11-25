@@ -73,10 +73,17 @@ describe('PersistentRuleMaturityStore', () => {
       evidenceId: `sha256:${'a'.repeat(64)}`,
       evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: Buffer.byteLength(artifactContent) },
     })).toThrow('digest does not match its evidence id')
+    const sizeMismatchContent = 'independent size mismatch evidence payload'
+    const sizeMismatchPath = join(store.projectDir, 'artifacts', 'shadow', 'size-mismatch.json')
+    writeFileSync(sizeMismatchPath, sizeMismatchContent, 'utf-8')
+    const sizeMismatchEvidenceId = `sha256:${createHash('sha256').update(sizeMismatchContent).digest('hex')}`
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-PROVENANCE',
-      evidenceId,
-      evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: Buffer.byteLength(artifactContent) + 1 },
+      evidenceId: sizeMismatchEvidenceId,
+      evidenceArtifact: {
+        path: 'artifacts/shadow/size-mismatch.json',
+        sizeBytes: Buffer.byteLength(sizeMismatchContent) + 1,
+      },
     })).toThrow('size does not match its evidence id')
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-PROVENANCE',
