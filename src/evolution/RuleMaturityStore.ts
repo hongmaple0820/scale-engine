@@ -81,6 +81,26 @@ function verifyEvidenceArtifacts(record: RuleMaturityRecord, projectDir: string,
   }
 }
 
+function verifyEvidenceArtifactInput(artifact: ShadowEvidenceArtifact, projectDir: string): void {
+  try {
+    const realProjectDir = realpathSync(projectDir)
+    const artifactPath = resolve(projectDir, ...artifact.path.split('/'))
+    const realArtifactPath = realpathSync(artifactPath)
+    const fromProject = relative(realProjectDir, realArtifactPath)
+    if (!fromProject || fromProject === '.' || fromProject === '..' || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject)) {
+      throw new Error('Evidence artifact resolves outside the project directory')
+    }
+    const stats = statSync(realArtifactPath)
+    if (!stats.isFile()) throw new Error('Evidence artifact is not a regular file')
+    if (stats.size !== artifact.sizeBytes) throw new Error('Evidence artifact size does not match its metadata')
+    const digest = createHash('sha256').update(readFileSync(realArtifactPath)).digest('hex')
+    if (`sha256:${digest}` !== artifact.evidenceId) throw new Error('Evidence artifact digest does not match its evidence id')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`Shadow evidence artifact verification failed (${artifact.path}): ${detail}`)
+  }
+}
+
 function readRecord(path: string, projectDir: string): RuleMaturityRecord | null {
   if (!existsSync(path)) return null
   try {
@@ -174,6 +194,7 @@ export class PersistentRuleMaturityStore {
           recordedAt: now,
           falsePositive: Boolean(input.falsePositive),
         }
+        verifyEvidenceArtifactInput(evidenceArtifact, this.projectDir)
       } else if (current.evidenceArtifacts !== undefined) {
         throw new Error('Shadow evidence artifact metadata is required once provenance tracking is enabled')
       }

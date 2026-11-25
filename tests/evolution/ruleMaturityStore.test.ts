@@ -70,6 +70,23 @@ describe('PersistentRuleMaturityStore', () => {
 
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'a'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: Buffer.byteLength(artifactContent) },
+    })).toThrow('digest does not match its evidence id')
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'a'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: Buffer.byteLength(artifactContent) + 1 },
+    })).toThrow('size does not match its metadata')
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'a'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts/shadow/missing.json', sizeBytes: 1 },
+    })).toThrow('Shadow evidence artifact verification failed')
+    expect(store.get('IMPROVE-PROVENANCE')?.shadowHits).toBe(1)
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
       evidenceId: `sha256:${'b'.repeat(64)}`,
       evidenceArtifact: { path: '../outside.json', sizeBytes: 1 },
     })).toThrow('safe project-relative path')
