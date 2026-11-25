@@ -61,7 +61,7 @@ describe('PersistentRuleMaturityStore', () => {
     expect(recorded.evidenceArtifacts).toEqual([{
       evidenceId,
       path: 'artifacts/shadow/run-1.json',
-      sizeBytes: 128,
+      sizeBytes: Buffer.byteLength(artifactContent),
       recordedAt: 1_800_000_000_000,
       falsePositive: false,
     }])
