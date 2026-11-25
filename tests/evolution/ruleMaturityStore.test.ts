@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,6 +36,108 @@ describe('PersistentRuleMaturityStore', () => {
     expect(updated.shadowHits).toBe(1)
     expect(new PersistentRuleMaturityStore({ projectDir: store.projectDir }).get('IMPROVE-100'))
       .toMatchObject({ stage: 'shadow', shadowHits: 1, evidenceIds: [`sha256:${'1'.repeat(64)}`] })
+  })
+
+  it('persists evidence artifact provenance and rejects unsafe manifest paths', () => {
+    const store = createStore()
+    store.create({
+      ruleId: 'IMPROVE-PROVENANCE',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-PROVENANCE'],
+    })
+    const artifactPath = join(store.projectDir, 'artifacts', 'shadow', 'run-1.json')
+    mkdirSync(join(store.projectDir, 'artifacts', 'shadow'), { recursive: true })
+    const artifactContent = JSON.stringify({ observation: 'verified shadow result' })
+    writeFileSync(artifactPath, artifactContent, 'utf-8')
+    const evidenceId = `sha256:${createHash('sha256').update(artifactContent).digest('hex')}`
+    const recorded = store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId,
+      evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: Buffer.byteLength(artifactContent) },
+      now: 1_800_000_000_000,
+    })
+
+    expect(recorded.evidenceManifestVersion).toBe(1)
+    expect(recorded.evidenceArtifacts).toEqual([{
+      evidenceId,
+      path: 'artifacts/shadow/run-1.json',
+      sizeBytes: Buffer.byteLength(artifactContent),
+      recordedAt: 1_800_000_000_000,
+      falsePositive: false,
+    }])
+    expect(new PersistentRuleMaturityStore({ projectDir: store.projectDir }).get('IMPROVE-PROVENANCE'))
+      .toMatchObject({ shadowHits: 1, evidenceArtifacts: recorded.evidenceArtifacts })
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'b'.repeat(64)}`,
+      evidenceArtifact: { path: '../outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'e'.repeat(64)}`,
+      evidenceArtifact: { path: 'C:/outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'f'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts\\..\\outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-PROVENANCE',
+      evidenceId: `sha256:${'9'.repeat(64)}`,
+      evidenceArtifact: { path: '/outside.json', sizeBytes: 1 },
+    })).toThrow('safe project-relative path')
+  })
+
+  it('fails closed when a recorded evidence artifact is tampered with or missing', () => {
+    const store = createStore()
+    store.create({
+      ruleId: 'IMPROVE-INTEGRITY',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-INTEGRITY'],
+    })
+    const artifactPath = join(store.projectDir, 'artifacts', 'shadow', 'integrity.json')
+    mkdirSync(join(store.projectDir, 'artifacts', 'shadow'), { recursive: true })
+    const original = 'original evidence payload'
+    writeFileSync(artifactPath, original, 'utf-8')
+    const evidenceId = `sha256:${createHash('sha256').update(original).digest('hex')}`
+    store.recordHit({
+      ruleId: 'IMPROVE-INTEGRITY',
+      evidenceId,
+      evidenceArtifact: { path: 'artifacts/shadow/integrity.json', sizeBytes: Buffer.byteLength(original) },
+    })
+
+    writeFileSync(artifactPath, 'tampered evidence payload', 'utf-8')
+    expect(() => store.get('IMPROVE-INTEGRITY')).toThrow('digest does not match its manifest')
+    expect(() => store.evaluate('IMPROVE-INTEGRITY')).toThrow('digest does not match its manifest')
+
+    rmSync(artifactPath, { force: true })
+    expect(() => store.list()).toThrow('Unverified rule maturity evidence artifact')
+  })
+
+  it('keeps legacy records readable but refuses to silently create an incomplete provenance manifest', () => {
+    const store = createStore()
+    const created = store.create({
+      ruleId: 'IMPROVE-LEGACY',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-LEGACY'],
+    })
+    const legacyEvidenceId = `sha256:${'c'.repeat(64)}`
+    const legacy = {
+      ...created,
+      shadowHits: 1,
+      evidenceIds: [legacyEvidenceId],
+    }
+    writeFileSync(join(store.recordsDir, 'IMPROVE-LEGACY.json'), JSON.stringify(legacy), 'utf-8')
+
+    expect(store.get('IMPROVE-LEGACY')).toMatchObject({ shadowHits: 1, evidenceIds: [legacyEvidenceId] })
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-LEGACY',
+      evidenceId: `sha256:${'d'.repeat(64)}`,
+      evidenceArtifact: { path: 'artifacts/new.json', sizeBytes: 10 },
+    })).toThrow('Legacy Shadow record')
   })
 
   it('requires unique evidence ids and prevents duplicate observations from inflating hit counts', () => {
