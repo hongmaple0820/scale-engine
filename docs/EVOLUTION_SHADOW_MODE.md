@@ -46,6 +46,14 @@ Promotion requires:
 - `evaluateRulePromotion`
 - `approveRuleMaturity`
 
+## Persistent Shadow Evidence Ledger
+
+Accepted workflow improvement candidates can be initialized as persistent, non-blocking maturity records with a documented rollback procedure. Records live under `.scale/evals/rule-maturity/`. Each observed hit requires an existing regular evidence file inside the project directory (maximum 10 MiB). The CLI records its SHA-256 digest as the evidence ID; duplicate content is rejected even if submitted under another filename. Paths escaping the project directory are rejected. False positives are counted against the configured promotion threshold.
+
+The CLI exposes `shadow-init`, `shadow-hit`, `shadow-status`, and `shadow-evaluate`. These commands record external observations and calculate eligibility only. They do not execute the underlying rule against traffic, run a replay, change the maturity stage, generate hooks, or edit production policies. A passing evaluation reports `candidate-hook` as the next review stage while the persisted record remains `shadow`.
+
+持久化 Shadow 证据台账支持为已接受的改进候选创建非阻断成熟度记录，并要求提供回滚方案。每次命中必须关联项目目录内已存在的普通证据文件（最大 10 MiB），CLI 以 SHA-256 生成证据 ID；重复内容和越界路径都会被拒绝。CLI 仅记录外部观察并计算门槛，不会自动执行规则或 Replay，不会改变成熟度阶段、生成 Hook 或修改生产策略。即使评估通过，也只报告下一审核阶段为 `candidate-hook`，记录本身仍保持 `shadow`。
+
 ## Hook Boundary
 
 `HookGenerator` still requires `rule.approved === true`.
