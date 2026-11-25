@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import {
   createShadowRuleMaturity,
@@ -10,6 +10,24 @@ import {
   type RulePromotionDecision,
   type RulePromotionThresholds,
 } from './RuleMaturity.js'
+
+const MAX_EVIDENCE_ARTIFACT_BYTES = 10 * 1024 * 1024
+
+function verifyArtifactFile(realArtifactPath: string, expectedSize: number, expectedEvidenceId: string, sizeLabel: string): void {
+  const fd = openSync(realArtifactPath, 'r')
+  try {
+    const stats = fstatSync(fd)
+    if (!stats.isFile()) throw new Error('Evidence artifact is not a regular file')
+    if (stats.size > MAX_EVIDENCE_ARTIFACT_BYTES) throw new Error('Evidence artifact exceeds the 10 MiB limit')
+    if (stats.size !== expectedSize) throw new Error(`Evidence artifact size does not match ${sizeLabel}`)
+    const content = readFileSync(fd)
+    if (content.byteLength !== stats.size) throw new Error('Evidence artifact changed while being read')
+    const digest = createHash('sha256').update(content).digest('hex')
+    if (`sha256:${digest}` !== expectedEvidenceId) throw new Error(`Evidence artifact digest does not match ${sizeLabel}`)
+  } finally {
+    closeSync(fd)
+  }
+}
 
 export interface PersistentRuleMaturityStoreOptions {
   projectDir?: string
@@ -69,11 +87,7 @@ function verifyEvidenceArtifacts(record: RuleMaturityRecord, projectDir: string,
       if (!fromProject || fromProject === '.' || fromProject === '..' || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject)) {
         throw new Error('Evidence artifact resolves outside the project directory')
       }
-      const stats = statSync(realArtifactPath)
-      if (!stats.isFile()) throw new Error('Evidence artifact is not a regular file')
-      if (stats.size !== artifact.sizeBytes) throw new Error('Evidence artifact size does not match its manifest')
-      const digest = createHash('sha256').update(readFileSync(realArtifactPath)).digest('hex')
-      if (`sha256:${digest}` !== artifact.evidenceId) throw new Error('Evidence artifact digest does not match its manifest')
+      verifyArtifactFile(realArtifactPath, artifact.sizeBytes, artifact.evidenceId, 'its manifest')
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       throw new Error(`Unverified rule maturity evidence artifact (${artifact.path}): ${detail}; record: ${recordPath}`)
@@ -90,11 +104,7 @@ function verifyEvidenceArtifactInput(artifact: ShadowEvidenceArtifact, projectDi
     if (!fromProject || fromProject === '.' || fromProject === '..' || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject)) {
       throw new Error('Evidence artifact resolves outside the project directory')
     }
-    const stats = statSync(realArtifactPath)
-    if (!stats.isFile()) throw new Error('Evidence artifact is not a regular file')
-    if (stats.size !== artifact.sizeBytes) throw new Error('Evidence artifact size does not match its metadata')
-    const digest = createHash('sha256').update(readFileSync(realArtifactPath)).digest('hex')
-    if (`sha256:${digest}` !== artifact.evidenceId) throw new Error('Evidence artifact digest does not match its evidence id')
+    verifyArtifactFile(realArtifactPath, artifact.sizeBytes, artifact.evidenceId, 'its evidence id')
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`Shadow evidence artifact verification failed (${artifact.path}): ${detail}`)

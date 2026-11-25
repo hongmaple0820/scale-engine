@@ -108,6 +108,27 @@ describe('PersistentRuleMaturityStore', () => {
     })).toThrow('safe project-relative path')
   })
 
+  it('enforces the evidence artifact size limit at the store boundary', () => {
+    const store = createStore()
+    store.create({
+      ruleId: 'IMPROVE-ARTIFACT-LIMIT',
+      rollback: 'Remove the shadow record.',
+      defectEvidenceIds: ['FAILURE-ARTIFACT-LIMIT'],
+    })
+    const artifactPath = join(store.projectDir, 'artifacts', 'oversized.bin')
+    mkdirSync(join(store.projectDir, 'artifacts'), { recursive: true })
+    const content = Buffer.alloc(10 * 1024 * 1024 + 1, 7)
+    writeFileSync(artifactPath, content)
+    const evidenceId = `sha256:${createHash('sha256').update(content).digest('hex')}`
+
+    expect(() => store.recordHit({
+      ruleId: 'IMPROVE-ARTIFACT-LIMIT',
+      evidenceId,
+      evidenceArtifact: { path: 'artifacts/oversized.bin', sizeBytes: content.byteLength },
+    })).toThrow('exceeds the 10 MiB limit')
+    expect(store.get('IMPROVE-ARTIFACT-LIMIT')?.shadowHits).toBe(0)
+  })
+
   it('fails closed when a recorded evidence artifact is tampered with or missing', () => {
     const store = createStore()
     store.create({
