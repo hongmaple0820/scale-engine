@@ -75,9 +75,9 @@ describe('PersistentRuleMaturityStore', () => {
     })).toThrow('digest does not match its evidence id')
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-PROVENANCE',
-      evidenceId: `sha256:${'a'.repeat(64)}`,
+      evidenceId,
       evidenceArtifact: { path: 'artifacts/shadow/run-1.json', sizeBytes: Buffer.byteLength(artifactContent) + 1 },
-    })).toThrow('size does not match its metadata')
+    })).toThrow('size does not match its evidence id')
     expect(() => store.recordHit({
       ruleId: 'IMPROVE-PROVENANCE',
       evidenceId: `sha256:${'a'.repeat(64)}`,
