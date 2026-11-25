@@ -394,9 +394,17 @@ const evalShadowHit = defineCommand({
     const record = store.recordHit({
       ruleId: String(args.id),
       evidenceId,
+      evidenceArtifact: {
+        path: relative(realpathSync(projectDir), realpathSync(evidencePath)),
+        sizeBytes: evidenceStat.size,
+      },
       falsePositive: Boolean(args['false-positive']),
     })
-    const evidenceArtifact = { path: relative(realpathSync(projectDir), realpathSync(evidencePath)), sha256: digest }
+    const manifestArtifact = record.evidenceArtifacts?.find(item => item.evidenceId === evidenceId)
+    const evidenceArtifact = {
+      path: manifestArtifact?.path ?? relative(realpathSync(projectDir), realpathSync(evidencePath)),
+      sha256: digest,
+    }
     if (args.json) {
       console.log(JSON.stringify({ record, evidenceArtifact }, null, 2))
       return
