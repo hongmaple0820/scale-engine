@@ -183,6 +183,13 @@ Evidence-driven continuous evolution with instinct extraction.
 | `scale cortex-promotion approve` | Approve an eligible shadow rule for blocking enforcement |
 | `scale cortex-promotion list` | List Cortex promotion proposals and readiness |
 
+## Shadow Replay
+
+| Command | Description |
+|---------|-------------|
+| `scale shadow-replay list` | Read-only query of persisted Shadow Replay records |
+| `scale shadow-replay show <run-id>` | Read-only inspection of one replay record |
+
 ## Skills
 
 | Command | Description |

@@ -19,7 +19,7 @@ Status: P4-C（审计底座已具备；Shadow Replay Docker adapter 与 ledger �
 
 - `scale dashboard capabilities` — 七类数据源就绪状态（含 runtime-evidence / review-evidence）。
 - `scale runtime ...` / `scale workflow evidence` — 查询现有证据与门禁记录。
-- Shadow Replay Ledger 当前是代码/API 层能力，尚未接入公开 CLI 查询命令。
+- `scale shadow-replay list` / `show <run-id>` 提供只读 Ledger 查询；不会创建 Ledger、写入记录或触发 Replay。
 - 面板 Monitoring / Tokens & Cost 页面读取现有证据流与 token 账单。
 
 ## 后续增强与资格验证

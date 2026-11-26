@@ -55,6 +55,26 @@ describe('ShadowReplayLedger', () => {
     reopened.close()
   })
 
+  it('supports read-only inspection without creating or mutating the ledger', () => {
+    const f = fixture()
+    const writer = new ShadowReplayLedger({ projectDir: f.dir })
+    const saved = writer.record(f.plan, f.result, f.provenance)
+    const dbPath = writer.getDatabasePath()
+    writer.close()
+
+    const reader = new ShadowReplayLedger({ dbPath, readonly: true })
+    expect(reader.get(f.plan.runId)).toEqual(saved)
+    expect(reader.list()).toHaveLength(1)
+    expect(() => reader.record(f.plan, f.result, f.provenance)).toThrow()
+    reader.close()
+  })
+
+  it('does not create a missing ledger when opened read-only', () => {
+    const f = fixture()
+    const missing = join(f.dir, 'missing.sqlite')
+    expect(() => new ShadowReplayLedger({ dbPath: missing, readonly: true })).toThrow('ledger not found')
+  })
+
   it('rejects duplicate run IDs instead of overwriting prior evidence', () => {
     const f = fixture()
     const ledger = new ShadowReplayLedger({ projectDir: f.dir })

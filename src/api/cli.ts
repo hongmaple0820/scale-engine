@@ -97,6 +97,7 @@ import { dependencyCommand, tddCommand, statsCommand, metricsCommand } from '../
 import { contextCommand } from '../cli/contextCommands.js'
 import { codegraphCommand } from '../cli/codegraphCommands.js'
 import { evalCommand } from '../cli/evalCommands.js'
+import { shadowReplayCommand } from '../cli/shadowReplayCommands.js'
 import { evolveCommand, doctorCommand } from '../cli/evolveDoctorCommands.js'
 import { workflowCommand, evidenceCommand } from '../cli/workflowEvidenceCommands.js'
 import { loopCommand } from '../cli/loopCommands.js'
@@ -1808,6 +1809,7 @@ const main = defineCommand({
     'ai-os': aiOs,
     codegraph: codegraphCommand,
     eval: evalCommand,
+    'shadow-replay': shadowReplayCommand,
     artifact: artifactCommand,
     assets: assetsCommand,
     standards: standardsCommand,

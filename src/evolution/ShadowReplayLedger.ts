@@ -31,6 +31,8 @@ export interface ShadowReplayLedgerOptions {
   projectDir?: string
   dbPath?: string
   now?: () => Date
+  /** Open an existing ledger without creating directories, schema, or write access. */
+  readonly?: boolean
 }
 
 export interface ShadowReplayLedgerQuery {
@@ -65,13 +67,19 @@ export class ShadowReplayLedger {
   constructor(options: ShadowReplayLedgerOptions = {}) {
     const projectDir = resolve(options.projectDir ?? process.cwd())
     this.dbPath = resolve(options.dbPath ?? join(projectDir, '.scale', 'evolution', 'shadow-replays.sqlite'))
-    const dir = dirname(this.dbPath)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     const Database = loadDatabase()
-    this.db = new Database(this.dbPath)
-    this.db.pragma('journal_mode = WAL')
-    this.db.pragma('busy_timeout = 5000')
-    this.db.exec(SCHEMA)
+    if (options.readonly) {
+      if (!existsSync(this.dbPath)) throw new Error(`Shadow Replay ledger not found: ${this.dbPath}`)
+      this.db = new Database(this.dbPath, { readonly: true, fileMustExist: true })
+      this.db.pragma('busy_timeout = 5000')
+    } else {
+      const dir = dirname(this.dbPath)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      this.db = new Database(this.dbPath)
+      this.db.pragma('journal_mode = WAL')
+      this.db.pragma('busy_timeout = 5000')
+      this.db.exec(SCHEMA)
+    }
     this.now = options.now ?? (() => new Date())
   }
 
