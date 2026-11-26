@@ -12,7 +12,7 @@ Status: P4-C（审计底座已具备；Shadow Replay Docker adapter 与 ledger �
 4. **危险命令预阻断**：DangerousCommandDetector（rm -rf / DROP TABLE / curl|bash 等）。
 5. **DSH 插件审计**：dsh-scale 的 Evidence 桥把工具调用落 `.scale/evidence/runtime/`（异步）。
 6. **Shadow Replay contract**：已具备人工接受候选校验、固定输入摘要、适配器隔离能力门禁和有界脱敏结果模型。
-7. **Docker adapter（代码层）**：新增 digest-pinned Docker CLI adapter，校验输入文件摘要，仅只读挂载两个输入文件，关闭网络、只读根文件系统、非 root、drop capabilities、资源限制、超时清理。它要求预先构建并审核的 runner image；当前仓库尚未交付该镜像，也尚未完成真实 Docker daemon 集成安全验证。
+7. **Docker adapter（代码层）**：新增 digest-pinned Docker CLI adapter，校验输入文件摘要，仅只读挂载两个输入文件，关闭网络、只读根文件系统、非 root、drop capabilities、资源限制、超时清理。Runner Protocol v1 已定义为严格 data-only JSON 规则模拟，明确拒绝 shell/command/script 执行；Runner 镜像仍未交付，也尚未完成真实 Docker daemon 集成安全验证。
 8. **Shadow Replay Ledger（代码层）**：SQLite WAL 持久化计划、结果和来源摘要；唯一 run ID，数据库触发器阻止 UPDATE/DELETE。它不是防管理员篡改的外部可信存证。
 
 ## 审计查询
