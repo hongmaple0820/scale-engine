@@ -44,6 +44,7 @@ const failure: FailureReplayRecord = {
 }
 
 const digest = `sha256:${'a'.repeat(64)}`
+const replayInputs = { scenarioSnapshotPath: '/fixture/scenario.json', candidateBundlePath: '/fixture/candidate.bundle' }
 
 function makePlan(overrides: Partial<Parameters<typeof createShadowReplayPlan>[0]> = {}): ShadowReplayPlan {
   return createShadowReplayPlan({
@@ -132,13 +133,13 @@ describe('Shadow replay contract', () => {
         outputIsolated: true,
       },
     })
-    await expect(executeShadowReplay(makePlan(), adapter))
+    await expect(executeShadowReplay(makePlan(), adapter, replayInputs))
       .rejects.toThrow('required isolation capabilities')
     expect(adapter.execute).not.toHaveBeenCalled()
   })
 
   it('executes through the injected adapter and never changes production policy or hooks', async () => {
-    const result = await executeShadowReplay(makePlan(), makeAdapter())
+    const result = await executeShadowReplay(makePlan(), makeAdapter(), replayInputs)
     expect(result).toMatchObject({
       status: 'passed',
       stdoutSummary: 'replay-ok',
@@ -158,7 +159,7 @@ describe('Shadow replay contract', () => {
         stdout: '',
         stderr: 'assertion failed',
       })),
-    }))
+    }), replayInputs)
     expect(failed.status).toBe('failed')
     const timedOut = await executeShadowReplay(makePlan(), makeAdapter({
       execute: vi.fn(async () => ({
@@ -169,7 +170,7 @@ describe('Shadow replay contract', () => {
         stdout: '',
         stderr: 'timeout',
       })),
-    }))
+    }), replayInputs)
     expect(timedOut.status).toBe('timed-out')
     expect(timedOut.productionPolicyChanged).toBe(false)
   })
@@ -185,7 +186,7 @@ describe('Shadow replay contract', () => {
         stderr: '',
       })),
     })
-    await expect(executeShadowReplay(makePlan(), invalid)).rejects.toThrow('timestamps')
+    await expect(executeShadowReplay(makePlan(), invalid, replayInputs)).rejects.toThrow('timestamps')
 
     const oversized = makeAdapter({
       execute: vi.fn(async () => ({
@@ -197,7 +198,7 @@ describe('Shadow replay contract', () => {
         stderr: '',
       })),
     })
-    await expect(executeShadowReplay(makePlan(), oversized)).rejects.toThrow('256 KiB')
+    await expect(executeShadowReplay(makePlan(), oversized, replayInputs)).rejects.toThrow('256 KiB')
 
     const overrun = makeAdapter({
       execute: vi.fn(async () => ({
@@ -209,6 +210,6 @@ describe('Shadow replay contract', () => {
         stderr: '',
       })),
     })
-    await expect(executeShadowReplay(makePlan(), overrun)).rejects.toThrow('exceeded the approved timeout')
+    await expect(executeShadowReplay(makePlan(), overrun, replayInputs)).rejects.toThrow('exceeded the approved timeout')
   })
 })
