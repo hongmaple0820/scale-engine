@@ -2,7 +2,7 @@
 
 Status: first Docker CLI adapter implementation; real-daemon integration qualification is still required.
 
-The adapter requires a locally present immutable `repository@sha256:<digest>` image. The image must provide `/usr/local/bin/scale-shadow-replay` and `/inputs`, accepting `--scenario /inputs/scenario.snapshot` and `--candidate /inputs/candidate.bundle`.
+The adapter requires a locally present immutable `repository@sha256:<digest>` image. The image must provide `/usr/local/bin/scale-shadow-replay` and `/inputs`, accepting `--scenario /inputs/scenario.snapshot` and `--candidate /inputs/candidate.bundle`. Those files must implement the strict data-only [Runner Protocol v1](SHADOW_REPLAY_RUNNER_PROTOCOL.md); unknown fields and arbitrary command/script payloads are rejected. Protocol v1 is a deterministic literal-match policy simulation, not an execution of the original failure's `replayCommand` or arbitrary application code.
 
 Before Docker is invoked, both input files are checked against the approved plan digests. Symlinks, non-regular files and files over 10 MiB are rejected. Verified bytes are copied to a private temporary directory; only these two copies are mounted read-only. No shell, replayCommand, project tree, home directory, Docker socket, host environment, SSH agent or cloud credentials are passed into the container.
 
