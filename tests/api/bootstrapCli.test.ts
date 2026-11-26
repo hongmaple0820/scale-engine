@@ -28,7 +28,7 @@ const UI_POSTCHECK_COMMANDS = [
 afterEach(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   dirs = []
-})
+}, 30_000)
 
 function makeDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix))
