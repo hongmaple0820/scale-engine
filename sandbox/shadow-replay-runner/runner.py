@@ -48,8 +48,13 @@ def exact_object(value, keys, label):
     return value
 
 
+def js_string_length(value):
+    """Match JavaScript String.length (UTF-16 code units), not Python code points."""
+    return len(value.encode("utf-16-le", errors="surrogatepass")) // 2
+
+
 def text(value, label, maximum):
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+    if not isinstance(value, str) or not value.strip() or js_string_length(value) > maximum:
         raise ProtocolError(f"{label} must be a non-empty string of at most {maximum} characters")
     return value
 
@@ -84,7 +89,7 @@ def parse_scenario(raw):
         if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9._-]*", tool):
             raise ProtocolError(label + ".tool has invalid characters")
         event_input = text(row["input"], label + ".input", MAX_INPUT)
-        if len(event_input.encode("utf-8")) > MAX_INPUT:
+        if len(event_input.encode("utf-8", errors="surrogatepass")) > MAX_INPUT:
             raise ProtocolError(label + ".input exceeds 64 KiB")
         parsed.append({"id": event_id, "tool": tool, "input": event_input,
                        "expectedDecision": decision(row["expectedDecision"], label + ".expectedDecision")})
@@ -123,7 +128,7 @@ def parse_candidate(raw):
 
 
 def evaluate(scenario, candidate):
-    ordered = sorted(candidate["rules"], key=lambda item: (-item["priority"], item["id"]))
+    ordered = sorted(candidate["rules"], key=lambda item: (-item["priority"], item["id"].encode("utf-16-be", errors="surrogatepass")))
     mismatches = []
     matched_count = 0
     for event in scenario["events"]:
@@ -151,7 +156,7 @@ def main():
         scenario = parse_scenario(load_document(args.scenario, "scenario snapshot"))
         candidate = parse_candidate(load_document(args.candidate, "candidate bundle"))
         result = evaluate(scenario, candidate)
-        print(json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
+        print(json.dumps(result, ensure_ascii=True, separators=(",", ":"), sort_keys=True))
         return 0 if result["passed"] else 10
     except (ProtocolError, OSError, RecursionError) as exc:
         print(json.dumps({"protocolVersion": 1, "error": str(exc)}, separators=(",", ":")), file=sys.stderr)
