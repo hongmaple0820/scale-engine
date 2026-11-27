@@ -50,7 +50,7 @@ function fixture() {
       exitCode: 0,
       stdout: JSON.stringify({
         protocolVersion: 1, scenarioId: 'orchestrator-test', candidateId: 'IMPROVE-1',
-        failureId: 'FAIL-1', passed: true, eventCount: 1, matchedCount: 1,
+        failureId: 'FAIL-1', passed: true, eventCount: 1, matchedRuleCount: 1,
         mismatchCount: 0, mismatches: [],
       }),
       stderr: '',
@@ -87,6 +87,14 @@ describe('runAndRecordShadowReplay', () => {
   it('persists a valid runner mismatch as failed evidence rather than treating exit 10 as infrastructure failure', async () => {
     const f = fixture()
     const ledger = new ShadowReplayLedger({ projectDir: f.dir })
+    const mismatchCandidate = JSON.stringify({
+      protocolVersion: 1, kind: 'scale-shadow-replay-candidate', candidateId: 'IMPROVE-1',
+      failureId: 'FAIL-1', defaultDecision: 'allow',
+      rules: [{ id: 'block-write', priority: 10, tool: 'fs.write', contains: 'write', decision: 'warn' }],
+    })
+    writeFileSync(f.inputs.candidateBundlePath, mismatchCandidate)
+    f.plan.candidateBundleDigest = digest(mismatchCandidate)
+    f.provenance.candidateBundleDigest = f.plan.candidateBundleDigest
     const runner: DockerCommandRunner = vi.fn(async args => {
       if (args[0] === 'image') return { exitCode: 0, stdout: JSON.stringify([IMAGE]), stderr: '' }
       if (args[0] === 'create') return { exitCode: 0, stdout: 'abcdef123456', stderr: '' }
@@ -94,8 +102,8 @@ describe('runAndRecordShadowReplay', () => {
         exitCode: 10,
         stdout: JSON.stringify({
           protocolVersion: 1, scenarioId: 'orchestrator-test', candidateId: 'IMPROVE-1',
-          failureId: 'FAIL-1', passed: false, eventCount: 1, matchedCount: 1,
-          mismatchCount: 1, mismatches: [{ eventId: 'event-1', expectedDecision: 'block', actualDecision: 'allow', matchedRuleId: null }],
+          failureId: 'FAIL-1', passed: false, eventCount: 1, matchedRuleCount: 1,
+          mismatchCount: 1, mismatches: [{ eventId: 'event-1', expectedDecision: 'block', actualDecision: 'warn', matchedRuleId: 'block-write' }],
         }),
         stderr: '',
       }
@@ -107,6 +115,31 @@ describe('runAndRecordShadowReplay', () => {
     })
     expect(completed.result).toMatchObject({ status: 'failed', exitCode: 10 })
     expect(ledger.get(f.plan.runId)?.result).toEqual(completed.result)
+    ledger.close()
+  })
+
+  it('rejects a forged or semantically inconsistent Runner result before ledger persistence', async () => {
+    const f = fixture()
+    const ledger = new ShadowReplayLedger({ projectDir: f.dir })
+    const runner: DockerCommandRunner = vi.fn(async args => {
+      if (args[0] === 'image') return { exitCode: 0, stdout: JSON.stringify([IMAGE]), stderr: '' }
+      if (args[0] === 'create') return { exitCode: 0, stdout: 'abcdef123456', stderr: '' }
+      if (args[0] === 'start') return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          protocolVersion: 1, scenarioId: 'wrong-scenario', candidateId: 'IMPROVE-1',
+          failureId: 'FAIL-1', passed: true, eventCount: 1, matchedRuleCount: 1,
+          mismatchCount: 0, mismatches: [],
+        }),
+        stderr: '',
+      }
+      return { exitCode: 0, stdout: '', stderr: '' }
+    })
+    const adapter = new DockerShadowReplayAdapter({ imageRef: IMAGE, runner })
+    await expect(runAndRecordShadowReplay({
+      plan: f.plan, adapter, inputs: f.inputs, ledger, provenance: f.provenance,
+    })).rejects.toThrow('does not match the host-verified protocol evaluation')
+    expect(ledger.list()).toHaveLength(0)
     ledger.close()
   })
 
