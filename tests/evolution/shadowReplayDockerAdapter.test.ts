@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { execa } from 'execa'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -70,6 +71,64 @@ describe('DockerShadowReplayAdapter', () => {
     expect(result.status).toBe('timed-out')
     expect(calls.some(args => args[0] === 'kill')).toBe(true)
     expect(calls.some(args => args[0] === 'rm' && args[1] === '--force')).toBe(true)
+  })
+
+  it.runIf(Boolean(process.env.SCALE_SHADOW_REPLAY_DOCKER_IMAGE))('executes the reviewed runner against a real Docker daemon and verifies effective isolation settings', async () => {
+    const imageRef = process.env.SCALE_SHADOW_REPLAY_DOCKER_IMAGE!
+    const dir = mkdtempSync(join(tmpdir(), 'shadow-replay-docker-e2e-')); dirs.push(dir)
+    const scenarioText = JSON.stringify({
+      protocolVersion: 1, kind: 'scale-shadow-replay-scenario', scenarioId: 'docker-e2e',
+      sourceCommitSha: 'a'.repeat(40),
+      events: [{ id: 'event-1', tool: 'fs.write', input: 'write /private/token', expectedDecision: 'block' }],
+    })
+    const candidateText = JSON.stringify({
+      protocolVersion: 1, kind: 'scale-shadow-replay-candidate', candidateId: 'IMPROVE-1',
+      failureId: 'FAIL-1', defaultDecision: 'allow',
+      rules: [{ id: 'block-write', priority: 10, tool: 'fs.write', contains: 'write', decision: 'block' }],
+    })
+    const scenarioSnapshotPath = join(dir, 'scenario.json')
+    const candidateBundlePath = join(dir, 'candidate.json')
+    writeFileSync(scenarioSnapshotPath, scenarioText)
+    writeFileSync(candidateBundlePath, candidateText)
+    const data = { scenarioSnapshotPath, candidateBundlePath,
+      scenarioDigest: digest(scenarioText), candidateDigest: digest(candidateText) }
+    let containerId = ''
+    let inspected: Record<string, any> | undefined
+    const runner: DockerCommandRunner = async (args, timeoutMs) => {
+      const result = await execa('docker', args, { reject: false, timeout: timeoutMs ?? 30_000, windowsHide: true })
+      if (args[0] === 'create' && result.exitCode === 0) {
+        containerId = result.stdout.trim()
+        const inspect = await execa('docker', ['inspect', containerId], { reject: false, windowsHide: true })
+        if (inspect.exitCode !== 0) throw new Error(inspect.stderr)
+        inspected = JSON.parse(inspect.stdout)[0] as Record<string, any>
+      }
+      return { exitCode: result.exitCode ?? 1, stdout: result.stdout, stderr: result.stderr,
+        timedOut: Boolean((result as typeof result & { timedOut?: boolean }).timedOut) }
+    }
+    const adapter = new DockerShadowReplayAdapter({ imageRef, runner })
+    const result = await executeShadowReplay(plan(data), adapter, data)
+    expect(result).toMatchObject({ status: 'passed', exitCode: 0, productionPolicyChanged: false, hooksChanged: false })
+    expect(result.stdoutSummary).toContain('"passed":true')
+    expect(result.stdoutSummary).not.toContain('/private/token')
+    expect(inspected).toBeDefined()
+    expect(inspected!.Config.User).toBe('65532:65532')
+    expect(inspected!.HostConfig.NetworkMode).toBe('none')
+    expect(inspected!.HostConfig.ReadonlyRootfs).toBe(true)
+    expect(inspected!.HostConfig.CapDrop).toContain('ALL')
+    expect(inspected!.HostConfig.SecurityOpt).toContain('no-new-privileges:true')
+    expect(inspected!.HostConfig.PidsLimit).toBe(64)
+    expect(inspected!.HostConfig.Memory).toBe(512 * 1024 * 1024)
+    expect(inspected!.HostConfig.MemorySwap).toBe(512 * 1024 * 1024)
+    expect(inspected!.HostConfig.CpuPeriod).toBe(100000)
+    expect(inspected!.HostConfig.CpuQuota).toBe(100000)
+    expect(inspected!.HostConfig.Tmpfs).toHaveProperty('/tmp')
+    const inputMounts = inspected!.Mounts.filter((mount: { Destination: string }) =>
+      ['/inputs/scenario.snapshot', '/inputs/candidate.bundle'].includes(mount.Destination)
+    )
+    expect(inputMounts).toHaveLength(2)
+    expect(inputMounts.every((mount: { RW: boolean }) => mount.RW === false)).toBe(true)
+    const after = await execa('docker', ['inspect', containerId], { reject: false, windowsHide: true })
+    expect(after.exitCode).not.toBe(0)
   })
   it('fails closed if the exact pinned image digest is not local', async () => {
     const data = inputs()
