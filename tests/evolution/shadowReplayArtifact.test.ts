@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -95,6 +95,18 @@ describe('Shadow Replay artifact manifest', () => {
     const directoryLink = join(dirs[0], 'directory-link')
     symlinkSync(directory, directoryLink)
     expect(() => writeShadowReplayArtifact({ directory: directoryLink, record })).toThrow('non-symlink')
+  })
+
+
+  it('rejects oversized artifact files before reading or parsing them', () => {
+    const directory = join(dirs[0], 'artifacts')
+    const path = join(directory, 'oversized.shadow-replay.json')
+    const record = fixture()
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(path, '{}')
+    truncateSync(path, 10 * 1024 * 1024 + 1)
+    expect(() => verifyShadowReplayArtifactFile(path)).toThrow('10 MiB limit')
+    expect(record.runId).toBe('SHADOW-REPLAY-ARTIFACT-1')
   })
 
   it('rejects unsafe run identifiers before constructing a path', () => {
