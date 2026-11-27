@@ -1,0 +1,50 @@
+name: Shadow Replay Runner Image
+
+on:
+  pull_request:
+    paths:
+      - "sandbox/shadow-replay-runner/**"
+      - ".github/workflows/shadow-replay-runner.yml"
+      - "docs/workflow/SHADOW_REPLAY_RUNNER_PROTOCOL.md"
+  push:
+    branches:
+      - "feat/shadow-replay-runner-image"
+    paths:
+      - "sandbox/shadow-replay-runner/**"
+      - ".github/workflows/shadow-replay-runner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shadow-replay-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runner-image:
+    name: Build and verify data-only runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Unit tests
+        run: python -m unittest discover -s sandbox/shadow-replay-runner -p 'test_*.py' -v
+
+      - name: Build runner image
+        run: docker build --pull --tag scale-shadow-replay-runner:${{ github.sha }} sandbox/shadow-replay-runner
+
+      - name: Verify image identity and runtime defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect --format '{{.Config.User}}' scale-shadow-replay-runner:${GITHUB_SHA})" = "65532:65532"
+          test "$(docker image inspect --format '{{json .Config.Entrypoint}}' scale-shadow-replay-runner:${GITHUB_SHA})" = '["/usr/local/bin/scale-shadow-replay"]'
+          docker image inspect --format '{{.Id}} {{json .RepoDigests}}' scale-shadow-replay-runner:${GITHUB_SHA}
