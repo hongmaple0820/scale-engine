@@ -54,6 +54,21 @@ class RunnerProtocolTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("unsupported field", result.stderr)
 
+    def test_boolean_protocol_version_is_rejected(self):
+        scenario, candidate = self.base()
+        scenario["protocolVersion"] = True
+        result = self.run_case(scenario, candidate)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("unsupported scenario", result.stderr)
+
+    def test_non_string_decision_is_rejected_without_traceback(self):
+        scenario, candidate = self.base()
+        candidate["defaultDecision"] = []
+        result = self.run_case(scenario, candidate)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("must be allow, warn, or block", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_duplicate_json_keys_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             scenario_path = Path(directory) / "scenario.json"
