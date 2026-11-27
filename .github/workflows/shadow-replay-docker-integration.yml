@@ -51,9 +51,12 @@ jobs:
           done
           curl --silent --fail http://127.0.0.1:5000/v2/ >/dev/null
           docker tag scale-shadow-replay-runner:integration localhost:5000/scale-shadow-replay-runner:integration
-          docker push localhost:5000/scale-shadow-replay-runner:integration
-          image_ref="$(docker image inspect --format '{{index .RepoDigests 0}}' localhost:5000/scale-shadow-replay-runner:integration)"
-          [[ "$image_ref" =~ ^localhost:5000/scale-shadow-replay-runner@sha256:[a-f0-9]{64}$ ]]
+          docker push localhost:5000/scale-shadow-replay-runner:integration | tee docker-push.log
+          digest="$(sed -n 's/.*digest: \\(sha256:[a-f0-9]\\{64\\}\\).*/\\1/p' docker-push.log | tail -n 1)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          image_ref="localhost:5000/scale-shadow-replay-runner@$digest"
+          docker pull "$image_ref"
+          docker image inspect "$image_ref" >/dev/null
           echo "SCALE_SHADOW_REPLAY_DOCKER_IMAGE=$image_ref" >> "$GITHUB_ENV"
           echo "Resolved runner image: $image_ref" >> "$GITHUB_STEP_SUMMARY"
 
