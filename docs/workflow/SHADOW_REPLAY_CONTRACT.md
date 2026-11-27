@@ -1,6 +1,6 @@
 # Shadow Replay Docker Adapter / Docker 沙箱适配器
 
-Status: Docker CLI adapter and data-only Runner v1 source/image build workflow implemented; real-daemon integration qualification is still required.
+Status: Docker CLI adapter, data-only Runner v1, real Linux Docker-daemon integration, and an adapter-to-ledger orchestration seam are implemented on the current Draft PR stack. Full lifecycle CLI wiring, artifact export/retention, immutable published image provenance, hostile-container review, and clean-project qualification remain open.
 
 The adapter requires a locally present immutable \`repository@sha256:<digest>\` image. The image must provide \`/usr/local/bin/scale-shadow-replay\` and \`/inputs\`, accepting \`--scenario /inputs/scenario.snapshot\` and \`--candidate /inputs/candidate.bundle\`. Those files must implement the strict data-only [Runner Protocol v1](SHADOW_REPLAY_RUNNER_PROTOCOL.md); unknown fields and arbitrary command/script payloads are rejected. Protocol v1 is a deterministic literal-match policy simulation, not an execution of the original failure's \`replayCommand\` or arbitrary application code.
 
@@ -12,7 +12,11 @@ Container controls: exact local image digest and \`--pull=never\`; \`--network=n
 
 This is a Docker container adapter, not a VM. It relies on a trusted Docker daemon and host kernel; container isolation is not a hardware VM boundary. Docker Desktop, Windows and rootless daemon behavior need explicit qualification. Fake-CLI tests validate argument construction, digest gating and cleanup only; they do not prove OS isolation. Runner unit tests and image build verify the protocol implementation and image defaults, not runtime isolation.
 
-Next: publish/distribute the image under an immutable digest and retain provenance; scan and review the image; integration-test against a disposable Linux Docker daemon for network egress, credential absence, read-only mounts, resource limits and cleanup; wire replay lifecycle and artifact hashes; then run three clean-project qualifications.
+Real-daemon integration has now passed in GitHub Actions on Linux: the workflow builds and pushes the runner to an ephemeral local registry, resolves an immutable RepoDigest, executes the actual adapter, inspects effective container settings (non-root, network=none, read-only root, dropped capabilities, no-new-privileges, resource limits, read-only mounts), checks bounded/no-input-echo output, and verifies container cleanup. This is configuration/lifecycle evidence, not a hostile-container penetration test or VM boundary.
+
+A new `runAndRecordShadowReplay` orchestration seam now composes the reviewed plan, adapter execution, bounded/redacted result, provenance validation, and SQLite ledger persistence. Tests cover passed outcomes, valid Runner mismatch exit 10 persisted as `failed`, ledger readback, and provenance mismatch rejection. It is not yet exposed as an end-user execute CLI and does not yet write a separate signed/exportable artifact manifest.
+
+Next: pin the Python base image by digest; scan/sign/attest the final runner image and retain build provenance; complete adapter-to-runner-to-ledger artifact export/retention; perform hostile-input/container security review; then run three clean-project qualifications.
 
 ## 中文边界
 
