@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { constants, closeSync, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import type { ShadowReplayLedgerRecord } from './ShadowReplayLedger.js'
 
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024
 
 export interface ShadowReplayArtifactManifestV1 {
   schemaVersion: 1
@@ -151,6 +152,10 @@ export function writeShadowReplayArtifact(options: WriteShadowReplayArtifactOpti
     throw new Error('Shadow Replay artifact directory must be a regular non-symlink directory')
   }
   const manifest = createShadowReplayArtifactManifest(options.record)
+  const serialized = `${canonicalizeShadowReplayJson(manifest)}\n`
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_ARTIFACT_BYTES) {
+    throw new Error('Shadow Replay artifact exceeds the 10 MiB limit')
+  }
   const target = join(directory, `${manifest.runId}.shadow-replay.json`)
   const temporary = join(directory, `.${manifest.runId}.${process.pid}.${createHash('sha256').update(String(Date.now()) + Math.random()).digest('hex').slice(0, 12)}.tmp`)
   let fd: number | undefined
@@ -170,23 +175,39 @@ export function writeShadowReplayArtifact(options: WriteShadowReplayArtifactOpti
   }
 }
 
-/** Read and verify a manifest without trusting its filename or embedded digests. */
+/** Read and verify a bounded manifest through one descriptor. */
 export function verifyShadowReplayArtifactFile(path: string): ShadowReplayArtifactManifestV1 {
   const absolute = resolve(path)
-  const stat = lstatSync(absolute)
-  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('Shadow Replay artifact must be a regular non-symlink file')
-  const raw = (awaitlessReadFile(absolute)).toString('utf8')
+  const pathStat = lstatSync(absolute)
+  if (pathStat.isSymbolicLink() || !pathStat.isFile()) {
+    throw new Error('Shadow Replay artifact must be a regular non-symlink file')
+  }
+
+  // O_NOFOLLOW closes the lstat/open symlink swap window on platforms that support it.
+  // fstat/read on the same descriptor avoids validating one file and reading another.
+  const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+  const fd = openSync(absolute, flags)
+  let raw: Buffer
+  try {
+    const openedStat = fstatSync(fd)
+    if (!openedStat.isFile()) throw new Error('Shadow Replay artifact must be a regular file')
+    if (openedStat.size > MAX_ARTIFACT_BYTES) {
+      throw new Error('Shadow Replay artifact exceeds the 10 MiB limit')
+    }
+    raw = readFileSync(fd)
+    if (raw.byteLength !== openedStat.size) {
+      throw new Error('Shadow Replay artifact changed while being read')
+    }
+  } finally {
+    closeSync(fd)
+  }
+
   let parsed: unknown
-  try { parsed = JSON.parse(raw) as unknown } catch { throw new Error('Shadow Replay artifact is not valid JSON') }
+  try { parsed = JSON.parse(raw.toString('utf8')) as unknown } catch { throw new Error('Shadow Replay artifact is not valid JSON') }
   if (!verifyShadowReplayArtifactManifest(parsed)) throw new Error('Shadow Replay artifact integrity verification failed')
   if (basename(absolute) !== `${(parsed as ShadowReplayArtifactManifestV1).runId}.shadow-replay.json`) {
     throw new Error('Shadow Replay artifact filename does not match its runId')
   }
   return parsed as ShadowReplayArtifactManifestV1
-}
-
-function awaitlessReadFile(path: string): Buffer {
-  const fd = openSync(path, 'r')
-  try { return readFileSync(fd) } finally { closeSync(fd) }
 }
 
