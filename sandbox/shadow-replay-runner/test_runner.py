@@ -72,9 +72,9 @@ class RunnerProtocolTests(unittest.TestCase):
 
     def test_string_limits_match_javascript_utf16_code_units(self):
         scenario, candidate = self.base()
-        # 65,536 UTF-16 code units must be rejected even though Python sees
-        # only 32,768 Unicode code points.
-        scenario["events"][0]["input"] = "😀" * 32768
+        # 65,538 UTF-16 code units must be rejected even though Python sees
+        # only 32,769 Unicode code points.
+        scenario["events"][0]["input"] = "😀" * 32769
         result = self.run_case(scenario, candidate)
         self.assertEqual(result.returncode, 2)
         self.assertIn("at most 65536 characters", result.stderr)
@@ -84,7 +84,7 @@ class RunnerProtocolTests(unittest.TestCase):
         # U+10000 sorts before U+E000 by UTF-16 code units, but after it by
         # Python Unicode code points. The TypeScript contract uses JS '<'.
         candidate["rules"] = [
-            {"id": "\\ue000", "priority": 10, "tool": "fs.write", "contains": "write", "decision": "warn"},
+            {"id": "\uE000", "priority": 10, "tool": "fs.write", "contains": "write", "decision": "warn"},
             {"id": "𐀀", "priority": 10, "tool": "fs.write", "contains": "write", "decision": "block"},
         ]
         result = self.run_case(scenario, candidate)
