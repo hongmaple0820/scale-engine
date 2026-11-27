@@ -200,6 +200,10 @@ export type {
   AgentCapability,
 } from './agents/index.js'
 
+// Shadow Replay evidence artifacts
+export { canonicalizeShadowReplayJson, createShadowReplayArtifactManifest, verifyShadowReplayArtifactManifest, writeShadowReplayArtifact, verifyShadowReplayArtifactFile } from './evolution/ShadowReplayArtifact.js'
+export type { ShadowReplayArtifactManifestV1, WriteShadowReplayArtifactOptions } from './evolution/ShadowReplayArtifact.js'
+
 // Evolution Positive Learning (Phase 4)
 export { PatternExtractor } from './evolution/PatternExtractor.js'
 export type { Pattern, PatternStep, IPatternExtractor } from './evolution/PatternExtractor.js'
