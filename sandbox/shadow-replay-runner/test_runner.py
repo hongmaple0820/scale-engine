@@ -69,6 +69,28 @@ class RunnerProtocolTests(unittest.TestCase):
         self.assertIn("must be allow, warn, or block", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
+
+    def test_string_limits_match_javascript_utf16_code_units(self):
+        scenario, candidate = self.base()
+        # 65,536 UTF-16 code units must be rejected even though Python sees
+        # only 32,768 Unicode code points.
+        scenario["events"][0]["input"] = "😀" * 32768
+        result = self.run_case(scenario, candidate)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("at most 65536 characters", result.stderr)
+
+    def test_equal_priority_rule_ids_use_javascript_utf16_order(self):
+        scenario, candidate = self.base()
+        # U+10000 sorts before U+E000 by UTF-16 code units, but after it by
+        # Python Unicode code points. The TypeScript contract uses JS '<'.
+        candidate["rules"] = [
+            {"id": "\\ue000", "priority": 10, "tool": "fs.write", "contains": "write", "decision": "warn"},
+            {"id": "𐀀", "priority": 10, "tool": "fs.write", "contains": "write", "decision": "block"},
+        ]
+        result = self.run_case(scenario, candidate)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["mismatches"], [])
+
     def test_duplicate_json_keys_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             scenario_path = Path(directory) / "scenario.json"
