@@ -30,7 +30,7 @@ Status: P4-C（审计底座、Shadow Replay Docker adapter、Runner v1、真实 
 2. **审计保留策略**：现有 \`.scale/evidence/\` 保留策略需统一；Replay Ledger 仍需签名清单、离机备份和 artifact retention。
 3. **Runner 供应链与真实沙箱验证**：固定 Python 基础镜像 digest；构建、扫描、签名并固定最终 runner image digest；在真实 Linux Docker daemon 上验证网络不可达、凭据不可见、只读挂载、资源限制和超时后无残留容器。Docker 容器不等同硬件 VM。
 4. **产品接线**：接入 replay lifecycle CLI、ledger 查询与 artifact hash manifest；禁止 replay 结果自动修改生产 Hook/策略。
-5. **Artifact 与生命周期**：`runAndRecordShadowReplay` 已串联已审核计划、Adapter、结果脱敏和 SQLite Ledger，测试覆盖 pass、Runner mismatch exit 10、读回和 provenance 拒绝；仍需可导出的 Artifact Manifest、签名/摘要与 retention 策略，并接入用户可用的执行入口。
+5. **Artifact 与生命周期**：`runAndRecordShadowReplay` 已串联已审核计划、Adapter、结果脱敏和 SQLite Ledger；Host 会重新校验输入摘要、复制私有输入、独立执行 data-only 协议评估，并校验 Runner JSON 与 exit 0/10 是否一致，伪造/不一致结果拒绝入 Ledger。测试覆盖 pass、Runner mismatch exit 10、伪造输出拒绝、读回和 provenance 拒绝；仍需可导出的 Artifact Manifest、签名/摘要与 retention 策略，并接入用户可用的执行入口。
 6. **clean-project qualification**：三个独立 clean projects、完整产物审查、中英文 parity 和 claim-to-evidence reconciliation。
 6. **审计报表**：按 task/agent/role 聚合命令、门禁、Replay 与证据时间线导出。
 
