@@ -15,14 +15,14 @@ const dirs: string[] = []
 function fixture(): ShadowReplayLedgerRecord {
   const dir = mkdtempSync(join(tmpdir(), 'shadow-replay-artifact-'))
   dirs.push(dir)
-  const digest = \`sha256:\${'a'.repeat(64)}\`
+  const digest = `sha256:${'a'.repeat(64)}`
   return {
     schemaVersion: 1,
     runId: 'SHADOW-REPLAY-ARTIFACT-1',
     plan: {
       contractVersion: 1, runId: 'SHADOW-REPLAY-ARTIFACT-1', candidateId: 'IMPROVE-1',
       failureId: 'FAIL-1', sourceCommitSha: 'b'.repeat(40),
-      scenarioSnapshotDigest: digest, candidateBundleDigest: \`sha256:\${'c'.repeat(64)}\`,
+      scenarioSnapshotDigest: digest, candidateBundleDigest: `sha256:${'c'.repeat(64)}`,
       adapterId: 'docker-container', adapterVersion: '1.0.0', sandboxKind: 'container',
       limits: { timeoutMs: 10000, memoryLimitMb: 512, cpuTimeLimitMs: 10000 },
       createdAt: '2026-11-27T00:00:00.000Z',
@@ -36,9 +36,9 @@ function fixture(): ShadowReplayLedgerRecord {
       productionPolicyChanged: false, hooksChanged: false,
     },
     provenance: {
-      runnerImageRef: \`ghcr.io/example/runner@sha256:\${'d'.repeat(64)}\`,
+      runnerImageRef: `ghcr.io/example/runner@sha256:${'d'.repeat(64)}`,
       recordedBy: 'artifact-test', scenarioSnapshotDigest: digest,
-      candidateBundleDigest: \`sha256:\${'c'.repeat(64)}\`,
+      candidateBundleDigest: `sha256:${'c'.repeat(64)}`,
     },
     recordedAt: '2026-11-27T00:00:02.000Z',
   }
