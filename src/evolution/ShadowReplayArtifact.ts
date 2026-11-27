@@ -161,7 +161,7 @@ export function writeShadowReplayArtifact(options: WriteShadowReplayArtifactOpti
   let fd: number | undefined
   try {
     fd = openSync(temporary, 'wx', 0o600)
-    writeFileSync(fd, `${canonicalizeShadowReplayJson(manifest)}\n`, 'utf8')
+    writeFileSync(fd, serialized, 'utf8')
     fsyncSync(fd)
     closeSync(fd)
     fd = undefined
