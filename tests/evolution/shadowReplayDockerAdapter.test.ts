@@ -122,9 +122,11 @@ describe('DockerShadowReplayAdapter', () => {
     expect(inspected!.HostConfig.CpuPeriod).toBe(100000)
     expect(inspected!.HostConfig.CpuQuota).toBe(100000)
     expect(inspected!.HostConfig.Tmpfs).toHaveProperty('/tmp')
-    expect(inspected!.Mounts.filter((mount: { Destination: string }) =>
+    const inputMounts = inspected!.Mounts.filter((mount: { Destination: string }) =>
       ['/inputs/scenario.snapshot', '/inputs/candidate.bundle'].includes(mount.Destination)
-    ).every((mount: { RW: boolean }) => mount.RW === false)).toBe(true)
+    )
+    expect(inputMounts).toHaveLength(2)
+    expect(inputMounts.every((mount: { RW: boolean }) => mount.RW === false)).toBe(true)
     const after = await execa('docker', ['inspect', containerId], { reject: false, windowsHide: true })
     expect(after.exitCode).not.toBe(0)
   })
