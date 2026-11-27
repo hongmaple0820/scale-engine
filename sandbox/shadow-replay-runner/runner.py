@@ -55,14 +55,14 @@ def text(value, label, maximum):
 
 
 def decision(value, label):
-    if value not in DECISIONS:
+    if not isinstance(value, str) or value not in DECISIONS:
         raise ProtocolError(f"{label} must be allow, warn, or block")
     return value
 
 
 def parse_scenario(raw):
     root = exact_object(raw, ("protocolVersion", "kind", "scenarioId", "sourceCommitSha", "events"), "scenario")
-    if root["protocolVersion"] != 1 or root["kind"] != "scale-shadow-replay-scenario":
+    if type(root["protocolVersion"]) is not int or root["protocolVersion"] != 1 or root["kind"] != "scale-shadow-replay-scenario":
         raise ProtocolError("unsupported scenario protocolVersion/kind")
     scenario_id = text(root["scenarioId"], "scenarioId", 128)
     source = text(root["sourceCommitSha"], "sourceCommitSha", 64)
@@ -93,7 +93,7 @@ def parse_scenario(raw):
 
 def parse_candidate(raw):
     root = exact_object(raw, ("protocolVersion", "kind", "candidateId", "failureId", "defaultDecision", "rules"), "candidate")
-    if root["protocolVersion"] != 1 or root["kind"] != "scale-shadow-replay-candidate":
+    if type(root["protocolVersion"]) is not int or root["protocolVersion"] != 1 or root["kind"] != "scale-shadow-replay-candidate":
         raise ProtocolError("unsupported candidate protocolVersion/kind")
     candidate_id = text(root["candidateId"], "candidateId", 128)
     failure_id = text(root["failureId"], "failureId", 128)
@@ -153,7 +153,7 @@ def main():
         result = evaluate(scenario, candidate)
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
         return 0 if result["passed"] else 10
-    except (ProtocolError, OSError) as exc:
+    except (ProtocolError, OSError, RecursionError) as exc:
         print(json.dumps({"protocolVersion": 1, "error": str(exc)}, separators=(",", ":")), file=sys.stderr)
         return 2
 
