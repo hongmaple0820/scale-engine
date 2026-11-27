@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import type { ShadowReplayLedgerRecord } from './ShadowReplayLedger.js'
 
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/
@@ -187,10 +187,6 @@ export function verifyShadowReplayArtifactFile(path: string): ShadowReplayArtifa
 
 function awaitlessReadFile(path: string): Buffer {
   const fd = openSync(path, 'r')
-  try { return requireReadFile(fd) } finally { closeSync(fd) }
+  try { return readFileSync(fd) } finally { closeSync(fd) }
 }
 
-function requireReadFile(fd: number): Buffer {
-  const { readFileSync } = require('node:fs')
-  return readFileSync(fd)
-}
