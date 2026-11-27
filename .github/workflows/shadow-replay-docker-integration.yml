@@ -1,0 +1,65 @@
+name: Shadow Replay Docker Integration
+
+on:
+  pull_request:
+    paths:
+      - "src/evolution/ShadowReplayDockerAdapter.ts"
+      - "src/evolution/ShadowReplayContract.ts"
+      - "sandbox/shadow-replay-runner/**"
+      - "tests/evolution/shadowReplayDockerAdapter.test.ts"
+      - ".github/workflows/shadow-replay-docker-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shadow-replay-docker-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-daemon:
+    name: Real Docker daemon integration (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify Docker daemon
+        run: |
+          docker version
+          docker info
+
+      - name: Build runner image
+        run: docker build --pull --tag scale-shadow-replay-runner:integration sandbox/shadow-replay-runner
+
+      - name: Publish to ephemeral local registry and resolve immutable digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name scale-shadow-replay-registry -p 5000:5000 registry:2
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:5000/v2/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:5000/v2/ >/dev/null
+          docker tag scale-shadow-replay-runner:integration localhost:5000/scale-shadow-replay-runner:integration
+          docker push localhost:5000/scale-shadow-replay-runner:integration
+          image_ref="$(docker image inspect --format '{{index .RepoDigests 0}}' localhost:5000/scale-shadow-replay-runner:integration)"
+          [[ "$image_ref" =~ ^localhost:5000/scale-shadow-replay-runner@sha256:[a-f0-9]{64}$ ]]
+          echo "SCALE_SHADOW_REPLAY_DOCKER_IMAGE=$image_ref" >> "$GITHUB_ENV"
+          echo "Resolved runner image: $image_ref" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run adapter against the real Docker daemon
+        run: npm test -- tests/evolution/shadowReplayDockerAdapter.test.ts
+
+      - name: Remove ephemeral registry
+        if: always()
+        run: docker rm --force scale-shadow-replay-registry || true
